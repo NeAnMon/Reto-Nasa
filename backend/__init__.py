@@ -1,2 +1,2 @@
-"""AstroVital Backend Package."""
+"""SEMSA Backend Package."""
 

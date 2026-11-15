@@ -91,7 +91,7 @@ def _insert_sim_measurement(
     phase_code: str = "SURFACE",
     environment_code: str = "LUNAR_SURFACE",
     source_code: str = "DEMO_SIMULATION",
-    notes: str = "Dato sintético generado por Simulador AstroVital (SIMULADO)",
+    notes: str = "Dato sintético generado por Simulador SEMSA (SIMULADO)",
     dedup_key: Optional[str] = None,
 ) -> Optional[HealthMeasurement]:
     if dedup_key:

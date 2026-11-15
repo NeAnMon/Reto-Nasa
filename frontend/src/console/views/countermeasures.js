@@ -1,4 +1,4 @@
-/* AstroVital · Consola de salud de tripulación — vista "Contramedidas de hoy"
+/* SEMSA · Consola de salud de tripulación — vista "Contramedidas de hoy"
  * Misiones diarias y gamificación ética:
  * - se premia la constancia y el aprendizaje, nunca tener constantes "normales"
  * - omitir por restricción operativa (EXCUSED_OPERATIONAL_RESTRICTION) no rompe la racha ni resta

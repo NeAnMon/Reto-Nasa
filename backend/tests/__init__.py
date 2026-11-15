@@ -1,2 +1,2 @@
-"""Automated tests package for AstroVital."""
+"""Automated tests package for SEMSA."""
 

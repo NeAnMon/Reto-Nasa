@@ -1,4 +1,4 @@
-/* AstroVital · Consola · vista "Ajustes y ayuda" (sustituye a Settings & Help)
+/* SEMSA · Consola · vista "Ajustes y ayuda" (sustituye a Settings & Help)
  *
  * - Idioma de la interfaz (es / en) y tema visual (consola oscura, alto contraste, día) guardado en el perfil.
  * - Preferencia de privacidad: compartir o no la señal operativa de bienestar con el líder.
@@ -11,7 +11,7 @@ import { esc, tag, errMsg, ensureCss, roleOf } from "./more-common.js";
 const DICT = {
   es: {
     title: "Ajustes y ayuda",
-    version: "AstroVital v1.0",
+    version: "SEMSA v1.0",
     langTitle: "Idioma",
     langLabel: "Idioma de la interfaz",
     langSub: "Los textos del sistema se muestran en el idioma elegido; lo que escriben las personas (mensajes, notas) se muestra tal como fue registrado.",
@@ -43,14 +43,14 @@ const DICT = {
       { n: 5, name: "Contramedidas", what: "Completar una contramedida de autocuidado y revisar constancia e insignias.", sec: "daily-missions", go: "Contramedidas" },
       { n: 6, name: "Bienestar", what: "En Registrar medición, responder el cuestionario de bienestar psicológico (grupo Cuestionarios).", sec: "wellness-center", go: "Registrar medición" },
       { n: 7, name: "Tendencias", what: "Desde el Resumen, abrir un indicador y revisar su tendencia de misión con línea base y límites.", sec: "mission-control", go: "Resumen" },
-      { n: 8, name: "Supervisión en tierra", what: "Como líder (leader@astrovital.demo), revisar la tripulación asignada.", sec: "crew-monitoring", go: "Monitoreo de tripulación", role: "leader" },
-      { n: 9, name: "Administración", what: "Como administración (admin@astrovital.demo), crear una cuenta y revisar la auditoría.", sec: "administration", go: "Administración", role: "admin" },
+      { n: 8, name: "Supervisión en tierra", what: "Como líder (leader@semsa.demo), revisar la tripulación asignada.", sec: "crew-monitoring", go: "Monitoreo de tripulación", role: "leader" },
+      { n: 9, name: "Administración", what: "Como administración (admin@semsa.demo), crear una cuenta y revisar la auditoría.", sec: "administration", go: "Administración", role: "admin" },
       { n: 10, name: "Bitácora e informes", what: "Revisar el seguimiento periódico (riesgos NASA IMM), exportar un informe auditado (PDF, CSV o JSON) y mostrar la trazabilidad de fuentes.", sec: "reports", go: "Bitácora" },
     ],
   },
   en: {
     title: "Settings and help",
-    version: "AstroVital v1.0",
+    version: "SEMSA v1.0",
     langTitle: "Language",
     langLabel: "Interface language",
     langSub: "System texts are shown in the selected language; what people write (messages, notes) is shown as it was recorded.",
@@ -82,8 +82,8 @@ const DICT = {
       { n: 5, name: "Countermeasures", what: "Complete a self-care countermeasure and review consistency and badges.", sec: "daily-missions", go: "Countermeasures" },
       { n: 6, name: "Wellbeing", what: "In Log measurement, answer the psychological wellbeing questionnaire (Questionnaires group).", sec: "wellness-center", go: "Log measurement" },
       { n: 7, name: "Trends", what: "From the Overview, open an indicator and review its mission trend with baseline and limits.", sec: "mission-control", go: "Overview" },
-      { n: 8, name: "Ground supervision", what: "As leader (leader@astrovital.demo), review the assigned crew.", sec: "crew-monitoring", go: "Crew monitoring", role: "leader" },
-      { n: 9, name: "Administration", what: "As administration (admin@astrovital.demo), create an account and review the audit trail.", sec: "administration", go: "Administration", role: "admin" },
+      { n: 8, name: "Ground supervision", what: "As leader (leader@semsa.demo), review the assigned crew.", sec: "crew-monitoring", go: "Crew monitoring", role: "leader" },
+      { n: 9, name: "Administration", what: "As administration (admin@semsa.demo), create an account and review the audit trail.", sec: "administration", go: "Administration", role: "admin" },
       { n: 10, name: "Logbook and reports", what: "Review periodic monitoring (NASA IMM risks), export an audited report (PDF, CSV or JSON) and show source traceability.", sec: "reports", go: "Logbook" },
     ],
   },

@@ -1,5 +1,5 @@
 /*
- * AstroVital · Consola · Vista "Registrar medición" (v2, simplificada)
+ * SEMSA · Consola · Vista "Registrar medición" (v2, simplificada)
  *
  * Pensada para que un tripulante registre un dato en pocos segundos, con guantes:
  *  1. Elige un indicador (primero los pendientes).

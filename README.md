@@ -1,4 +1,4 @@
-# AstroVital — *Your health. Your mission. Your future.*
+# SEMSA — *Your health. Your mission. Your future.*
 ### Plataforma interactiva, gamificada y adaptativa para el monitoreo integral de la salud de astronautas
 **NASA Space Apps Challenge — *Health Monitoring Software for Astronauts on Space Missions***
 
@@ -6,14 +6,14 @@
 
 ## 1. Visión General y Principio Central
 
-**AstroVital** es una plataforma web full-stack diseñada para acompañar a los astronautas y al equipo de apoyo en tierra durante misiones espaciales de corta, mediana y larga duración frente a los **cinco grandes peligros de los vuelos espaciales**:
+**SEMSA** es una plataforma web full-stack diseñada para acompañar a los astronautas y al equipo de apoyo en tierra durante misiones espaciales de corta, mediana y larga duración frente a los **cinco grandes peligros de los vuelos espaciales**:
 1. **Radiación espacial**
 2. **Aislamiento y confinamiento**
 3. **Distancia de la Tierra**
 4. **Campos gravitacionales alterados**
 5. **Entornos cerrados u hostiles**
 
-> **Principio Central:** AstroVital ayuda a **observar, comprender, registrar y comunicar** información sobre la salud y el bienestar. **No diagnostica de manera autónoma**, no reemplaza a los profesionales sanitarios y no modifica protocolos médicos críticos por decisión de un algoritmo ni por cambios automáticos de entorno.
+> **Principio Central:** SEMSA ayuda a **observar, comprender, registrar y comunicar** información sobre la salud y el bienestar. **No diagnostica de manera autónoma**, no reemplaza a los profesionales sanitarios y no modifica protocolos médicos críticos por decisión de un algoritmo ni por cambios automáticos de entorno.
 
 ---
 
@@ -56,7 +56,7 @@ Reto-Nasa/
 │   │   │   └── simulator.py        # Simulador de telemetría (9 escenarios DEMO)
 │   │   └── main.py                 # Punto de entrada FastAPI + servidor estático SPA
 │   └── tests/
-│       └── test_astrovital.py      # Suite de pruebas automatizadas (Pytest)
+│       └── test_semsa.py      # Suite de pruebas automatizadas (Pytest)
 ├── frontend/
 │   ├── index.html                  # Interfaz semántica y accesible (11 módulos)
 │   └── src/
@@ -94,7 +94,7 @@ Copy-Item .env.example .env
 > **Advertencia de Seguridad:** Sustituya `SECRET_KEY` y todas las contraseñas de demostración antes de cualquier despliegue en un entorno público o de producción.
 
 ### 4.3 Inicializar base de datos y datos sintéticos DEMO
-La aplicación inicializa y siembra automáticamente la base de datos SQLite (`astrovital.db`) al arrancar, o puede ejecutar manualmente:
+La aplicación inicializa y siembra automáticamente la base de datos SQLite (`semsa.db`; si solo existe la `astrovital.db` de versiones previas, se reutiliza) al arrancar, o puede ejecutar manualmente:
 ```powershell
 .\.venv\Scripts\python scripts/init_demo_db.py
 ```
@@ -114,11 +114,11 @@ La aplicación inicializa y siembra automáticamente la base de datos SQLite (`a
 
 | Rol | Nombre Ficticio | Correo Electrónico | Contraseña Local DEMO | Misión Asignada |
 | :--- | :--- | :--- | :--- | :--- |
-| **Astronauta 1** | Cmdr. Elena Rostova | `elena.rostova@astrovital.demo` | `AstroCrew!2026` | `ARTEMIS-IV-DEMO` |
-| **Astronauta 2** | Dr. Marcus Vance | `marcus.vance@astrovital.demo` | `AstroCrew!2026` | `ARTEMIS-IV-DEMO` |
-| **Astronauta 3** | Spec. Kenji Takahashi | `kenji.takahashi@astrovital.demo` | `AstroCrew!2026` | `ARES-PATHFINDER-DEMO` |
-| **Líder en Tierra** | Dir. Carlos Ibáñez | `leader@astrovital.demo` | `AstroLeader!2026` | `ARTEMIS-IV-DEMO` |
-| **Administradora** | Dra. Valeria Mendoza | `admin@astrovital.demo` | `AstroAdmin!2026` | Supervisión de Plataforma |
+| **Astronauta 1** | Cmdr. Elena Rostova | `elena.rostova@semsa.demo` | `AstroCrew!2026` | `TELECREATION-UTS` |
+| **Astronauta 2** | Dr. Marcus Vance | `marcus.vance@semsa.demo` | `AstroCrew!2026` | `TELECREATION-UTS` |
+| **Astronauta 3** | Spec. Kenji Takahashi | `kenji.takahashi@semsa.demo` | `AstroCrew!2026` | `ARES-PATHFINDER-DEMO` |
+| **Líder en Tierra** | Dir. Carlos Ibáñez | `leader@semsa.demo` | `AstroLeader!2026` | `TELECREATION-UTS` |
+| **Administradora** | Dra. Valeria Mendoza | `admin@semsa.demo` | `AstroAdmin!2026` | Supervisión de Plataforma |
 
 > **Todas estas cuentas solo se crean con `SEED_DEMO_DATA=true`.** Con `SEED_DEMO_DATA=false` no se crea ninguna cuenta demo, ni siquiera sobre una BD existente (los catálogos del módulo de aislamiento sí se mantienen al día). Desactívelo y cambie las contraseñas `DEMO_*` antes de cualquier despliegue accesible.
 
@@ -131,7 +131,7 @@ La aplicación inicializa y siembra automáticamente la base de datos SQLite (`a
 ```bash
 docker compose up -d --build
 ```
-- La BD SQLite vive en el volumen `astrovital_data` montado en `/app/data`.
+- La BD SQLite vive en el volumen `astrovital_data` montado en `/app/data` (nombre heredado de versiones previas; se conserva para no perder datos de despliegues existentes).
 - `docker-compose.yml` usa `.env.example` (valores de demostración). Para producción use su propio `.env` con `SECRET_KEY` aleatoria, `SEED_DEMO_DATA=false` y `DEMO_EXPOSE_RECOVERY_TOKEN=false`; si no, el arranque registra avisos `CONFIGURACIÓN INSEGURA`.
 
 ---
