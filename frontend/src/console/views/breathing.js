@@ -1,4 +1,4 @@
-/* AstroVital · Consola · Bienestar → "Respiración" (respiración guiada en cuadrado, box breathing)
+/* SEMSA · Consola · Bienestar → "Respiración" (respiración guiada en cuadrado, box breathing)
  *
  * Ciclo de cuatro fases iguales de 4 tiempos (1 tiempo = 1 s): inhala, mantén, exhala, mantén.
  * Una ronda dura 16 s; se eligen 4, 8 o 12 rondas (~1, 2 o 3 min). Cleveland Clinic sugiere 3–4 rondas.

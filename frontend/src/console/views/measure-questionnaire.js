@@ -1,5 +1,5 @@
 /*
- * AstroVital · Consola · "Registrar medición" → Cuestionario de bienestar psicológico
+ * SEMSA · Consola · "Registrar medición" → Cuestionario de bienestar psicológico
  *
  * Antes vivía en su propia vista (wellness.js, abierta desde Bienestar → Hoy). Ahora es una
  * tarjeta más de "Registrar medición" (grupo "Cuestionarios") y se responde en el mismo panel
