@@ -2797,6 +2797,8 @@ function radiationHTML(appState, d) {
   const T = tt();
   const lim = (v) => (v === null ? "—" : num(v));
   const limRow = (label, a, b, c) => `<tr><td>${esc(label)}</td><td class="av-mono" style="text-align:right">${lim(a)}</td><td class="av-mono" style="text-align:right">${lim(b)}</td><td class="av-mono" style="text-align:right">${lim(c)}</td></tr>`;
+  // Fila 1: gráfica (izq.) | Riesgos y Dosímetro en 2 columnas internas (der.).
+  // Fila 2: Límites de referencia a todo el ancho.
   return `
   <div class="av-rad">
     <main id="av-rad-live">${radLiveInner(d)}</main>
@@ -2825,6 +2827,9 @@ function radiationHTML(appState, d) {
         ${entries.length ? `<div class="av-hscroll" style="border-top:1px solid var(--av-border)"><table class="av-table" style="font-size:13px"><thead><tr><th scope="col" style="padding-left:12px">GMT</th><th scope="col" style="text-align:right">mGy</th><th scope="col" style="text-align:right">µGy/h</th><th scope="col">${esc(T.place)}</th></tr></thead><tbody>
           ${entries.slice(-6).reverse().map((e) => `<tr><td class="av-mono" style="padding-left:12px">${gmt(new Date(e.utc), false)}</td><td class="av-mono" style="text-align:right">${num(e.mgy, 3)}</td><td class="av-mono" style="text-align:right">${e.rate ? num(e.rate, 1) : "—"}</td><td>${esc(T.cadLoc[e.loc] || e.loc)}</td></tr>`).join("")}
         </tbody></table></div>` : ""}`)}
+    </div>
+
+    <div class="av-rad-limits">
       ${radFold("limits", esc(T.limitsTitle), "", `<div style="padding:12px;display:flex;flex-direction:column;gap:6px">
         <table class="av-table" style="font-size:12px">
           <thead><tr><th scope="col">${esc(T.organ)}</th><th scope="col" style="text-align:right">30 d</th><th scope="col" style="text-align:right">${esc(T.year1)}</th><th scope="col" style="text-align:right">${esc(T.career)}</th></tr></thead>
