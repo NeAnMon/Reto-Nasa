@@ -277,6 +277,41 @@ export const EXACT = {
   "Escalamiento inmediato a Dirección de Medicina de Vuelo si persiste en rango WARNING por >2 mediciones o ante cualquier lectura en rango CRITICAL.":
     "Immediate escalation to the Flight Medicine Directorate if the value stays in the WARNING range for >2 measurements, or upon any reading in the CRITICAL range.",
   "Versión inicial de demostración.": "Initial demonstration version.",
+
+  // ClinicalRuleVersion 2.0-DATASET (backend/app/rules/calibration.py y recommendations.py): fuente por
+  // indicador, aprobación e instrucciones genéricas de la versión calibrada con el dataset
+  "La acción inmediata depende de la dirección y del nivel de cada alerta: consulta la recomendación que acompaña a la alerta (catálogo de recomendaciones calibrado con el dataset del proyecto).":
+    "The immediate action depends on the direction and level of each alert: see the recommendation that comes with the alert (recommendation catalog calibrated with the project dataset).",
+  "Cada alerta indica cómo mejorar el indicador en los próximos días y cuándo avisar al médico de vuelo.":
+    "Each alert explains how to improve the indicator over the next few days and when to tell the flight surgeon.",
+  "CRITICAL (zona roja del dataset): aviso inmediato al médico de vuelo. WARNING: avisar si se confirma al repetir la medición. MONITOR: observación en el próximo control.":
+    "CRITICAL (dataset red zone): tell the flight surgeon immediately. WARNING: tell them if it is confirmed when the measurement is repeated. MONITOR: observation at the next check.",
+  "Equipo SEMSA · calibración con astronaut-health-dataset (no clínica)":
+    "SEMSA team · calibration with astronaut-health-dataset (non-clinical)",
+  "Dataset alertas.py: pulso ≤50/≥100 amarillo, ≤40/≥120 rojo (criterio clínico general, no verificado); desvío personal |z| ≥2/≥3 (diseño del equipo)":
+    "Dataset alertas.py: pulse ≤50/≥100 yellow, ≤40/≥120 red (general clinical criterion, not verified); personal deviation |z| ≥2/≥3 (team design)",
+  "Dataset alertas.py: PAS ≥140/≥180, PAD ≥90/≥120 (AHA/ACC 2017, no verificado), PAS ≤90 amarillo; |z| ≥2/≥3. PAS <80 rojo: sin respaldo en el dataset (1.0-DEMO, piso de seguridad)":
+    "Dataset alertas.py: SBP ≥140/≥180, DBP ≥90/≥120 (AHA/ACC 2017, not verified), SBP ≤90 yellow; |z| ≥2/≥3. SBP <80 red: not backed by the dataset (1.0-DEMO, safety floor)",
+  "Dataset alertas.py: temperatura ≥37,8 °C amarillo, ≥38,0 °C rojo, <35 °C rojo (criterio clínico general, no verificado); desvío personal |z| ≥2/≥3":
+    "Dataset alertas.py: temperature ≥37.8 °C yellow, ≥38.0 °C red, <35 °C red (general clinical criterion, not verified); personal deviation |z| ≥2/≥3",
+  "Dataset alertas.py: SpO₂ <95 % amarillo, <92 % rojo (criterio clínico general, no verificado; la SpO₂ del dataset es simulada)":
+    "Dataset alertas.py: SpO₂ <95 % yellow, <92 % red (general clinical criterion, not verified; SpO₂ in the dataset is simulated)",
+  "Dataset alertas.py: FR >20 rpm amarillo, ≥24 rpm rojo (criterio clínico general, no verificado). FR <9/<8 rpm: sin respaldo en el dataset (1.0-DEMO, piso de seguridad)":
+    "Dataset alertas.py: RR >20 rpm yellow, ≥24 rpm red (general clinical criterion, not verified). RR <9/<8 rpm: not backed by the dataset (1.0-DEMO, safety floor)",
+  "Dataset demo_laboratorio.csv: rango de referencia i-STAT 70–105 mg/dL (amarillo fuera de rango); rojo <60/>180 mg/dL sin respaldo en el dataset":
+    "Dataset demo_laboratorio.csv: i-STAT reference range 70–105 mg/dL (yellow outside the range); red <60/>180 mg/dL not backed by the dataset",
+  "Dataset alertas.py: media de 7 noches <6,0 h amarillo, <5,5 h rojo (Barger 2014, ISS 6,09 h/noche verificado; cortes decididos por el equipo)":
+    "Dataset alertas.py: 7-night average <6.0 h yellow, <5.5 h red (Barger 2014, ISS 6.09 h/night verified; cut-offs decided by the team)",
+  "Umbrales sin respaldo en el dataset (no trae series de hidratación): se conservan los de 1.0-DEMO":
+    "Thresholds not backed by the dataset (it has no hydration series): the 1.0-DEMO ones are kept",
+  "Umbrales sin respaldo en el dataset (no trae series de ejercicio): se conservan los de 1.0-DEMO":
+    "Thresholds not backed by the dataset (it has no exercise series): the 1.0-DEMO ones are kept",
+  "Umbrales sin respaldo en el dataset (no trae series de fatiga): se conservan los de 1.0-DEMO":
+    "Thresholds not backed by the dataset (it has no fatigue series): the 1.0-DEMO ones are kept",
+  "Dataset alertas.py: ánimo z ≤ −2 frente a la línea base (diseño del equipo, dato simulado); umbrales absolutos sin respaldo en el dataset (1.0-DEMO)":
+    "Dataset alertas.py: mood z ≤ −2 against the baseline (team design, simulated data); absolute thresholds not backed by the dataset (1.0-DEMO)",
+  "Dataset alertas.py: dosis acumulada ≥50 %/≥100 % del límite de carrera de 600 mSv (NASA HRP, verificado); cortes de dosis diaria sin respaldo en el dataset":
+    "Dataset alertas.py: cumulative dose ≥50 %/≥100 % of the 600 mSv career limit (NASA HRP, verified); daily dose cut-offs not backed by the dataset",
   // Líneas sueltas de immediate_instructions (para btLines)
   "1. Suspenda actividad física exigente y permanezca en observación segura.":
     "1. Stop strenuous physical activity and remain under safe observation.",

@@ -70,9 +70,16 @@ function limitsOf(appState, code) {
   const maxV = isNum(item.max_valid_value) ? Number(item.max_valid_value) : Infinity;
   const nLo = isNum(r.normal_min) ? Number(r.normal_min) : Infinity;
   const nHi = isNum(r.normal_max) ? Number(r.normal_max) : -Infinity;
-  const lo = (v) => (isNum(v) && Number(v) > minV && Number(v) < nLo ? Number(v) : null);
-  const hi = (v) => (isNum(v) && Number(v) < maxV && Number(v) > nHi ? Number(v) : null);
-  return { yLo: lo(r.monitor_min), yHi: hi(r.monitor_max), rLo: lo(r.warning_min), rHi: hi(r.warning_max), demo: r.is_demo_rule !== false };
+  /* <= y >=: en las reglas calibradas con el dataset el rango normal es igual al amarillo. Un límite igual
+     al físico de validación significa "sin umbral en esa dirección" y no se pinta; tampoco el amarillo
+     cuando coincide con el rojo (no hay zona amarilla). */
+  const lo = (v) => (isNum(v) && Number(v) > minV && Number(v) <= nLo ? Number(v) : null);
+  const hi = (v) => (isNum(v) && Number(v) < maxV && Number(v) >= nHi ? Number(v) : null);
+  const rLo = lo(r.warning_min);
+  const rHi = hi(r.warning_max);
+  const yLo = lo(r.monitor_min);
+  const yHi = hi(r.monitor_max);
+  return { yLo: yLo === rLo ? null : yLo, yHi: yHi === rHi ? null : yHi, rLo, rHi, demo: r.is_demo_rule !== false };
 }
 
 async function loadSeries(ctx, code) {

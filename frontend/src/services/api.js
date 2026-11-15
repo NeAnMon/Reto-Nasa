@@ -418,7 +418,8 @@ export const apiService = {
     return this.request(`/analytics/phase-comparison?${params.toString()}`);
   },
 
-  /* Predicción fisiológica (OLS + MAE + puntaje Z) de la persona astronauta autenticada (issue #28).
+  /* Pronóstico fisiológico (nivel robusto, bandas de predicción, tendencia, umbrales y puntaje Z)
+   * de la persona astronauta autenticada (issue #28).
    * El backend deduce astronaut_id de la sesión; solo responde al rol ASTRONAUT con asignación activa. */
   getIndicatorPrediction(indicatorCode, { missionId, horizonDays = 7, includeSimulated = false } = {}) {
     const params = new URLSearchParams({

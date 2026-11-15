@@ -14,7 +14,7 @@ from backend.app.models.models import (
     SensorRegistry,
     User,
 )
-from backend.app.rules.engine import compute_measurement_state, create_alert_if_needed
+from backend.app.rules.engine import evaluate_measurement, upsert_alert_for_measurement
 from backend.app.services.gamification import record_gamification_mission
 
 
@@ -112,7 +112,7 @@ def _insert_sim_measurement(
         return None
 
     meas_dt = measured_at or utcnow()
-    state, rule, version, reasons = compute_measurement_state(
+    evaluation = evaluate_measurement(
         db=db,
         definition=defn,
         astronaut_id=astronaut_id,
@@ -122,6 +122,7 @@ def _insert_sim_measurement(
         measured_at=meas_dt,
         source_code=source_code,
     )
+    state, version = evaluation.state, evaluation.version
 
     m = HealthMeasurement(
         dedup_key=dedup_key,
@@ -145,7 +146,7 @@ def _insert_sim_measurement(
     db.add(m)
     db.flush()
 
-    create_alert_if_needed(db, m, defn, rule, version, reasons)
+    upsert_alert_for_measurement(db, m, defn, evaluation)
     return m
 
 
@@ -270,7 +271,6 @@ def execute_demo_scenario(
                 notes="[SIMULADO - Escenario 3] Serie de presión arterial en zona de seguimiento.",
             )
             created_measurements += 2
-        created_alerts += 2
         events_summary.append(
             "Serie temporal de 3 puntos generada para Frecuencia Cardíaca (hasta 98 bpm) y Presión Arterial (138/88 mmHg), activando alertas de seguimiento (MONITOR/WARNING)."
         )
@@ -315,7 +315,6 @@ def execute_demo_scenario(
         )
         db.add(env_co2)
         created_measurements += 2
-        created_alerts += 2
         events_summary.append(
             "Alerta CRITICAL activada inmediatamente (SpO2 89%, FC 118 bpm, CO2 4.8 mmHg) con instrucciones de protocolo de emergencia y escalamiento inmediato sin depender de IA."
         )
@@ -345,7 +344,6 @@ def execute_demo_scenario(
             notes="[SIMULADO - Escenario 5] Incremento de fatiga subjetiva percibida.",
         )
         created_measurements += 2
-        created_alerts += 2
         events_summary.append(
             "Registrada disminución de sueño (4.2 h) y fatiga elevada (8.2/10), activando recomendaciones de higiene del sueño y pausa de recuperación."
         )
@@ -481,6 +479,13 @@ def execute_demo_scenario(
     else:
         raise ValueError(f"Escenario de demostración '{scenario_code}' no reconocido.")
 
+    # Alertas abiertas que este escenario creó o actualizó (una por indicador, sin duplicados)
+    db.flush()
+    created_alerts = (
+        db.query(Alert)
+        .filter(Alert.astronaut_id == astronaut_id, Alert.is_simulated.is_(True), Alert.updated_at >= now)
+        .count()
+    )
     db.commit()
     return {
         "scenario_code": scenario_code,

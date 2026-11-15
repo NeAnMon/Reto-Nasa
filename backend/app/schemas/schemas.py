@@ -405,7 +405,110 @@ class ForecastPoint(BaseModel):
     out_of_valid_range: bool
     z_score: Optional[float] = None
     z_band: Optional[str] = None
+    direction: Optional[str] = None  # respecto a la línea base: above / below / at_baseline
+
+    # Bandas de predicción (pueden ser asimétricas) y diferencia con la línea base
+    lower_80: Optional[float] = None
+    upper_80: Optional[float] = None
+    lower_95: Optional[float] = None
+    upper_95: Optional[float] = None
+    baseline_delta: Optional[float] = None
+
+    # Proyección contra los rangos de la regla vigente (None si el indicador no tiene regla)
+    projected_state: Optional[str] = None
+    worst_state_80: Optional[str] = None
+    worst_state_95: Optional[str] = None
+    interval_touches_threshold: Optional[bool] = None
+
+
+class PredictionMethod(BaseModel):
+    """Método de pronóstico aplicado."""
+
+    code: str
+    description: str
+    model_used: Optional[str] = None  # level (plano) / trend (recta extrapolada)
+    level_alpha: float
+    level_half_life_days: float
+    trend_window_days: int
+    trend_alpha: float
+    interval_levels: List[int]
+    min_days: int
+
+
+class PredictionTrend(BaseModel):
+    """Tendencia observada en la ventana reciente y su significación estadística."""
+
+    direction: str  # rising / falling / stable / undetermined
+    slope_per_day: Optional[float] = None
+    slope_std_error: Optional[float] = None
+    t_statistic: Optional[float] = None
+    critical_value: Optional[float] = None
+    significant: bool = False
+    alpha: float
+    lag1_autocorrelation: Optional[float] = None
+    effective_n: Optional[float] = None
+    window_days: int
+    n_points: int
+    extrapolated: bool = False
+
+
+class PredictionReliability(BaseModel):
+    """Compuerta de fiabilidad: habilidad frente a repetir el último valor dentro de la serie."""
+
+    criterion: str
+    reliable: bool
+    skill_vs_naive: Optional[float] = None
+    mae_model: Optional[float] = None
+    mae_naive: Optional[float] = None
+    mae_level: Optional[float] = None
+    mae_trend: Optional[float] = None
+    n_comparisons: int = 0
+    max_step_days: int
+
+
+class PredictionEmpiricalValidation(BaseModel):
+    """Si el método se contrastó con datos reales para este indicador."""
+
+    validated_with_real_data: bool
+    dataset: Optional[str] = None
+    is_spaceflight_data: bool = False
+    note: str
+
+
+class ThresholdCrossing(BaseModel):
+    date: Optional[str] = None
+    days_ahead: Optional[int] = None
+    state: str
+    direction: str  # above / below / both
+    threshold: Optional[float] = None
+    basis: str  # expected_value / interval_80
+
+
+class ThresholdProjection(BaseModel):
+    """Pronóstico frente a los rangos de la versión vigente de la regla del indicador."""
+
+    rule_code: str
+    rule_version: str
+    protocol_source: Optional[str] = None
+    ranges: Dict[str, List[float]]
+    current_state: str
+    first_expected_crossing: Optional[ThresholdCrossing] = None
+    first_possible_crossing: Optional[ThresholdCrossing] = None
+
+
+class PredictionRecommendation(BaseModel):
+    """Recomendación preventiva tomada de la versión de regla vigente (no es un diagnóstico)."""
+
+    basis: str  # none / possible_crossing / expected_crossing / currently_out_of_range
+    state: Optional[str] = None
     direction: Optional[str] = None
+    threshold: Optional[float] = None
+    date: Optional[str] = None
+    days_ahead: Optional[int] = None
+    text: Optional[str] = None
+    source: str
+    rule_code: str
+    rule_version: str
 
 
 class PredictionResponse(BaseModel):
@@ -436,4 +539,13 @@ class PredictionResponse(BaseModel):
     baseline_is_simulated: Optional[bool] = None
 
     disclaimer: str
+
+    # --- Campos añadidos (todos opcionales; los anteriores conservan nombre y tipo) ---
+    baseline_value: Optional[float] = None
+    method: Optional[PredictionMethod] = None
+    trend: Optional[PredictionTrend] = None
+    reliability: Optional[PredictionReliability] = None
+    empirical_validation: Optional[PredictionEmpiricalValidation] = None
+    threshold_projection: Optional[ThresholdProjection] = None
+    recommendation: Optional[PredictionRecommendation] = None
 

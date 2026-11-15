@@ -11,8 +11,9 @@ from sqlalchemy import (
     UniqueConstraint,
     Index,
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
 from backend.app.database.session import Base
+from backend.app.rules.recommendations import FALLBACK_FOLLOWUP, FALLBACK_IMMEDIATE, ensure_text
 
 
 def utcnow():
@@ -249,6 +250,9 @@ class HealthIndicatorDefinition(Base):
     educational_summary = Column(Text, nullable=False)
     spaceflight_risk_explanation = Column(Text, nullable=False)
     supported_environments_csv = Column(Text, default="ALL", nullable=False)
+    # Catálogo de UI de la vista "Registrar medición" (JSON: nombre corto ES/EN, pasos, tipo de entrada,
+    # campo secundario, botones rápidos, etiquetas de escala). NULL = no aparece en esa vista.
+    measure_ui_json = Column(Text, nullable=True)
 
 
 class HealthBaseline(Base):
@@ -398,6 +402,15 @@ class Alert(Base):
 
     acknowledgements = relationship("AlertAcknowledgement", back_populates="alert", cascade="all, delete-orphan")
     followups = relationship("FollowUpAction", back_populates="alert", cascade="all, delete-orphan")
+
+    # Ninguna alerta se guarda sin recomendación: si un sitio la deja vacía entra el texto de reserva.
+    @validates("immediate_action")
+    def _immediate_action_not_empty(self, key, value):
+        return ensure_text(value, FALLBACK_IMMEDIATE)
+
+    @validates("followup_recommendation")
+    def _followup_recommendation_not_empty(self, key, value):
+        return ensure_text(value, FALLBACK_FOLLOWUP)
 
 
 class AlertAcknowledgement(Base):

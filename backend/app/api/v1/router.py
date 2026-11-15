@@ -47,8 +47,8 @@ from backend.app.models.models import (
 )
 from backend.app.rules.engine import (
     ContextResolver,
-    compute_measurement_state,
-    create_alert_if_needed,
+    evaluate_measurement,
+    upsert_alert_for_measurement,
 )
 from backend.app.rules.early_warnings import EARLY_RULE_PREFIX, is_early_rule
 from backend.app.schemas.schemas import (
@@ -589,14 +589,25 @@ def update_user_profile(
     db: Session = Depends(get_db),
 ):
     if actor.role.code != "ADMINISTRATOR" and actor.id != user_id:
-        raise HTTPException(status_code=403, detail="Solo puede editar su propio perfil o ser Administrador.")
+        # Un líder de misión puede cambiar SOLO el nombre visible de los astronautas de sus misiones
+        # (selector de tripulante de la consola); el resto del perfil sigue siendo de cada persona.
+        only_name = payload.model_dump(exclude_unset=True, exclude_none=True).keys() <= {"full_name"}
+        if not (
+            actor.role.code == "MISSION_LEADER"
+            and only_name
+            and user_id in get_authorized_astronaut_ids(db, actor)
+        ):
+            raise HTTPException(status_code=403, detail="Solo puede editar su propio perfil o ser Administrador.")
 
     target = db.query(User).filter(User.id == user_id).first()
     if not target:
         raise HTTPException(status_code=404, detail="Usuario no encontrado.")
 
     if payload.full_name is not None:
-        target.full_name = payload.full_name.strip()
+        new_name = " ".join(payload.full_name.split())
+        if not new_name or len(new_name) > 150:
+            raise HTTPException(status_code=422, detail="El nombre debe tener entre 1 y 150 caracteres.")
+        target.full_name = new_name
     if payload.preferred_theme is not None:
         target.preferred_theme = payload.preferred_theme
     if payload.share_wellness_signals_with_leader is not None:
@@ -990,6 +1001,12 @@ def list_health_indicators(
             if rule
             else None
         )
+        measure = None
+        if d.measure_ui_json:
+            try:
+                measure = json.loads(d.measure_ui_json)
+            except (TypeError, ValueError):
+                measure = None
         out.append(
             {
                 "code": d.code,
@@ -1005,6 +1022,15 @@ def list_health_indicators(
                 "step_by_step_instructions": d.step_by_step_instructions,
                 "educational_summary": d.educational_summary,
                 "spaceflight_risk_explanation": d.spaceflight_risk_explanation,
+                # Catálogo de UI de "Registrar medición" (null si el indicador no aparece en esa vista)
+                "measure": measure,
+                # Umbrales de la versión vigente, también en primer nivel (atajo para la vista de medición)
+                "normal_min": ver.normal_min if ver else None,
+                "normal_max": ver.normal_max if ver else None,
+                "monitor_min": ver.monitor_min if ver else None,
+                "monitor_max": ver.monitor_max if ver else None,
+                "warning_min": ver.warning_min if ver else None,
+                "warning_max": ver.warning_max if ver else None,
                 "rule": {
                     "rule_code": rule.rule_code if rule else None,
                     "version": ver.version_number if ver else None,
@@ -1446,7 +1472,7 @@ def create_health_measurement(
     ctx = ContextResolver.resolve_active_context(db, mission.id, target_user.id)
     meas_dt = ensure_aware(payload.measured_at) or utcnow()
 
-    state, rule, version, reasons = compute_measurement_state(
+    evaluation = evaluate_measurement(
         db=db,
         definition=defn,
         astronaut_id=target_user.id,
@@ -1456,6 +1482,7 @@ def create_health_measurement(
         measured_at=meas_dt,
         source_code=payload.source_code,
     )
+    state, rule, version, reasons = evaluation.as_tuple()
 
     quality = payload.data_quality
     if state == "INVALID":
@@ -1485,7 +1512,8 @@ def create_health_measurement(
     db.add(m)
     db.flush()
 
-    alert_created = create_alert_if_needed(db, m, defn, rule, version, reasons)
+    # Una sola alerta abierta por astronauta + indicador + regla: si ya existe, se actualiza
+    alert_created, alert_is_new = upsert_alert_for_measurement(db, m, defn, evaluation)
     db.commit()
     db.refresh(m)
 
@@ -1524,14 +1552,11 @@ def create_health_measurement(
             "is_simulated": m.is_simulated,
         },
         "evaluation_reasons": reasons,
+        # La recomendación concreta sale del catálogo por indicador × dirección × nivel (la de la alerta)
         "recommended_next_step": (
-            version.immediate_instructions
-            if (version and state in ("WARNING", "CRITICAL"))
-            else (
-                version.followup_instructions
-                if (version and state == "MONITOR")
-                else "Medición dentro de los límites configurados. Continúe con su plan preventivo habitual."
-            )
+            alert_created.immediate_action
+            if alert_created
+            else "Medición dentro de los límites configurados. Continúe con su plan preventivo habitual."
         ),
         "alert_generated": (
             {
@@ -1539,6 +1564,9 @@ def create_health_measurement(
                 "priority": alert_created.priority,
                 "title": alert_created.title,
                 "immediate_action": alert_created.immediate_action,
+                "followup_recommendation": alert_created.followup_recommendation,
+                # False: la lectura actualizó la alerta que ya estaba abierta para este indicador
+                "is_new": alert_is_new,
             }
             if alert_created
             else None
@@ -1580,7 +1608,7 @@ def import_health_measurements(
     ctx = ContextResolver.resolve_active_context(db, mission.id, target_user.id)
     imported_count = 0
     invalid_count = 0
-    alerts_count = 0
+    touched_alert_ids = set()  # alertas creadas o actualizadas (una por indicador)
 
     for item in records_to_process[:100]:
         icode = str(item.get("indicator_code", "")).strip().upper()
@@ -1601,9 +1629,10 @@ def import_health_measurements(
             continue
 
         meas_dt = utcnow()
-        state, rule, version, reasons = compute_measurement_state(
+        evaluation = evaluate_measurement(
             db, defn, target_user.id, mission.id, val, sec_val, meas_dt, "CSV_JSON_IMPORT"
         )
+        state, rule, version, reasons = evaluation.as_tuple()
         if state == "INVALID":
             invalid_count += 1
 
@@ -1629,9 +1658,9 @@ def import_health_measurements(
         db.flush()
         imported_count += 1
 
-        al = create_alert_if_needed(db, m, defn, rule, version, reasons)
+        al, _al_is_new = upsert_alert_for_measurement(db, m, defn, evaluation)
         if al:
-            alerts_count += 1
+            touched_alert_ids.add(al.id)
 
     db.commit()
     log_audit_event(
@@ -1640,12 +1669,12 @@ def import_health_measurements(
         resource_type="HEALTH_MEASUREMENT",
         actor=user,
         target_user_id=target_user.id,
-        details=f"Importados {imported_count} registros ({fmt}), inválidos={invalid_count}, alertas={alerts_count}.",
+        details=f"Importados {imported_count} registros ({fmt}), inválidos={invalid_count}, alertas={len(touched_alert_ids)}.",
     )
     return {
         "imported_count": imported_count,
         "invalid_count": invalid_count,
-        "alerts_generated": alerts_count,
+        "alerts_generated": len(touched_alert_ids),
     }
 
 

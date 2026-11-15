@@ -75,6 +75,17 @@ const DICT = {
     // barra de estado
     statusAria: "Barra de estado de la misión",
     crewMember: "Tripulante",
+    crewSession: "Sesión iniciada: {name}",
+    crewSelectHelp: "Elige el astronauta cuyas métricas muestra la consola. {session}.",
+    crewSrHelp: "Cambia el astronauta que muestra toda la consola. {session}.",
+    crewRename: "Editar nombre",
+    crewRenameHint: "Clic derecho para editar el nombre.",
+    crewRenameTitle: "Editar nombre · {code}",
+    crewRenameLabel: "Nombre del tripulante",
+    crewRenameSave: "Guardar",
+    crewRenameCancel: "Cancelar",
+    crewRenameEmpty: "Escribe un nombre.",
+    crewRenamed: "Nombre actualizado: {name}.",
     groundLink: "Enlace con Tierra",
     envBannerAlt: "Entorno {label}: {scene}",
     delay: "· retardo",
@@ -370,6 +381,17 @@ const DICT = {
     actionFailed: "Could not complete the action: {msg}",
     statusAria: "Mission status bar",
     crewMember: "Crew member",
+    crewSession: "Signed in: {name}",
+    crewSelectHelp: "Choose the astronaut whose metrics the console shows. {session}.",
+    crewSrHelp: "Changes the astronaut shown across the whole console. {session}.",
+    crewRename: "Edit name",
+    crewRenameHint: "Right-click to edit the name.",
+    crewRenameTitle: "Edit name · {code}",
+    crewRenameLabel: "Crew member name",
+    crewRenameSave: "Save",
+    crewRenameCancel: "Cancel",
+    crewRenameEmpty: "Enter a name.",
+    crewRenamed: "Name updated: {name}.",
     groundLink: "Ground link",
     envBannerAlt: "{label} environment: {scene}",
     delay: "· delay",
@@ -1142,8 +1164,12 @@ function limitsText(rule, kind) {
   const lo = kind === "Y" ? r.monitor_min : r.warning_min;
   const hi = kind === "Y" ? r.monitor_max : r.warning_max;
   const parts = [];
-  if (lo !== null && lo !== undefined && lo > (rule.min_valid_value ?? -Infinity) && lo < r.normal_min) parts.push(`<${num(lo, lo % 1 ? 1 : 0)}`);
-  if (hi !== null && hi !== undefined && hi > r.normal_max) parts.push(`>${num(hi, hi % 1 ? 1 : 0)}`);
+  /* Un límite se pinta si existe de verdad: no coincide con el límite físico de validación (así se guarda
+     "sin umbral en esa dirección") y, el amarillo, no coincide con el rojo (no hay zona amarilla).
+     En las reglas calibradas con el dataset el rango normal es igual al amarillo, por eso <= y >=. */
+  const yellowIsRed = (v, red) => kind === "Y" && v === red;
+  if (lo !== null && lo !== undefined && lo > (rule.min_valid_value ?? -Infinity) && lo <= r.normal_min && !yellowIsRed(lo, r.warning_min)) parts.push(`<${num(lo, lo % 1 ? 1 : 0)}`);
+  if (hi !== null && hi !== undefined && hi < (rule.max_valid_value ?? Infinity) && hi >= r.normal_max && !yellowIsRed(hi, r.warning_max)) parts.push(`>${num(hi, hi % 1 ? 1 : 0)}`);
   return parts.length ? parts.join(" ") : "—";
 }
 function sparkPoints(values, w = 132, h = 34) {
@@ -1475,6 +1501,58 @@ function setHTML(el, html) {
   el.__avHtml = html;
 }
 
+/* Barra de estado: se reescribe celda a celda, y solo las que cambiaron. Así el reloj GMT (que
+ * cambia en cada repintado) o los contadores no recrean los <select> de Tripulante y Entorno,
+ * y un desplegable nativo abierto no se cierra por un repintado ajeno (HERA, sondeos…). */
+function setStatusHTML(el, html) {
+  if (!el || el.__avHtml === html) return;
+  const tpl = document.createElement("template");
+  tpl.innerHTML = html;
+  const next = tpl.content.firstElementChild;
+  const cur = el.firstElementChild;
+  const old = el.__avCells;
+  if (next && cur && old && el.childElementCount === 1 && cur.children.length === old.length && next.children.length === old.length) {
+    // mismos huecos: se copian los atributos de la barra (aria-label cambia con el idioma) y las celdas distintas
+    for (const a of [...cur.attributes]) if (!next.hasAttribute(a.name)) cur.removeAttribute(a.name);
+    for (const a of [...next.attributes]) if (cur.getAttribute(a.name) !== a.value) cur.setAttribute(a.name, a.value);
+    const cells = [...next.children];
+    const sigs = cells.map((n) => n.outerHTML);
+    const live = [...cur.children];
+    sigs.forEach((sig, i) => { if (sig !== old[i]) live[i].replaceWith(cells[i]); });
+    el.__avCells = sigs;
+  } else {
+    el.innerHTML = html;
+    el.__avCells = el.firstElementChild ? [...el.firstElementChild.children].map((n) => n.outerHTML) : null;
+  }
+  el.__avHtml = html;
+}
+
+/* Astronautas que la sesión puede consultar (GET /users ya los acota por rol). Un astronauta
+ * solo ve sus propios datos (el backend responde 403 con los de otro): no se le ofrece selector. */
+function selectableAstronauts(appState) {
+  if (!appState || (appState.currentUser?.role_code || "ASTRONAUT") === "ASTRONAUT") return [];
+  return (appState.usersList || []).filter((u) => u.role_code === "ASTRONAUT");
+}
+
+/* Cambio de tripulante desde la barra de estado: toda la consola pasa a mostrar sus métricas.
+ * helpers.selectAstronaut (app.js) fija astronauta + misión, invalida el resumen anterior, refresca
+ * el encabezado y recarga la sección abierta; ante dos cambios seguidos gana el último y, si falla,
+ * vuelve al tripulante anterior y avisa con un toast. */
+async function setSelectedAstronaut(id) {
+  const st = chromeState.appState;
+  const hp = chromeState.helpers;
+  if (!st || !hp.selectAstronaut || !selectableAstronauts(st).some((a) => Number(a.id) === id)) return;
+  if (Number(st.selectedAstronautId) === id) return;
+  try {
+    await hp.selectAstronaut(id);
+  } catch (e) {
+    if (hp.showToast) hp.showToast(fmt(tt().actionFailed, { msg: bt(e.message) }));
+  }
+  // si el cambio no prosperó, el selector vuelve a marcar al tripulante que sigue en pantalla
+  const sel = document.getElementById("av-crew-select");
+  if (sel && st.selectedAstronautId != null && sel.value !== String(st.selectedAstronautId)) sel.value = String(st.selectedAstronautId);
+}
+
 function chromeHeraListener() {
   if (hera.level === chromeState.lastLevel && hera.ackedLevel === chromeState.lastAcked) return;
   renderChrome();
@@ -1632,6 +1710,9 @@ export function initChrome(appState, helpers = {}) {
         if (hp.navigateToSection) await hp.navigateToSection("mission-control");
       } else if (act === "view-radiation") {
         if (hp.navigateToSection) await hp.navigateToSection("radiation");
+      } else if (act === "crew-rename") {
+        const r = el.getBoundingClientRect();
+        openCrewRename(r.left, r.bottom + 4);
       }
     } catch (e) {
       if (hp.showToast) hp.showToast(fmt(tt().actionFailed, { msg: bt(e.message) }), "error");
@@ -1644,6 +1725,26 @@ export function initChrome(appState, helpers = {}) {
     const sel = ev.target.closest && ev.target.closest("#av-env-select");
     if (!sel || !ENV_BY_KEY[sel.value]) return;
     setCrewEnvironment(sel.value);
+  });
+  // selector de tripulante (celda TRIPULANTE de la barra de estado; solo líder y administración)
+  root.addEventListener("change", (ev) => {
+    const sel = ev.target.closest && ev.target.closest("#av-crew-select");
+    if (!sel || !/^\d+$/.test(sel.value)) return;
+    setSelectedAstronaut(Number(sel.value));
+  });
+  // clic derecho sobre la celda TRIPULANTE: menú con "Editar nombre" (Mayús+F10 lo abre con teclado)
+  root.addEventListener("contextmenu", (ev) => {
+    const cell = ev.target.closest && ev.target.closest("#av-chrome-status [data-crew-cell]");
+    if (!cell || !crewRenameTarget()) return;
+    ev.preventDefault();
+    // desde el teclado no hay coordenadas del puntero: se abre bajo la celda
+    const r = cell.getBoundingClientRect();
+    const byKeyboard = !ev.clientX && !ev.clientY;
+    openCrewMenu(byKeyboard ? r.left : ev.clientX, byKeyboard ? r.bottom + 4 : ev.clientY);
+  });
+  // el menú y el diálogo de nombre se cierran al pulsar fuera de ellos
+  document.addEventListener("pointerdown", (ev) => {
+    if (!(ev.target.closest && ev.target.closest(".av-crew-pop"))) closeCrewPopups();
   });
   // nombres de los perfiles del backend (para la ayuda y para no enviar códigos desconocidos)
   apiService.getEnvironmentProfiles().then(
@@ -1681,10 +1782,11 @@ export function renderChrome(appState) {
   const data = dataFor(st);
   const d = derive(st, data);
   const alerts = buildAlerts(d, data);
-  // si el selector de entorno tenía el foco, se le devuelve tras reescribir la barra
-  const envFocused = document.activeElement && document.activeElement.id === "av-env-select";
-  setHTML(statusEl, statusBarHTML(st, d, alerts));
-  if (envFocused && document.activeElement?.id !== "av-env-select") document.getElementById("av-env-select")?.focus({ preventScroll: true });
+  // si un selector de la barra (tripulante o entorno) tenía el foco, se le devuelve tras reescribirla
+  const focusedId = document.activeElement && document.activeElement.id;
+  const keepFocus = focusedId === "av-env-select" || focusedId === "av-crew-select" ? focusedId : null;
+  setStatusHTML(statusEl, statusBarHTML(st, d, alerts));
+  if (keepFocus && document.activeElement?.id !== keepFocus) document.getElementById(keepFocus)?.focus({ preventScroll: true });
   placeEnvBanner();
   setHTML(alarmEl, alarmBarHTML(alerts));
   chromeState.lastLevel = hera.level;
@@ -1700,7 +1802,8 @@ const APP_NAME = "SEMSA";
 function statusBarHTML(appState, d, alerts) {
   const s = d.s;
   const mission = s.mission || {};
-  // Tripulante = usuario con la sesión iniciada (issue #5), no el astronauta seleccionado
+  // Tripulante: selector del astronauta mostrado (líder y administración) o, sin selector,
+  // el usuario con la sesión iniciada (issue #5)
   const astro = appState.currentUser || s.astronaut || {};
   const ctx = s.context || {};
   const w = alerts.filter((a) => a.cls === "W").length;
@@ -1714,7 +1817,7 @@ function statusBarHTML(appState, d, alerts) {
   return `
   <div class="av-status" role="group" aria-label="${esc(T.statusAria)}">
     <div class="av-st av-st-brand"><span class="av-lbl">${esc(BRAND_LABEL)}</span><span class="av-v" title="${esc([mission.code, bt(mission.name)].filter(Boolean).join(" — "))}">${esc(APP_NAME)}</span></div>
-    <div class="av-st"><span class="av-lbl">${esc(T.crewMember)}</span><span class="av-v" title="${esc(crew)}">${esc(crew)}</span></div>
+    ${crewCellHTML(appState, crew)}
     <div class="av-st av-st-row av-st-fixed">
       <div><div class="av-lbl">GMT</div><div class="av-mono av-v av-st-clock" id="av-gmt">${gmt(chromeNow())}</div></div>
       <div><div class="av-lbl">MET</div><div class="av-mono av-v av-st-clock">${met(mission.elapsed_days)}</div></div>
@@ -1729,6 +1832,130 @@ function statusBarHTML(appState, d, alerts) {
       <span class="av-st-col"><span class="av-lbl">${esc(T.unacked)}</span><span class="av-mono av-v">${unack}</span></span>
     </div>
   </div>`;
+}
+
+/* Celda TRIPULANTE: selector del astronauta cuyas métricas muestra toda la consola. Quien tiene
+ * la sesión iniciada (lo que antes mostraba la celda) queda en el tooltip y en la ayuda accesible. */
+function crewCellHTML(appState, sessionName) {
+  const T = tt();
+  const list = selectableAstronauts(appState);
+  // data-crew-cell: clic derecho (o el botón ✎) abre "Editar nombre" del tripulante mostrado
+  const editBtn = `<button type="button" class="av-crew-edit" data-act="crew-rename" title="${esc(T.crewRename)}" aria-label="${esc(T.crewRename)}">✎</button>`;
+  if (!list.length) {
+    const canEdit = !!appState.currentUser?.id;
+    return `<div class="av-st av-st-crew" ${canEdit ? "data-crew-cell" : ""}><span class="av-lbl">${esc(T.crewMember)}</span><span class="av-v" title="${esc(canEdit ? `${sessionName} — ${T.crewRenameHint}` : sessionName)}">${esc(sessionName)}</span>${canEdit ? editBtn : ""}</div>`;
+  }
+  const role = appState.currentUser?.role_code;
+  const session = fmt(T.crewSession, { name: `${sessionName}${role ? ` [${role}]` : ""}` });
+  const selId = Number(appState.selectedAstronautId);
+  return `<div class="av-st av-st-crew" data-crew-cell title="${esc(`${fmt(T.crewSelectHelp, { session })} ${T.crewRenameHint}`)}">
+      <label class="av-lbl" for="av-crew-select">${esc(T.crewMember)}</label>
+      <select id="av-crew-select" class="av-input av-env-select av-crew-select" aria-describedby="av-crew-help">
+        ${list.map((a) => `<option value="${esc(a.id)}" ${Number(a.id) === selId ? "selected" : ""}>${esc(`${a.full_name || "—"}${a.crew_code ? ` · ${a.crew_code}` : ""}`)}</option>`).join("")}
+      </select>
+      ${editBtn}
+      <span id="av-crew-help" class="av-env-help">${esc(`${fmt(T.crewSrHelp, { session })} ${T.crewRenameHint}`)}</span>
+    </div>`;
+}
+
+/* ---- Editar el nombre del tripulante (clic derecho sobre la celda TRIPULANTE o botón ✎) ----
+ * El menú y el diálogo cuelgan de #av-chrome, fuera de la barra de estado: esta se repinta y los destruiría.
+ * Guarda con PATCH /users/{id} (el backend permite: uno mismo, administración, o el líder de
+ * misión sobre los astronautas de sus misiones, y a este solo el nombre). */
+function crewRenameTarget() {
+  const st = chromeState.appState;
+  if (!st) return null;
+  const list = selectableAstronauts(st);
+  if (!list.length) return st.currentUser || null; // astronauta: su propio nombre
+  return list.find((a) => Number(a.id) === Number(st.selectedAstronautId)) || null;
+}
+
+function closeCrewPopups() {
+  document.querySelectorAll(".av-crew-pop").forEach((n) => n.remove());
+}
+
+/* Coloca un panel flotante junto a (x, y) sin salirse de la ventana */
+function placeCrewPopup(pop, x, y) {
+  // dentro de #av-chrome (.av-console): ahí se definen las variables de color --av-*; fuera de la barra de estado
+  (document.getElementById("av-chrome") || document.body).appendChild(pop);
+  const r = pop.getBoundingClientRect();
+  pop.style.left = `${Math.max(8, Math.min(x, window.innerWidth - r.width - 8))}px`;
+  pop.style.top = `${Math.max(8, Math.min(y, window.innerHeight - r.height - 8))}px`;
+}
+
+function openCrewMenu(x, y) {
+  closeCrewPopups();
+  if (!crewRenameTarget()) return;
+  const pop = document.createElement("div");
+  pop.className = "av-crew-pop av-crew-menu";
+  pop.setAttribute("role", "menu");
+  pop.innerHTML = `<button type="button" role="menuitem" class="av-crew-menu-item">✎ ${esc(tt().crewRename)}</button>`;
+  placeCrewPopup(pop, x, y);
+  const item = pop.querySelector("button");
+  item.addEventListener("click", () => openCrewRename(x, y));
+  pop.addEventListener("keydown", (ev) => { if (ev.key === "Escape") closeCrewPopups(); });
+  item.focus({ preventScroll: true });
+}
+
+function openCrewRename(x, y) {
+  closeCrewPopups();
+  const target = crewRenameTarget();
+  if (!target) return;
+  const T = tt();
+  const pop = document.createElement("form");
+  pop.className = "av-crew-pop av-crew-rename";
+  pop.setAttribute("role", "dialog");
+  pop.setAttribute("aria-label", fmt(T.crewRenameTitle, { code: target.crew_code || "" }));
+  pop.noValidate = true;
+  pop.innerHTML = `
+    <label class="av-lbl" for="av-crew-rename-input">${esc(fmt(T.crewRenameTitle, { code: target.crew_code || "" }))}</label>
+    <input id="av-crew-rename-input" class="av-input" type="text" maxlength="150" autocomplete="off" aria-label="${esc(T.crewRenameLabel)}" value="${esc(target.full_name || "")}">
+    <p class="av-crew-rename-err" role="alert" hidden></p>
+    <div class="av-crew-rename-actions">
+      <button type="submit" class="av-btn av-btn-sm">${esc(T.crewRenameSave)}</button>
+      <button type="button" class="av-btn av-btn-sm" data-crew-cancel>${esc(T.crewRenameCancel)}</button>
+    </div>`;
+  placeCrewPopup(pop, x, y);
+  const input = pop.querySelector("input");
+  const err = pop.querySelector(".av-crew-rename-err");
+  const fail = (msg) => { err.textContent = msg; err.hidden = false; };
+  pop.querySelector("[data-crew-cancel]").addEventListener("click", closeCrewPopups);
+  pop.addEventListener("keydown", (ev) => { if (ev.key === "Escape") closeCrewPopups(); });
+  pop.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const name = input.value.replace(/\s+/g, " ").trim();
+    if (!name) { fail(T.crewRenameEmpty); input.focus(); return; }
+    if (name === (target.full_name || "")) { closeCrewPopups(); return; }
+    const buttons = [...pop.querySelectorAll("button")];
+    buttons.forEach((b) => { b.disabled = true; });
+    try {
+      const res = await apiService.updateUserProfile(target.id, { full_name: name });
+      applyCrewName(target.id, res?.user?.full_name || name);
+      closeCrewPopups();
+      const hp = chromeState.helpers;
+      if (hp.showToast) hp.showToast(fmt(tt().crewRenamed, { name: res?.user?.full_name || name }));
+      // las vistas que muestran el nombre (tripulación, alertas, bitácora…) se repintan
+      const st = chromeState.appState;
+      if (hp.navigateToSection && st?.currentSection) await hp.navigateToSection(st.currentSection);
+    } catch (e) {
+      buttons.forEach((b) => { b.disabled = false; });
+      fail(fmt(tt().actionFailed, { msg: bt(e.message) }));
+    }
+  });
+  input.focus({ preventScroll: true });
+  input.select();
+}
+
+/* Refleja el nombre nuevo en el estado local (lista de usuarios, sesión y resumen cargado) y repinta la barra */
+function applyCrewName(userId, name) {
+  const st = chromeState.appState;
+  if (!st) return;
+  const id = Number(userId);
+  (st.usersList || []).forEach((u) => { if (Number(u.id) === id) u.full_name = name; });
+  if (Number(st.currentUser?.id) === id) st.currentUser.full_name = name;
+  const sa = st.healthSummary?.astronaut;
+  if (sa && Number(sa.id) === id) sa.full_name = name;
+  renderChrome();
 }
 
 /* Celda ENTORNO: selector del entorno de la tripulación + estado de sincronización con el backend */
@@ -1914,18 +2141,18 @@ const ZONE_TEXT = {
   es: {
     HEAD_BRAIN: { zone: "NEURO", metricLbl: "Sueño", desc: "Sueño y fatiga percibida: base del rendimiento cognitivo en misión." },
     HEART_CARDIO: { zone: "CARDIO", metricLbl: "Pulso", desc: "Pulso y presión arterial ante el desplazamiento de fluidos en microgravedad." },
-    MUSCLES: { zone: "ACTIV.", metricLbl: "Actividad", desc: "Actividad física y fatiga: contramedida contra la atrofia muscular." },
+    MUSCLES: { zone: "ACTIV.", metricLbl: "Activ.", desc: "Actividad física y fatiga: contramedida contra la atrofia muscular." },
     DIGESTIVE_NUTRITION: { zone: "METAB.", metricLbl: "Hidrat.", desc: "Hidratación y glucosa; el agua protege el riñón del calcio que libera el hueso." },
     SKIN_THERMO: { zone: "PIEL", metricLbl: "Temp.", desc: "Temperatura corporal e hidratación de la piel." },
-    BONES_SKELETAL: { zone: "ÓSEO", metricLbl: "Carga 7 d", desc: "Sin medición directa de densidad ósea: se vigilan la carga de ejercicio y la hidratación." },
+    BONES_SKELETAL: { zone: "ÓSEO", metricLbl: "Carga", desc: "Sin medición directa de densidad ósea: se vigilan la carga de ejercicio y la hidratación." },
   },
   en: {
     HEAD_BRAIN: { zone: "NEURO", metricLbl: "Sleep", desc: "Sleep and perceived fatigue: the basis of cognitive performance in flight." },
     HEART_CARDIO: { zone: "CARDIO", metricLbl: "Pulse", desc: "Pulse and blood pressure under the fluid shift of microgravity." },
-    MUSCLES: { zone: "ACTIV.", metricLbl: "Activity", desc: "Physical activity and fatigue: countermeasure against muscle atrophy." },
+    MUSCLES: { zone: "ACTIV.", metricLbl: "Activ.", desc: "Physical activity and fatigue: countermeasure against muscle atrophy." },
     DIGESTIVE_NUTRITION: { zone: "METAB.", metricLbl: "Hydr.", desc: "Hydration and glucose; water protects the kidneys from the calcium released by bone." },
     SKIN_THERMO: { zone: "SKIN", metricLbl: "Temp.", desc: "Body temperature and skin hydration." },
-    BONES_SKELETAL: { zone: "BONE", metricLbl: "Load 7 d", desc: "No direct bone density measurement: exercise load and hydration are tracked instead." },
+    BONES_SKELETAL: { zone: "BONE", metricLbl: "Load", desc: "No direct bone density measurement: exercise load and hydration are tracked instead." },
   },
 };
 const BODY_ZONES = [
@@ -1978,7 +2205,7 @@ function weekHasData(d, data) {
 /* Valor de la métrica lateral de una zona (null = sin datos; nunca se inventa) */
 function zoneMetric(z, d, data) {
   if (z.metric === "WEEK_EXERCISE") {
-    return weekHasData(d, data) ? { value: num(d.weekMin), unit: "min", l: d.weekLetter } : { value: null, unit: "", l: "M" };
+    return weekHasData(d, data) ? { value: num(d.weekMin), unit: "min/7 d", l: d.weekLetter } : { value: null, unit: "", l: "M" };
   }
   const c = d.card(z.metric);
   return hasValue(c) ? { value: cardValue(c), unit: bt(c.unit || ""), l: LETTER[c.state] || "M" } : { value: null, unit: "", l: "M" };
