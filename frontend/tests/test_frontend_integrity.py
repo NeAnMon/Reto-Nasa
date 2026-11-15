@@ -633,6 +633,28 @@ def test_predictions_view_follows_calibrated_forecast_contract():
         assert cls in chart_js and cls in chart_css, f"prediction-chart needs {cls}"
     assert "vals.push(p.b95[0], p.b95[1])" in chart_js  # el dominio del eje Y incluye las bandas
     assert "function bandOf" in chart_js and "return lo <= v && v <= hi ? [lo, hi] : null" in chart_js
+    # las bandas llevan contorno además del relleno (el relleno solo no contrasta en el tema oscuro)
+    assert ".av-pc-band { fill: var(--av-m, #b39ddb); stroke: var(--av-m, #b39ddb);" in chart_css
+    assert ".av-pc-band95 { fill-opacity: .14; stroke-dasharray: 2 3; }" in chart_css
+
+    # 4b. Umbrales del motor de alertas en la gráfica: rango normal y banda personal, con leyenda
+    assert "ranges: tpRanges ? { normal: tpRanges.normal, personal: tpRanges.personal_yellow } : null" in view_js
+    assert {"normalRange", "personalBand"} <= _keys(es_block, 6)
+    assert "function thresholdEdges" in chart_js and "function normalizeRanges" in chart_js
+    for cls in ("av-pc-thr-normal", "av-pc-thr-personal", "av-pc-key-thr-normal", "av-pc-key-thr-personal"):
+        assert cls in chart_css, f"prediction-chart.css needs {cls}"
+    assert "av-pc-thr av-pc-thr-${e.kind}" in chart_js and "av-pc-key-thr-${kind}" in chart_js
+    assert ".av-pc-oor-ring, .av-pc-thr { stroke: CanvasText; }" in chart_css  # también en forced-colors
+
+    # 4c. En pantallas estrechas el eje X muestra el histórico reciente (el pronóstico no queda comprimido)
+    assert "function visibleStart" in chart_js and "if (W >= 520 || !h.length || !f.length) return -Infinity;" in chart_js
+    assert "i = Math.max(i, first);" in chart_js  # el teclado no recorre puntos ocultos
+
+    # 4d. Banda fuera por los dos lados: se dicen los dos umbrales, no "a ambos lados del rango normal"
+    assert "c.sides.below" in view_js and "c.sides.above" in view_js
+    assert {"bothThr", "both"} <= _keys(es_block, 6) and "projRefPersonalBoth" in es_block and "projRefPersonalBoth" in en_block
+    assert "a ambos lados del rango normal" not in view_js and "on both sides of the normal range" not in view_js
+    assert es_block.count("projMedianNote:") == 1 and en_block.count("projMedianNote:") == 1
 
     # 5. Proyección contra umbrales y recomendación, antes de la gráfica
     assert "function projectionHTML" in view_js
@@ -644,6 +666,26 @@ def test_predictions_view_follows_calibrated_forecast_contract():
     assert {"NORMAL", "MONITOR", "WARNING", "CRITICAL", "above", "below", "both"} <= _keys(es_block, 6)
     assert "esc(bt(recText))" in view_js  # el texto de la regla llega del backend: se traduce y se escapa
     assert ".av-pr-proj" in view_css and ".av-pr-rec" in view_css
+    # La proyección usa el motor de alertas: umbral del rango de la regla o de la banda personal
+    # (línea base ± Z·DE), banda personal en los rangos y, si ya está fuera de rango, la acción inmediata
+    for field in ("c.reference", "personal_baseline", "tp.ranges.personal_yellow", "rec.immediate_action"):
+        assert field in view_js, f"predictions.js must read {field}"
+    assert "baseline_delta" not in view_js.replace("f.baseline_delta", "")
+    assert {"projPersonal", "projPersonalLow", "projRefPersonal", "recNowH"} <= _keys(es_block, 4)
+    assert "esc(bt(nowText))" in view_js
+
+    # Los textos de recomendación que puede devolver el pronóstico son los del catálogo de alertas
+    # (ya traducidos: test_alert_recommendations_and_rule_sources_have_english_translation) y el bloque
+    # de dos pasos de la acción inmediata tiene su patrón en bt()
+    service_src = (PROJECT_ROOT / "backend" / "app" / "services" / "prediction_service.py").read_text(encoding="utf-8")
+    for name in ("get_recommendation(", "build_alert_texts(", "rec.followup", "LEVEL_STEP"):
+        assert name in service_src, f"prediction_service.py must take its recommendation from the alert catalog ({name})"
+    from backend.app.rules import recommendations as rec
+
+    runtime_keys = _en_keys(I18N_DIR / "backend-en-runtime.js")
+    generic = {rec.CATALOG[(rec.GENERIC, d)] for d in (rec.HIGH, rec.LOW, rec.PERSONAL)}
+    missing = sorted({_norm(t) for g in generic for t in (g.now, g.followup)} - runtime_keys)
+    assert not missing, f"Missing English translations for the generic recommendations: {missing}"
 
     # 6. Validación empírica: validado con datos reales o no
     assert "empirical_validation" in view_js and "validated_with_real_data" in view_js
