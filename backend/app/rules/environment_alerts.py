@@ -19,6 +19,7 @@ para cada astronauta asignado a la misión (el entorno es compartido por la trip
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import isfinite
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
@@ -61,6 +62,16 @@ ENVIRONMENT_LIMITS: Dict[str, EnvironmentLimit] = {
 }
 RADIATION_PARAMETER = "RADIATION_DOSE"
 RADIATION_UNIT = "mSv/día"
+
+# Nombre canónico de cada parámetro con umbral: el título de la alerta nunca lleva el texto libre que envía
+# el cliente (`parameter_name`), porque llega a toda la tripulación.
+ENVIRONMENT_PARAMETER_NAMES: Dict[str, str] = {
+    "CO2_LEVEL": "Concentración de CO₂",
+    "PPO2": "Presión Parcial de Oxígeno (ppO₂)",
+    "CABIN_TEMP": "Temperatura Ambiental de Cabina",
+    "HUMIDITY": "Humedad Relativa",
+    RADIATION_PARAMETER: "Tasa de Radiación Ambiental",
+}
 
 # Recomendación por parámetro × dirección: (paso 1 de la acción inmediata, seguimiento)
 ENVIRONMENT_RECOMMENDATIONS: Dict[Tuple[str, str], Tuple[str, str]] = {
@@ -168,7 +179,7 @@ def evaluate_and_alert_environment(db: Session, em: EnvironmentalMeasurement) ->
     la medición conserva su estado y no se alerta. No hace commit.
     """
     limit = environment_limit(db, em.parameter_code)
-    if limit is None or em.value is None or (em.unit or "").strip() != limit.unit:
+    if limit is None or em.value is None or not isfinite(float(em.value)) or (em.unit or "").strip() != limit.unit:
         return []
     state, direction = evaluate_environment(limit, float(em.value))
     em.calculated_state = state
@@ -185,7 +196,8 @@ def evaluate_and_alert_environment(db: Session, em: EnvironmentalMeasurement) ->
 
     th = limit.thresholds
     value = _fmt(em.value)
-    title = ENVIRONMENT_TITLE.format(state=state, name=em.parameter_name, value=value, unit=em.unit)
+    name = ENVIRONMENT_PARAMETER_NAMES.get(em.parameter_code, em.parameter_code)
+    title = ENVIRONMENT_TITLE.format(state=state, name=name, value=value, unit=em.unit)
     explanation = ENVIRONMENT_EXPLANATION.format(
         code=em.parameter_code, value=value, unit=em.unit, side=ENVIRONMENT_SIDE[direction],
         low=_fmt(th.normal_min), high=_fmt(th.normal_max), state=state, source=limit.source,
@@ -218,7 +230,7 @@ def evaluate_and_alert_environment(db: Session, em: EnvironmentalMeasurement) ->
             else:
                 alert_state = existing.operational_state
             existing.title = ENVIRONMENT_TITLE.format(
-                state=alert_state, name=em.parameter_name, value=value, unit=em.unit
+                state=alert_state, name=name, value=value, unit=em.unit
             )
             existing.immediate_action, existing.followup_recommendation = environment_texts(
                 em.parameter_code, direction, alert_state

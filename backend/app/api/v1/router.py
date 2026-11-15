@@ -1,11 +1,13 @@
 import csv
 import io
 import json
+import math
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from sqlalchemy import case
 from sqlalchemy.orm import Session
 
 from backend.app.core.config import settings
@@ -46,6 +48,7 @@ from backend.app.models.models import (
     WellnessRecommendation,
 )
 from backend.app.rules.engine import (
+    OPEN_ALERT_STATUSES,
     ContextResolver,
     evaluate_measurement,
     upsert_alert_for_measurement,
@@ -1576,16 +1579,16 @@ def _refresh_prediction_alert(db: Session, m: HealthMeasurement) -> Optional[Dic
         alert, is_new = upsert_prediction_alert(
             db, m.astronaut_id, m.mission_id, result, is_simulated=bool(m.is_simulated)
         )
+        db.commit()  # también guarda la retirada de la alerta abierta (sin cruce o con datos desfasados)
         if alert is None:
             return None
-        db.commit()
     except Exception:
         db.rollback()
         return None
     return {
         "id": alert.id,
         "rule_code": alert.rule_code,
-        "source_engine": alert_source_engine(alert.rule_code),
+        "source_engine": alert_source_engine(alert.rule_code, alert.indicator_code),
         "priority": alert.priority,
         "title": alert.title,
         "immediate_action": alert.immediate_action,
@@ -1819,8 +1822,31 @@ def create_environmental_measurement(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    # Una medición ambiental puede alertar (hasta CRITICAL/ESCALATED) a toda la tripulación: solo la registra
+    # administración, un líder o un astronauta con asignación activa a esa misión.
+    if payload.value is not None and not math.isfinite(payload.value):
+        raise HTTPException(status_code=422, detail="value debe ser un número finito.")
+    mission = db.query(Mission).filter(Mission.id == payload.mission_id).first()
+    if not mission:
+        raise HTTPException(status_code=404, detail="Misión no encontrada.")
+    role_code = user.role.code if user.role else ""
+    if role_code == "ASTRONAUT":
+        assigned = (
+            db.query(MissionAssignment.id)
+            .filter(
+                MissionAssignment.user_id == user.id,
+                MissionAssignment.mission_id == mission.id,
+                MissionAssignment.is_active.is_(True),
+            )
+            .first()
+        )
+        if assigned is None:
+            raise HTTPException(status_code=403, detail="Solo puede registrar mediciones ambientales de su misión.")
+    elif role_code not in ("ADMINISTRATOR", "MISSION_LEADER"):
+        raise HTTPException(status_code=403, detail="Insufficient role permissions for this operation.")
+
     em = EnvironmentalMeasurement(
-        mission_id=payload.mission_id,
+        mission_id=mission.id,
         environment_code=payload.environment_code,
         phase_code=payload.phase_code,
         parameter_code=payload.parameter_code,
@@ -1841,21 +1867,26 @@ def create_environmental_measurement(
     env_alerts = evaluate_and_alert_environment(db, em)
     db.commit()
     db.refresh(em)
+    # Solo se detallan las alertas de astronautas que el usuario supervisa (el astronauta, las suyas): nunca
+    # se revelan ids de otros tripulantes. `crew_alerts_count` da el total creado o actualizado.
+    supervised = set(get_authorized_astronaut_ids(db, user))
     return {
         "id": em.id,
         "parameter_code": em.parameter_code,
         "calculated_state": em.calculated_state,
+        "crew_alerts_count": len(env_alerts),
         "alerts_generated": [
             {
                 "id": a.id,
                 "astronaut_id": a.astronaut_id,
                 "rule_code": a.rule_code,
-                "source_engine": alert_source_engine(a.rule_code),
+                "source_engine": alert_source_engine(a.rule_code, a.indicator_code),
                 "priority": a.priority,
                 "operational_state": a.operational_state,
                 "title": a.title,
             }
             for a in env_alerts
+            if a.astronaut_id in supervised
         ],
     }
 
@@ -1896,7 +1927,7 @@ def _serialize_alert(db: Session, a: Alert) -> Dict[str, object]:
         "indicator_code": a.indicator_code,
         "rule_code": a.rule_code,
         # Motor que generó la alerta (prefijo de rule_code, ver rules/alert_sources.py) y si es temprana
-        "source_engine": alert_source_engine(a.rule_code),
+        "source_engine": alert_source_engine(a.rule_code, a.indicator_code),
         "is_early_warning": is_early_warning_alert(a.rule_code),
         "rule_version_label": a.rule_version_label,
         "value_recorded": a.value_recorded,
@@ -1973,14 +2004,16 @@ def list_alerts(
     if priority:
         query = query.filter(Alert.priority == priority)
     if source_engine:
-        query = query.filter(source_engine_clause(Alert.rule_code, source_engine))
+        query = query.filter(source_engine_clause(Alert.rule_code, source_engine, Alert.indicator_code))
 
     # Alertas tempranas de bienestar: el líder no las ve si el astronauta no comparte sus señales
     hidden_ids = _early_alert_hidden_astronauts(db, user, filter_ids)
     if hidden_ids:
         query = query.filter(~(Alert.astronaut_id.in_(hidden_ids) & Alert.rule_code.like(f"{EARLY_RULE_PREFIX}%")))
 
-    alerts = query.order_by(Alert.created_at.desc()).limit(100).all()
+    # Abiertas primero (y luego por fecha): ninguna alerta abierta queda fuera del límite por antigüedad
+    open_first = case((Alert.status.in_(OPEN_ALERT_STATUSES), 0), else_=1)
+    alerts = query.order_by(open_first, Alert.created_at.desc(), Alert.id.desc()).limit(100).all()
     return {"alerts": [_serialize_alert(db, a) for a in alerts]}
 
 
