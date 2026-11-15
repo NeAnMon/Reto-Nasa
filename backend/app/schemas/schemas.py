@@ -475,14 +475,22 @@ class PredictionEmpiricalValidation(BaseModel):
     note: str
 
 
+class CrossingSide(BaseModel):
+    """Umbral de un lado cuando la banda sale del rango por los dos (`direction = both`)."""
+
+    threshold: Optional[float] = None
+    reference: Optional[str] = None  # absolute_range / personal_baseline
+
+
 class ThresholdCrossing(BaseModel):
     date: Optional[str] = None
     days_ahead: Optional[int] = None
     state: str
     direction: Optional[str] = None  # above / below / both
-    threshold: Optional[float] = None
+    threshold: Optional[float] = None  # None si direction = both (ver sides)
     reference: Optional[str] = None  # absolute_range / personal_baseline: de dónde sale el umbral
     alert_direction: Optional[str] = None  # dirección del motor de alertas: HIGH / LOW / PERSONAL
+    sides: Optional[Dict[str, CrossingSide]] = None  # solo con direction = both: {"below": ..., "above": ...}
     basis: str  # expected_value / interval_80
 
 
@@ -509,6 +517,7 @@ class PredictionRecommendation(BaseModel):
     threshold: Optional[float] = None
     reference: Optional[str] = None
     alert_direction: Optional[str] = None
+    sides: Optional[Dict[str, CrossingSide]] = None  # solo con direction = both
     date: Optional[str] = None
     days_ahead: Optional[int] = None
     text: Optional[str] = None  # cómo mejorar el indicador en los próximos días (con su fuente)

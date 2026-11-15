@@ -10,6 +10,11 @@
  *   El eje Y las incluye; aparecen en la leyenda, el tooltip, el anuncio de teclado y el resumen.
  *   Sin bandas (servidor anterior) la gráfica se dibuja igual que antes.
  * - Línea base: horizontal discontinua con etiqueta.
+ * - Umbrales del motor de alertas (ranges, opcional): rango normal de la regla (línea continua) y
+ *   banda personal (raya-punto), con sus valores en la leyenda y en el resumen. Solo se dibujan los
+ *   bordes cercanos a los datos; uno lejano no se añade al eje Y para no aplastar la serie.
+ * - En pantallas estrechas (< 520 px) el eje X muestra el histórico reciente (14 días o el triple
+ *   del horizonte) para que el pronóstico y sus bandas no queden comprimidos en el borde.
  * - Frontera "hoy": línea vertical fina entre el histórico y el pronóstico, con la zona
  *   del pronóstico ligeramente sombreada.
  * - Eje X temporal (por fecha, no por índice) y eje Y con marcas "redondas" y unidad.
@@ -18,7 +23,7 @@
  * - Se redibuja al ancho real del contenedor con ResizeObserver.
  *
  * Interfaz pública:
- *   renderPredictionChart(container, { history, forecast, baseline, unit, labels, locale, formatValue })
+ *   renderPredictionChart(container, { history, forecast, baseline, ranges, unit, labels, locale, formatValue })
  *   → { destroy() }. Llamarla otra vez sobre el mismo contenedor sustituye la gráfica anterior.
  *
  * Solo clases con prefijo av-pc- (prediction-chart.css, se carga sola una vez).
@@ -137,6 +142,45 @@ function normalizeForecast(forecast) {
   return out;
 }
 
+/* Umbrales del motor de alertas: { normal: [mín, máx], personal: [mín, máx] }; un extremo puede faltar
+ * (null = ese lado no genera alerta). Devuelve solo los intervalos con algún extremo numérico. */
+function normalizeRanges(ranges) {
+  const out = {};
+  for (const kind of ["normal", "personal"]) {
+    const r = ranges && Array.isArray(ranges[kind]) ? ranges[kind] : null;
+    if (r && (isNum(r[0]) || isNum(r[1]))) out[kind] = [isNum(r[0]) ? Number(r[0]) : null, isNum(r[1]) ? Number(r[1]) : null];
+  }
+  return out;
+}
+
+/* Bordes numéricos de los umbrales: [{ v, kind: "normal" | "personal" }] */
+function thresholdEdges(ranges) {
+  const out = [];
+  for (const kind of ["normal", "personal"]) {
+    for (const v of (ranges && ranges[kind]) || []) if (v !== null) out.push({ v, kind });
+  }
+  return out;
+}
+
+/* "51 – 99 lpm", "≥ 51 lpm" o "≤ 99 lpm" para un intervalo con un extremo opcional */
+function rangeText(r, unit, fmt) {
+  const txt = r[0] !== null && r[1] !== null ? `${fmt.value(r[0])} – ${fmt.value(r[1])}`
+    : r[0] !== null ? `≥ ${fmt.value(r[0])}` : `≤ ${fmt.value(r[1])}`;
+  return `${txt} ${unit}`.trim();
+}
+
+/* En pantallas estrechas el eje X arranca más tarde: con todo el histórico a la vista, el pronóstico
+ * y sus bandas quedarían comprimidos en el borde derecho. Se muestran los últimos 14 días o el triple
+ * del horizonte, lo que sea mayor. Devuelve el instante desde el que se dibuja (-Infinity = todo). */
+function visibleStart(W, data) {
+  const h = data.hist.filter(Boolean);
+  const f = data.fc.filter(Boolean);
+  if (W >= 520 || !h.length || !f.length) return -Infinity;
+  const lastH = h[h.length - 1].t;
+  const horizon = Math.max(DAY, f[f.length - 1].t - lastH);
+  return lastH - Math.max(14 * DAY, 3 * horizon);
+}
+
 /* Paso "redondo" (1, 2, 2.5, 5 × 10^n) para unas count divisiones */
 function niceStep(range, count) {
   const raw = range / Math.max(1, count);
@@ -154,9 +198,14 @@ function decimalsOf(step) {
 
 /* ───────────────────────── geometría ───────────────────────── */
 
-function chartGeometry(width, real, baseline, fmt) {
+function chartGeometry(width, allPoints, data, fmt) {
+  const { baseline, ranges } = data;
   const W = Math.max(240, Math.round(width));
   const H = W < 520 ? 230 : 290;
+  // puntos a la vista (allPoints va ordenado por fecha: los ocultos son los primeros)
+  const tMin = visibleStart(W, data);
+  const real = allPoints.filter((p) => p.t >= tMin);
+  const first = allPoints.length - real.length;
   const vals = real.map((p) => p.v);
   // el dominio del eje Y incluye los extremos de las bandas de predicción
   for (const p of real) {
@@ -166,6 +215,14 @@ function chartGeometry(width, real, baseline, fmt) {
   if (isNum(baseline)) vals.push(Number(baseline));
   let lo = Math.min(...vals);
   let hi = Math.max(...vals);
+  // ...y los umbrales cercanos a los datos (a menos de 0,6 veces su recorrido): uno lejano
+  // (p. ej. el máximo de sueño) aplastaría la serie, así que no se dibuja y queda solo en la leyenda
+  const reach = ((hi - lo) || Math.abs(hi) * 0.1 || 1) * 0.6;
+  const near = thresholdEdges(ranges).map((e) => e.v).filter((v) => v >= lo - reach && v <= hi + reach);
+  if (near.length) {
+    lo = Math.min(lo, ...near);
+    hi = Math.max(hi, ...near);
+  }
   if (hi === lo) {
     const d = Math.abs(hi) * 0.1 || 1;
     lo -= d;
@@ -190,7 +247,7 @@ function chartGeometry(width, real, baseline, fmt) {
   const inset = Math.min(10, plotW * 0.03);
   const x = (t) => pad.l + inset + (t1 === t0 ? (plotW - 2 * inset) / 2 : ((t - t0) / (t1 - t0)) * (plotW - 2 * inset));
   const y = (v) => pad.t + (1 - (v - lo) / (hi - lo)) * (H - pad.t - pad.b);
-  return { W, H, pad, lo, hi, x, y, t0, t1, yTicks, dec, plotW };
+  return { W, H, pad, lo, hi, x, y, t0, t1, tMin, first, yTicks, dec, plotW };
 }
 
 function xTicksOf(g, fmt) {
@@ -261,7 +318,9 @@ function bandArea(cls, run, key, g) {
 
 function chartSVG(g, data, fmt) {
   const { W, H, pad, lo, hi, x, y } = g;
-  const { hist, fc, baseline, unit, labels } = data;
+  const { fc, baseline, unit, labels } = data;
+  // histórico a la vista (en pantallas estrechas el eje X no arranca en el primer día)
+  const hist = data.hist.filter((p) => p === null || p.t >= g.tMin);
   const xl = pad.l;
   const xr = W - pad.r;
   const yt = pad.t;
@@ -304,6 +363,13 @@ function chartSVG(g, data, fmt) {
       <text class="av-pc-base-txt" x="${xl + 4}" y="${(above ? yy - 5 : yy + 13).toFixed(1)}">${esc(labels.baseline || "")}</text>`;
   }
 
+  // umbrales del motor de alertas dentro del eje Y: rango normal (línea continua) y banda personal
+  // (raya-punto); sus valores van en la leyenda, sin etiqueta sobre la línea para no tapar los datos
+  const thr = thresholdEdges(data.ranges).filter((e) => e.v >= lo && e.v <= hi).map((e) => {
+    const yy = y(e.v).toFixed(1);
+    return `<line class="av-pc-thr av-pc-thr-${e.kind}" x1="${xl}" x2="${xr}" y1="${yy}" y2="${yy}"></line>`;
+  }).join("");
+
   // histórico: segmentos separados por huecos
   const histPath = segments(hist).map((s) => polyline("av-pc-hline", s, g)).join("");
   const showDots = histReal.length <= 120;
@@ -328,7 +394,7 @@ function chartSVG(g, data, fmt) {
     + bandRuns(fc, "b80").map((run) => bandArea("av-pc-band av-pc-band80", run, "b80", g)).join("");
 
   return `<svg class="av-pc-svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(labels.ariaLabel || "")}" focusable="false">
-    ${zone}${grid}${unitTxt}${axisX}${xTicks}${bands}${base}${histPath}${histDots}${fcPath}${fcDots}
+    ${zone}${grid}${unitTxt}${axisX}${xTicks}${bands}${thr}${base}${histPath}${histDots}${fcPath}${fcDots}
     <g class="av-pc-cursor" style="display:none">
       <line class="av-pc-cursor-line" x1="0" x2="0" y1="${yt}" y2="${yb}"></line>
       <circle class="av-pc-cursor-dot" cx="0" cy="0" r="5"></circle>
@@ -344,6 +410,9 @@ function legendHTML(data, fmt) {
   if (labels.band80 && fc.some((p) => p && p.b80)) items.push(`<li><span class="av-pc-key av-pc-key-band av-pc-key-b80" aria-hidden="true"></span>${esc(labels.band80)}</li>`);
   if (labels.band95 && fc.some((p) => p && p.b95)) items.push(`<li><span class="av-pc-key av-pc-key-band av-pc-key-b95" aria-hidden="true"></span>${esc(labels.band95)}</li>`);
   if (isNum(baseline)) items.push(`<li><span class="av-pc-key av-pc-key-base" aria-hidden="true"></span>${esc(labels.baseline)} <span class="av-pc-mono">${esc(`${fmt.value(baseline)} ${unit}`.trim())}</span></li>`);
+  for (const [kind, name] of [["normal", labels.normalRange], ["personal", labels.personalBand]]) {
+    if (data.ranges[kind] && name) items.push(`<li><span class="av-pc-key av-pc-key-thr-${kind}" aria-hidden="true"></span>${esc(name)} <span class="av-pc-mono">${esc(rangeText(data.ranges[kind], unit, fmt))}</span></li>`);
+  }
   if (fc.some((p) => p && p.oor)) items.push(`<li><span class="av-pc-key av-pc-key-oor" aria-hidden="true"></span>${esc(labels.outOfRange)}</li>`);
   return items.length ? `<ul class="av-pc-legend">${items.join("")}</ul>` : "";
 }
@@ -377,6 +446,9 @@ function summaryText(data, fmt) {
   const oor = fcReal.filter((p) => p.oor).length;
   if (oor) parts.push(`${labels.outOfRange}: ${oor}`);
   if (isNum(baseline)) parts.push(`${labels.baseline}: ${fmt.value(baseline)} ${unit}`.trim());
+  for (const [kind, name] of [["normal", labels.normalRange], ["personal", labels.personalBand]]) {
+    if (data.ranges[kind] && name) parts.push(`${name}: ${rangeText(data.ranges[kind], unit, fmt)}`);
+  }
   return parts.join(". ") + ".";
 }
 
@@ -389,6 +461,7 @@ function bindChart(wrap, live, view, real, data, fmt) {
   let active = -1;
   let xs = [];
   let svg, cursor, cLine, cDot, g;
+  let first = 0; // primer punto a la vista (en pantallas estrechas el eje X no arranca en el primer día)
   const sync = () => {
     if (svg === view.svg) return;
     ({ svg, g } = view);
@@ -396,12 +469,14 @@ function bindChart(wrap, live, view, real, data, fmt) {
     cLine = svg.querySelector(".av-pc-cursor-line");
     cDot = svg.querySelector(".av-pc-cursor-dot");
     xs = real.map((p) => g.x(p.t));
+    first = g.first || 0;
   };
 
   const show = (i, announce) => {
     if (!view.svg) return;
     sync();
     if (i < 0 || i >= real.length) return;
+    i = Math.max(i, first);
     active = i;
     const p = real[i];
     const px = xs[i];
@@ -432,7 +507,7 @@ function bindChart(wrap, live, view, real, data, fmt) {
     tip.style.top = `${Math.max(4, py * scale - tip.offsetHeight - 10)}px`;
     if (announce && live) {
       const bandsTxt = bandRows.length ? `, ${bandRows.join(", ")}` : "";
-      live.textContent = `${kind}: ${date}, ${val}${bandsTxt}${p.oor ? `, ${labels.outOfRange}` : ""}. ${i + 1}/${real.length}`;
+      live.textContent = `${kind}: ${date}, ${val}${bandsTxt}${p.oor ? `, ${labels.outOfRange}` : ""}. ${i - first + 1}/${real.length - first}`;
     }
   };
   const hide = () => {
@@ -485,6 +560,7 @@ export function renderPredictionChart(container, {
   history,
   forecast,
   baseline,
+  ranges,
   unit,
   labels,
   locale,
@@ -497,13 +573,14 @@ export function renderPredictionChart(container, {
   if (prev) prev.destroy();
 
   const L = {
-    history: "", forecast: "", band80: "", band95: "", baseline: "", outOfRange: "", ariaLabel: "",
+    history: "", forecast: "", band80: "", band95: "", baseline: "", normalRange: "", personalBand: "", outOfRange: "", ariaLabel: "",
     ...(labels || {}),
   };
   const data = {
     hist: normalizeHistory(history),
     fc: normalizeForecast(forecast),
     baseline: isNum(baseline) ? Number(baseline) : null,
+    ranges: normalizeRanges(ranges),
     unit: String(unit ?? ""),
     labels: L,
   };
@@ -543,7 +620,7 @@ export function renderPredictionChart(container, {
     const w = Math.floor(wrap.clientWidth);
     if (!w || w === lastW) return;
     lastW = w;
-    view.g = chartGeometry(w, real, data.baseline, fmt);
+    view.g = chartGeometry(w, real, data, fmt);
     svgBox.innerHTML = chartSVG(view.g, data, fmt);
     view.svg = svgBox.querySelector(".av-pc-svg");
     handle.refresh();
