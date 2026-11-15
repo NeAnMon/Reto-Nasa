@@ -138,6 +138,8 @@ class EnvironmentalMeasurementCreate(BaseModel):
     phase_code: str = "SURFACE"
     parameter_code: str
     parameter_name: str
+    # NaN / ±inf no son mediciones: el endpoint responde 422 (aquí no se valida porque el error de Pydantic
+    # repite el valor de entrada y un NaN no se puede serializar en la respuesta JSON)
     value: Optional[float] = None
     text_state: Optional[str] = None
     unit: str
@@ -600,4 +602,7 @@ class PredictionResponse(BaseModel):
     empirical_validation: Optional[PredictionEmpiricalValidation] = None
     threshold_projection: Optional[ThresholdProjection] = None
     recommendation: Optional[PredictionRecommendation] = None
+    # Solo lectura (issue #30): id de la alerta temprana ya abierta para este astronauta, indicador y misión
+    # (la crea/actualiza/retira POST /health/measurements, nunca este GET); None si no hay ninguna abierta
+    early_warning_alert_id: Optional[int] = None
 
