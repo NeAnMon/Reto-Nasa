@@ -4,8 +4,10 @@
  *
  * Subsecciones (pestañas internas WAI-ARIA, la elegida se recuerda en la sesión):
  *   - Hoy: check-in rápido (sueño, ánimo, energía, aislamiento, nota privada) + tarjeta de sueño
- *     y accesos al check-in emocional y a la evaluación cognitiva (el cuestionario de bienestar
- *     psicológico está en "Registrar medición").
+ *     y accesos al check-in emocional y a la evaluación cognitiva.
+ *   - Cuestionarios: cuestionario de bienestar psicológico (antes en "Registrar medición") y chequeo
+ *     del turno: estrés, FC en reposo, carga NASA-TLX y test de reacción tipo PVT (questionnaires.js,
+ *     shift-check.js). Sueño y ánimo no se repiten: se toman del check-in de Hoy.
  *   - Respiración: respiración guiada en cuadrado 4-4-4-4 con rondas y contador local (breathing.js).
  *   - Contacto con Tierra: tarjeta informativa (recomendación, no funcionalidad) sobre el contacto
  *     asíncrono con seres queridos frente al aislamiento; enlaza al módulo Recomendaciones (issue #15).
@@ -20,6 +22,7 @@ import { apiService } from "../../services/api.js";
 import { tr, fmt as fmtT, fmtNum, locale } from "../../i18n/i18n.js";
 import { bt, btLines } from "/src/i18n/backend.js";
 import { renderBreathing } from "./breathing.js";
+import { renderChecks } from "./questionnaires.js";
 import {
   esc, tag, errMsg, ensureCss, makeStale, roleOf, isOwnAstronaut, astronautName,
   snapshotFields, restoreFields, langChanged,
@@ -54,7 +57,7 @@ const DICT = {
     intro: "Un espacio para cuidar el descanso, el ánimo y la conexión con los demás durante la misión. Todo lo que escribas aquí es privado por defecto.",
     introLeader: "Resumen de bienestar de {name}. Por privacidad, ánimo, energía, sensación de aislamiento y notas solo los ve la propia persona.",
     tabsAria: "Secciones de bienestar",
-    tabs: { today: "Hoy", breath: "Respiración", earth: "Contacto con Tierra", leisure: "Tiempo libre", crew: "Tripulación" },
+    tabs: { today: "Hoy", checks: "Cuestionarios", breath: "Respiración", earth: "Contacto con Tierra", leisure: "Tiempo libre", crew: "Tripulación" },
     loading: "Cargando…",
     retry: "Reintentar",
     noData: "—",
@@ -210,7 +213,7 @@ const DICT = {
     intro: "A space to look after your rest, your mood and your connection with others during the mission. Everything you write here is private by default.",
     introLeader: "Well-being summary for {name}. For privacy, mood, energy, feeling isolated and notes are only visible to that person.",
     tabsAria: "Well-being sections",
-    tabs: { today: "Today", breath: "Breathing", earth: "Contact with Earth", leisure: "Free time", crew: "Crew" },
+    tabs: { today: "Today", checks: "Questionnaires", breath: "Breathing", earth: "Contact with Earth", leisure: "Free time", crew: "Crew" },
     loading: "Loading…",
     retry: "Retry",
     noData: "—",
@@ -357,7 +360,7 @@ const DICT = {
   },
 };
 
-const SUBS = ["today", "breath", "earth", "leisure", "crew"];
+const SUBS = ["today", "checks", "breath", "earth", "leisure", "crew"];
 const SUB_KEY = "av_wb_sub";
 const CATEGORIES = ["PLANTS", "READING", "GAMES", "MUSIC", "ART", "PHOTOGRAPHY", "WRITING", "MOVEMENT"];
 const DURATIONS = [10, 20, 30];
@@ -377,6 +380,13 @@ function saveSub(v) {
   } catch {
     /* almacenamiento no disponible */
   }
+}
+
+/* Abre Bienestar en una pestaña concreta (app.js: la ruta antigua del cuestionario psicológico → Cuestionarios) */
+export function openWellbeingSub(sub) {
+  if (!SUBS.includes(sub)) return;
+  ui.sub = sub;
+  saveSub(sub);
 }
 
 /* result: funciones que devuelven el último mensaje en el idioma vigente (sobreviven a un cambio de idioma) */
@@ -529,7 +539,7 @@ function bindTabs(container) {
   const list = container.querySelector(".av-wb-tabs");
   if (!list) return;
   const tabs = () => Array.from(list.querySelectorAll("[data-wb-tab]"));
-  const select = (sub, focus) => {
+  const select = (ui.selectTab = (sub, focus) => {
     if (!SUBS.includes(sub)) return;
     const changed = sub !== ui.sub;
     ui.sub = sub;
@@ -542,7 +552,7 @@ function bindTabs(container) {
     });
     container.querySelector("#av-wb-panel")?.setAttribute("aria-labelledby", `av-wb-tab-${sub}`);
     if (changed) renderPanel();
-  };
+  });
   list.addEventListener("click", (e) => {
     const b = e.target.closest("[data-wb-tab]");
     if (b) select(b.getAttribute("data-wb-tab"), false);
@@ -574,7 +584,7 @@ async function renderPanel() {
   if (!panel.querySelector(`[data-wb-sub="${sub}"]`)) {
     panel.innerHTML = `<div class="av-sub av-wb-loading" role="status">${esc(tr(DICT).loading)}</div>`;
   }
-  const renderers = { today: renderToday, breath: (p) => renderBreathing(p, appState), earth: renderEarth, leisure: renderLeisure, crew: renderCrew };
+  const renderers = { today: renderToday, checks: (p, st) => renderChecks(p, { appState, helpers: ctx.helpers, isStale: st, goTab: (s) => ui.selectTab?.(s, true) }), breath: (p) => renderBreathing(p, appState), earth: renderEarth, leisure: renderLeisure, crew: renderCrew };
   await renderers[sub](panel, isStale);
   if (isStale()) return;
   panel.querySelector("[data-wb-retry]")?.addEventListener("click", () => renderPanel());

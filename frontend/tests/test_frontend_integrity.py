@@ -123,30 +123,60 @@ def test_frontend_files_exist_and_have_required_sections():
         assert f'tool("{sub_id}"' in wellbeing_js, f"Bienestar → Hoy must link to {sub_id}"
     assert 'data-wb-go="${sec}"' in wellbeing_js
 
-    # El cuestionario de bienestar psicológico pasó a "Registrar medición" (tarjeta del grupo
-    # "Cuestionarios" con los controles de medición): Bienestar ya no lo enlaza, la vista antigua
-    # no existe y la ruta "wellness-center" redirige a la medición con el cuestionario abierto
+    # El cuestionario de bienestar psicológico volvió a Bienestar, en la pestaña interna
+    # "Cuestionarios" (questionnaires.js) junto al chequeo del turno (shift-check.js: estrés, FC,
+    # NASA-TLX y test de reacción tipo PVT). "Registrar medición" ya no lo incluye, la vista antigua
+    # no existe y la ruta "wellness-center" abre Bienestar en esa pestaña.
     assert not (views_dir / "wellness.js").exists()
+    assert not (views_dir / "measure-questionnaire.js").exists()
     assert "/src/console/views/wellness.js" not in index_html
+    assert "measure-questionnaire" not in index_html
     assert "renderWellnessView" not in app_js
     assert "wellness-center" not in wellbeing_js
     assert 'data-nav-section="wellness-center"' not in index_html
-    assert '"wellness-center": "my-health-check"' in app_js
-    assert "openMeasureItem(WELLNESS_QUESTIONNAIRE)" in app_js
-    mq_js = (views_dir / "measure-questionnaire.js").read_text(encoding="utf-8")
-    assert '"/src/console/views/measure-questionnaire.js": "/src/console/views/measure-questionnaire.js?v=__BUILD__"' in index_html
-    assert 'from "./measure-questionnaire.js"' in (views_dir / "measure.js").read_text(encoding="utf-8")
-    for call in ["getWellnessInstruments", "getWellnessAssessments", "createWellnessAssessment", "getWellnessRecommendations"]:
-        assert f"apiService.{call}(" in mq_js, f"measure-questionnaire.js must keep using {call}"
-    for cls in ["av-ms-tile", "av-ms-entry", "av-ms-scale", "av-ms-stepper", "av-ms-save", "av-ms-done"]:
-        assert cls in mq_js, f"questionnaire must reuse the measure class {cls}"
-    assert mq_js.count("const DICT = {") == 1 and "tr(DICT)" in mq_js
-    mq_es, mq_en = _dict_blocks(mq_js)
-    for indent in (4, 6):
-        assert _keys(mq_es, indent) == _keys(mq_en, indent), (
-            f"measure-questionnaire.js DICT es/en keys differ at indent {indent}: "
-            f"{sorted(_keys(mq_es, indent) ^ _keys(mq_en, indent))}"
-        )
+    assert '"wellness-center": "wellbeing-hub"' in app_js
+    assert 'openWellbeingSub("checks")' in app_js
+    assert "export function openWellbeingSub" in wellbeing_js
+    measure_js = (views_dir / "measure.js").read_text(encoding="utf-8")
+    assert "questionnaire" not in measure_js.lower() and "WELLNESS_QUESTIONNAIRE" not in app_js
+    assert ".av-ms-qtile" not in (views_dir / "measure.css").read_text(encoding="utf-8")
+    assert '"checks"' in wellbeing_js and 'import { renderChecks } from "./questionnaires.js"' in wellbeing_js
+    assert 'checks: "Cuestionarios"' in wellbeing_js and 'checks: "Questionnaires"' in wellbeing_js
+    qz_js = (views_dir / "questionnaires.js").read_text(encoding="utf-8")
+    sc_js = (views_dir / "shift-check.js").read_text(encoding="utf-8")
+    assert (views_dir / "questionnaires.css").is_file()
+    for module in ["questionnaires", "shift-check"]:
+        assert f'"/src/console/views/{module}.js": "/src/console/views/{module}.js?v=__BUILD__"' in index_html
+    assert "/src/console/views/questionnaires.css?v=__BUILD__" in index_html
+    assert "export async function renderChecks" in qz_js
+    assert 'data-wb-sub="checks"' in qz_js
+    for call in ["getWellnessInstruments", "getWellnessAssessments", "createWellnessAssessment",
+                 "getWellnessRecommendations", "getQuickCheckins"]:
+        assert f"apiService.{call}(" in qz_js, f"questionnaires.js must use {call}"
+    # Sueño y ánimo no se duplican: el chequeo del turno los toma del check-in de Hoy y enlaza a esa pestaña
+    assert 'data-qz-tab="today"' in sc_js
+    assert 'name="av-sc-sleep' not in sc_js and 'name="av-sc-mood' not in sc_js
+    # NASA-TLX: seis escalas 0–100 y test de reacción con duración elegible, lapsos y falsos inicios
+    assert 'const TLX_KEYS = ["md", "pd", "td", "pf", "ef", "fr"]' in sc_js
+    assert 'type="range"' in sc_js and 'min="0" max="100"' in sc_js
+    assert "durations: [60, 180, 300]" in sc_js and "lapseMs: 500" in sc_js
+    assert "falseStarts" in sc_js and "mean_ms" in sc_js
+    assert "localStorage" in sc_js and "catch" in sc_js
+    # Mismas reglas que el resto de Bienestar: sin data-act / data-nav / data-wb-go en estos módulos
+    for src in (qz_js, sc_js):
+        body = src.split("*/", 1)[1]
+        assert "data-act=" not in body and "data-nav" not in body and "data-wb-go" not in body
+    for name, src in (("questionnaires.js", qz_js), ("shift-check.js", sc_js)):
+        assert src.count("const DICT = {") == 1 and "tr(DICT)" in src
+        es_block, en_block = _dict_blocks(src)
+        for indent in (4, 6, 8):
+            assert _keys(es_block, indent) == _keys(en_block, indent), (
+                f"{name} DICT es/en keys differ at indent {indent}: "
+                f"{sorted(_keys(es_block, indent) ^ _keys(en_block, indent))}"
+            )
+    # Escala 1–10 sin desbordes: rejilla de 10 columnas que pasa a 5 en pantallas estrechas
+    qz_css = (views_dir / "questionnaires.css").read_text(encoding="utf-8")
+    assert "repeat(10, minmax(0, 1fr))" in qz_css and "repeat(5, minmax(0, 1fr))" in qz_css
     # El contador de pendientes del check-in emocional pasa a la pestaña "Bienestar"
     tab_start = index_html.index('data-nav-section="wellbeing-hub"')
     assert "js-emo-badge" in index_html[tab_start:index_html.index("</button>", tab_start)]
