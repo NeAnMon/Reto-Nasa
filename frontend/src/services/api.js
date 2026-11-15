@@ -210,6 +210,16 @@ export const apiService = {
       throw err;
     }
 
+    // Aviso de "datos nuevos" para quien pinte series (Bitácora · gráficas por motor, issue #30)
+    const method = String(options.method || "GET").toUpperCase();
+    if (method !== "GET" && method !== "HEAD") {
+      try {
+        window.dispatchEvent(new CustomEvent("av:data-written", { detail: { path, method } }));
+      } catch {
+        // sin window (pruebas): no hay nadie escuchando
+      }
+    }
+
     const contentType = response.headers.get("content-type") || "";
     if (contentType.includes("application/json")) {
       return await response.json();
@@ -409,6 +419,21 @@ export const apiService = {
       if (v !== null && v !== undefined && v !== "") params.set(k, v);
     });
     return this.request(`/analytics/timeseries?${params.toString()}`);
+  },
+
+  /* Bitácora · gráficas por motor (backend/app/api/v1/logbook_router.py, issue #30) */
+  getLogbookRadiationDose(astronautId, missionId) {
+    const params = new URLSearchParams();
+    if (astronautId) params.set("astronaut_id", astronautId);
+    if (missionId) params.set("mission_id", missionId);
+    return this.request(`/logbook/radiation-dose?${params.toString()}`);
+  },
+
+  getLogbookEmotionalStates(astronautId, missionId) {
+    const params = new URLSearchParams();
+    if (astronautId) params.set("astronaut_id", astronautId);
+    if (missionId) params.set("mission_id", missionId);
+    return this.request(`/logbook/emotional-states?${params.toString()}`);
   },
 
   getPhaseComparison(astronautId, missionId, indicatorCode) {
