@@ -178,7 +178,7 @@ body[data-theme="daylight-clean"] .av-console {
 .av-hscroll::-webkit-scrollbar-thumb { background: var(--av-strong); border: 2px solid var(--av-bg); }
 .av-hscroll::-webkit-scrollbar-thumb:hover { background: var(--av-text2); }
 
-/* Resumen, columna derecha: 2 cuadros del mismo alto (tareas de hoy y mensajes sin leer).
+/* Resumen, columna derecha: 2 cuadros del mismo alto (tareas de hoy y recomendaciones, issue #15).
    Solo .av-col-sum: .av-col-c se usa también en otras vistas. */
 .av-col-sum { display: grid; grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 12px; align-self: stretch; }
 .av-sum-box { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
@@ -189,11 +189,7 @@ body[data-theme="daylight-clean"] .av-console {
 .av-sum-scroll::-webkit-scrollbar-thumb:hover { background: var(--av-text2); }
 /* insignia con texto ("3 sin leer"): conserva alto y fuente de .av-badge, solo se ensancha */
 .av-badge.av-pill { width: auto; padding: 0 8px; white-space: nowrap; }
-/* mensajes sin leer: borde amarillo (.av-card-C) + encabezado resaltado; el texto sigue con su color normal */
-.av-msg-box.av-msg-unread .av-panel-head { border-bottom-color: var(--av-y); box-shadow: inset 0 3px 0 var(--av-y); background: rgba(242, 201, 76, .08); }
-body[data-theme="high-contrast"] .av-msg-box.av-msg-unread .av-panel-head { background: transparent; }
-body[data-theme="daylight-clean"] .av-msg-box.av-msg-unread .av-panel-head { background: #fdf3d2; }
-/* contramedidas pendientes hoy: mismo resaltado que "mensajes sin leer" (recordatorio, no alerta médica) */
+/* contramedidas pendientes hoy: borde y cabecera en amarillo (recordatorio, no alerta médica) */
 .av-sum-remind .av-panel-head { border-bottom-color: var(--av-y); box-shadow: inset 0 3px 0 var(--av-y); background: rgba(242, 201, 76, .08); }
 body[data-theme="high-contrast"] .av-sum-remind .av-panel-head { background: transparent; }
 body[data-theme="daylight-clean"] .av-sum-remind .av-panel-head { background: #fdf3d2; }
@@ -563,7 +559,7 @@ body[data-theme="daylight-clean"] .av-env-banner-logo { content: url("../assets/
 .av-sys-chip { min-height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 6px; border: 1px solid var(--av-border); background: transparent; color: var(--av-text); cursor: pointer; font: inherit; font-size: 13px; }
 .av-sys-chip:hover, .av-sys-chip[aria-pressed="true"] { background: var(--av-hover); border-color: var(--av-strong); }
 .av-sys-chip:focus-visible { outline: 2px solid var(--av-text); outline-offset: 1px; }
-/* Ancho intermedio: la columna derecha baja sola a otra fila; tareas y mensajes se ponen lado a lado
+/* Ancho intermedio: la columna derecha baja sola a otra fila; tareas y recomendaciones se ponen lado a lado
    a todo el ancho para no dejar un hueco a la derecha (issue #3) */
 @media (min-width: 981px) and (max-width: 1380px) {
   .av-col-c.av-col-sum { flex: 1 1 100%; max-width: none; grid-template-rows: none; grid-template-columns: repeat(2, minmax(0, 1fr)); }

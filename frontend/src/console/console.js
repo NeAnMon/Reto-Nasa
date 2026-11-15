@@ -188,9 +188,6 @@ const DICT = {
     seeAll: "Ver todas",
     noTasks: "Sin tareas.",
     taskStatus: { PENDING: "Pendiente", COMPLETED: "Hecha", EXCUSED_OPERATIONAL_RESTRICTION: "Omitida por operación (no penaliza)", PAUSED_FOR_SAFETY: "Pausada por seguridad" },
-    surgeonTitle: "Médico de vuelo",
-    unreadMsgs: "Mensajes sin leer",
-    unreadPill: "{n} sin leer",
     // recordatorio de contramedidas pendientes (no es alerta médica: no crea filas de Alert)
     cmPendingPill: "{n} pendientes",
     cmReminderOne: "1 contramedida pendiente hoy",
@@ -200,10 +197,11 @@ const DICT = {
     cmTabBadgeOne: "1 contramedida pendiente",
     cmTabBadgeMany: "{n} contramedidas pendientes",
     otherSystems: "Otros sistemas",
-    groundLead: "Líder en Tierra",
-    openSupport: "Solicitudes de apoyo abiertas",
-    offlineNote: "Sin enlace, todo se guarda a bordo y se envía en el próximo contacto.",
-    openMessages: "Abrir mensajes",
+    // cuadro "Recomendaciones" del Resumen (sustituye a "Mensajes sin leer", issue #15)
+    recTitle: "Recomendaciones",
+    recSub: "Mejoras previstas para próximas versiones de la app.",
+    recItems: ["Biometría continua con dispositivos vestibles", "Instrumentos médicos de a bordo conectados", "Dosimetría personal en tiempo real", "Canal asíncrono con Tierra y con la familia"],
+    recOpen: "Ver recomendaciones",
     // detalle de indicador
     backSummary: "← Resumen",
     idealRange: "Rango ideal",
@@ -249,7 +247,6 @@ const DICT = {
     escalateIf: "Escalar de inmediato si",
     escalateDefault: "Los síntomas empeoran, aparecen síntomas nuevos o el valor sigue fuera de límite tras la acción.",
     escalate: "Escalar al médico de vuelo",
-    contactSurgeon: "Contactar al médico de vuelo",
     historyFailed: "No se pudo cargar el historial.",
     followProtocol: "Sigue el protocolo del indicador.",
     noExplanation: "Sin explicación disponible.",
@@ -470,9 +467,6 @@ const DICT = {
     seeAll: "View all",
     noTasks: "No tasks.",
     taskStatus: { PENDING: "Pending", COMPLETED: "Done", EXCUSED_OPERATIONAL_RESTRICTION: "Skipped for operations (no penalty)", PAUSED_FOR_SAFETY: "Paused for safety" },
-    surgeonTitle: "Flight surgeon",
-    unreadMsgs: "Unread messages",
-    unreadPill: "{n} unread",
     cmPendingPill: "{n} pending",
     cmReminderOne: "1 countermeasure pending today",
     cmReminderMany: "{n} countermeasures pending today",
@@ -481,10 +475,10 @@ const DICT = {
     cmTabBadgeOne: "1 pending countermeasure",
     cmTabBadgeMany: "{n} pending countermeasures",
     otherSystems: "Other systems",
-    groundLead: "Ground lead",
-    openSupport: "Open support requests",
-    offlineNote: "Without a link, everything is stored onboard and sent at the next contact.",
-    openMessages: "Open messages",
+    recTitle: "Recommendations",
+    recSub: "Improvements planned for future versions of the app.",
+    recItems: ["Continuous biometrics with wearable devices", "Connected onboard medical instruments", "Real-time personal dosimetry", "Asynchronous channel with Earth and family"],
+    recOpen: "View recommendations",
     backSummary: "← Overview",
     idealRange: "Ideal range",
     yellowLimit: "Yellow limit",
@@ -529,7 +523,6 @@ const DICT = {
     escalateIf: "Escalate immediately if",
     escalateDefault: "Symptoms worsen, new symptoms appear or the value stays out of limits after the action.",
     escalate: "Escalate to flight surgeon",
-    contactSurgeon: "Contact flight surgeon",
     historyFailed: "Could not load the history.",
     followProtocol: "Follow the indicator protocol.",
     noExplanation: "No explanation available.",
@@ -2344,23 +2337,18 @@ function rightColHTML(appState, d, data, alerts) {
       <span class="av-mono av-sub">+${esc(m.xp_reward)}</span>
     </li>`;
   }).join("");
-  const comm = (d.s.expansion_cards || {}).communication_center || {};
-  const unread = Number(comm.unread_messages_count) || 0;
-  // mensajes sin leer: el cuadro cambia de color (borde amarillo) como las tarjetas de Prioridad;
-  // nunca solo color: la insignia "N sin leer" lo dice en texto
+  // Segundo cuadro: avance del módulo Recomendaciones (el módulo Mensajes se retiró, issue #15)
+  const recs = T.recItems.map((t) => `<li style="padding:6px 0;border-top:1px solid var(--av-row)">${esc(t)}</li>`).join("");
   return `
   <aside class="av-col-c av-col-sum" aria-label="${esc(T.rightAria)}">
     ${tasksBoxOpenHTML(data, T)}
       <ol class="av-sum-scroll" style="list-style:none;margin:0;padding:0">${tasks || `<li class="av-sub" style="padding:12px">${esc(T.noTasks)}</li>`}</ol>
     </section>
-    <section class="av-panel av-sum-box av-msg-box${unread > 0 ? " av-card-C av-msg-unread" : ""}">
-      <div class="av-panel-head"><h2 class="av-h2">${esc(T.unreadMsgs)}</h2>${unread > 0 ? `<span class="av-badge av-b-C av-pill">${esc(fmt(T.unreadPill, { n: num(unread) }))}</span>` : badge("N")}</div>
+    <section class="av-panel av-sum-box av-rec-box">
+      <div class="av-panel-head"><h2 class="av-h2">${esc(T.recTitle)}</h2><button type="button" class="av-btn av-btn-sm" data-nav="recommendations">${esc(T.recOpen)}</button></div>
       <div class="av-sum-scroll" style="padding:12px;display:flex;flex-direction:column;gap:8px">
-        <div><span class="av-big">${num(unread)}</span> <span class="av-sub">${esc(T.surgeonTitle)}</span></div>
-        <div style="display:flex;justify-content:space-between" class="av-sub"><span>${esc(T.groundLead)}</span><span>${esc(comm.assigned_leader_name || "—")}</span></div>
-        <div style="display:flex;justify-content:space-between" class="av-sub"><span>${esc(T.openSupport)}</span><span class="av-mono">${esc(comm.open_support_requests_count ?? comm.active_support_requests_count ?? 0)}</span></div>
-        <p class="av-sub" style="margin:0">${esc(T.offlineNote)}</p>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:auto"><button type="button" class="av-btn av-btn-primary" data-nav="communication-center">${esc(T.openMessages)}</button></div>
+        <p class="av-sub" style="margin:0">${esc(T.recSub)}</p>
+        <ul style="list-style:none;margin:0;padding:0">${recs}</ul>
       </div>
     </section>
   </aside>`;
@@ -2466,8 +2454,7 @@ function indicatorHTML(appState, d, alerts) {
       <div style="margin:12px 16px 16px;padding:12px;border:1px solid var(--av-r-text);display:flex;flex-direction:column;gap:8px">
         <span class="av-lbl" style="color:var(--av-r-text)">${esc(T.escalateIf)}</span>
         <span>${esc(bt(r.escalation_conditions) || T.escalateDefault)}</span>
-        ${alert ? `<button type="button" class="av-btn av-btn-danger" style="align-self:flex-start" data-act="escalate" data-alert="${esc(alert.id)}">${esc(T.escalate)}</button>`
-          : `<button type="button" class="av-btn av-btn-danger" style="align-self:flex-start" data-nav="communication-center">${esc(T.contactSurgeon)}</button>`}
+        ${alert ? `<button type="button" class="av-btn av-btn-danger" style="align-self:flex-start" data-act="escalate" data-alert="${esc(alert.id)}">${esc(T.escalate)}</button>` : ""}
       </div>
     </aside>
   </div>`;

@@ -14,7 +14,7 @@
     <link rel="stylesheet" id="av-measure-css" href="/src/console/views/measure.css?v=__BUILD__" />
     <link rel="stylesheet" data-av-cm-css href="/src/console/views/countermeasures.css?v=__BUILD__" />
     <link rel="stylesheet" id="av-al-css" href="/src/console/views/alerts.css?v=__BUILD__" />
-    <link rel="stylesheet" data-av-msg-css href="/src/console/views/messages.css?v=__BUILD__" />
+    <link rel="stylesheet" id="av-rec-css" href="/src/console/views/recommendations.css?v=__BUILD__" />
     <link rel="stylesheet" id="av-log-css" href="/src/console/views/logbook.css?v=__BUILD__" />
     <link rel="stylesheet" id="av-logfu-css" href="/src/console/views/logbook-followup.css?v=__BUILD__" />
     <link rel="stylesheet" id="av-lt-css" href="/src/console/views/logbook-trends.css?v=__BUILD__" />
@@ -38,7 +38,7 @@
           "/src/console/views/measure.js": "/src/console/views/measure.js?v=__BUILD__",
           "/src/console/views/countermeasures.js": "/src/console/views/countermeasures.js?v=__BUILD__",
           "/src/console/views/alerts.js": "/src/console/views/alerts.js?v=__BUILD__",
-          "/src/console/views/messages.js": "/src/console/views/messages.js?v=__BUILD__",
+          "/src/console/views/recommendations.js": "/src/console/views/recommendations.js?v=__BUILD__",
           "/src/console/views/logbook.js": "/src/console/views/logbook.js?v=__BUILD__",
           "/src/console/views/logbook-followup.js": "/src/console/views/logbook-followup.js?v=__BUILD__",
           "/src/console/views/logbook-trends.js": "/src/console/views/logbook-trends.js?v=__BUILD__",
@@ -80,10 +80,8 @@
               <button type="button" class="av-tab" data-nav-section="alerts-center">
                 <span data-i18n="tab.alerts">Alertas</span> <span class="av-tab-badge js-alert-badge hidden" title="Alertas activas" data-i18n-attr="title:badge.alerts">0</span>
               </button>
-              <button type="button" class="av-tab" data-nav-section="communication-center">
-                <span data-i18n="tab.messages">Mensajes</span> <span class="av-tab-badge js-comm-badge hidden" title="Mensajes sin leer" data-i18n-attr="title:badge.messages">0</span>
-              </button>
               <button type="button" class="av-tab" data-nav-section="reports" data-i18n="tab.logbook">Bitácora</button>
+              <button type="button" class="av-tab" data-nav-section="recommendations" data-i18n="tab.recommendations">Recomendaciones</button>
             </nav>
             <div class="av-navtools">
               <div class="av-more" id="av-more">

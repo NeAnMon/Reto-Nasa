@@ -2586,6 +2586,8 @@ CREW_ACTIVITY_TEMPLATES_DATA = [
 ]
 
 # Misiones de XP del módulo (inactivas: no aparecen en la lista de misiones diarias)
+RETIRED_DAILY_MISSION_CODES = ("REVIEW_MISSION_MESSAGES", "RESPOND_SUPPORT_REQUEST")
+
 ISOLATION_XP_MISSIONS_DATA = [
     ("LEISURE_BREAK", "Tiempo libre registrado", "WELLNESS",
      "Registrar una actividad breve de tiempo libre.", 10,
@@ -2733,4 +2735,12 @@ def seed_isolation_module(db: Session) -> None:
                     is_active=False,
                 )
             )
+
+    # Misiones que solo se completaban desde el módulo Mensajes, retirado de la interfaz (issue #15):
+    # se desactivan también en BD ya inicializadas para que no queden tareas imposibles de cumplir
+    db.flush()
+    for code in RETIRED_DAILY_MISSION_CODES:
+        dm = db.query(DailyMission).filter(DailyMission.code == code).first()
+        if dm and dm.is_active:
+            dm.is_active = False
     db.commit()

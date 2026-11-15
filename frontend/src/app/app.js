@@ -9,7 +9,7 @@ import {
 import { renderMeasureView, openMeasureItem, WELLNESS_QUESTIONNAIRE } from "../console/views/measure.js";
 import { renderCountermeasuresView } from "../console/views/countermeasures.js";
 import { renderAlertsView } from "../console/views/alerts.js";
-import { renderMessagesView } from "../console/views/messages.js";
+import { renderRecommendationsView } from "../console/views/recommendations.js";
 import { renderLogbookView } from "../console/views/logbook.js";
 import { renderCognitiveView } from "../console/views/cognitive.js";
 import { renderEmotionalView } from "../console/views/emotional.js";
@@ -149,6 +149,8 @@ const appHelpers = {
 const SECTION_REDIRECTS = {
   "body-explorer": "mission-control",
   "mission-analytics": "mission-control",
+  // El módulo Mensajes se retiró (issue #15): el canal con Tierra pasa a ser una recomendación futura
+  "communication-center": "recommendations",
   // El cuestionario de bienestar psicológico vive ahora en "Registrar medición" (se abre ya elegido)
   "wellness-center": "my-health-check",
 };
@@ -405,18 +407,8 @@ async function refreshGlobalHeaderAndSummary() {
     el.classList.toggle("hidden", alertCount === 0);
   });
 
-  // Expansion badges (Communication Center & Emotional Check-In)
+  // Insignia del check-in emocional (pestaña Bienestar)
   if (summary.expansion_cards) {
-    const commObj =
-      summary.expansion_cards.communication_center ||
-      summary.expansion_cards.communication_center_card ||
-      {};
-    const unreadComm = commObj.unread_messages_count || 0;
-    document.querySelectorAll(".js-comm-badge").forEach((el) => {
-      el.textContent = unreadComm;
-      el.classList.toggle("hidden", unreadComm === 0);
-    });
-
     const emoObj =
       summary.expansion_cards.emotional_check_in ||
       summary.expansion_cards.emotional_checkin_card ||
@@ -465,8 +457,6 @@ async function navigateToSection(sectionId) {
       await renderWellbeingView(container, appState, expansionHelpers);
     } else if (sectionId === "my-health-check") {
       await renderMeasureView(container, appState, expansionHelpers);
-    } else if (sectionId === "communication-center") {
-      await renderMessagesView(container, appState, expansionHelpers);
     } else if (sectionId === "cognitive-center") {
       await renderCognitiveView(container, appState, expansionHelpers);
     } else if (sectionId === "emotional-center") {
@@ -483,6 +473,8 @@ async function navigateToSection(sectionId) {
       await renderAdminView(container, appState, expansionHelpers);
     } else if (sectionId === "settings-help") {
       await renderSettingsView(container, appState, expansionHelpers);
+    } else if (sectionId === "recommendations") {
+      await renderRecommendationsView(container, appState, expansionHelpers);
     }
   } catch (err) {
     container.innerHTML = `

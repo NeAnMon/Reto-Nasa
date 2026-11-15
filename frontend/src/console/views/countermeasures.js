@@ -75,7 +75,6 @@ const DICT = {
       "alerts-center": "Alertas",
       "cognitive-center": "Evaluación cognitiva",
       "emotional-center": "Check-in emocional",
-      "communication-center": "Comunicaciones",
     },
     excuse: {
       EVA: "Actividad extravehicular (EVA) o tarea operativa prioritaria",
@@ -255,7 +254,6 @@ const DICT = {
       "alerts-center": "Alerts",
       "cognitive-center": "Cognitive assessment",
       "emotional-center": "Emotional check-in",
-      "communication-center": "Communications",
     },
     excuse: {
       EVA: "Extravehicular activity (EVA) or priority operational task",
@@ -413,8 +411,6 @@ const MISSION_ROUTE = {
   MEMORY_TRAINING_ACTIVITY: "cognitive-center",
   VISUAL_ATTENTION_ACTIVITY: "cognitive-center",
   COMPLETE_EMOTIONAL_CHECKIN: "emotional-center",
-  REVIEW_MISSION_MESSAGES: "communication-center",
-  RESPOND_SUPPORT_REQUEST: "communication-center",
 };
 
 /* Motivos de omisión (la vista anterior los citaba: EVA, sensor no disponible o restricción médica) */

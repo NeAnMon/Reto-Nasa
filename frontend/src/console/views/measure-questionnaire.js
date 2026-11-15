@@ -81,7 +81,7 @@ const DICT = {
     urgentNote: "Si necesitas hablar ahora, escribe a tu equipo de apoyo desde Mensajes.",
     again: "Responder otra vez",
     finish: "Volver a la lista",
-    toMessages: "Ir a Mensajes",
+    toSupport: "Pedir apoyo (check-in emocional)",
     next: "Siguiente: {name} →",
     history: "Historial ({n})",
     historyEmpty: "Aún no hay evaluaciones registradas.",
@@ -142,7 +142,7 @@ const DICT = {
     urgentNote: "If you need to talk now, write to your support team from Messages.",
     again: "Answer again",
     finish: "Back to list",
-    toMessages: "Go to Messages",
+    toSupport: "Ask for support (emotional check-in)",
     next: "Next: {name} →",
     history: "History ({n})",
     historyEmpty: "No assessments recorded yet.",
@@ -317,7 +317,7 @@ function resultHTML(res, next) {
     </div>
     <div class="av-ms-done-actions">
       ${next ? `<button type="button" class="av-btn av-btn-primary" data-pick="${esc(next.code)}" data-from-result>${esc(fmtT(T.next, { name: next.name }))}</button>` : `<button type="button" class="av-btn av-btn-primary" data-act="close">${esc(T.finish)}</button>`}
-      ${strong ? `<button type="button" class="av-btn" data-nav="communication-center">${esc(T.toMessages)}</button>` : ""}
+      ${strong ? `<button type="button" class="av-btn" data-nav="emotional-center">${esc(T.toSupport)}</button>` : ""}
       <button type="button" class="av-btn" data-q-again>${esc(T.again)}</button>
     </div>
   </div>`;
