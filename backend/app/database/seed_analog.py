@@ -15,18 +15,24 @@ caiga en el día de hoy (UTC). Cada carga borra y vuelve a insertar las medicion
 así la serie siempre termina hoy. Las mediciones son reales: `is_simulated=False` y
 `data_quality="VALIDATED"`, por lo que el servicio de predicción las usa con el valor por defecto
 de la API (`include_simulated=false`).
+
+El estado de cada medición lo calcula la misma función pura que usa el motor de alertas
+(`rules.evaluation.evaluate_reading`): umbral absoluto del dataset + desvío frente a la línea base
+personal del sujeto (media y DE reales de su fase previa), con diastólica incluida. Las lecturas del
+día de hoy dejan su alerta abierta con el mismo `upsert` que la API (una por indicador).
 """
 from __future__ import annotations
 
 import csv
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
-from typing import Dict, Iterable, Optional
+from typing import Dict, Iterable, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
 from backend.app.core.config import settings
 from backend.app.models.models import (
+    Alert,
     AstronautProfile,
     ClinicalRule,
     ClinicalRuleVersion,
@@ -40,6 +46,9 @@ from backend.app.models.models import (
     Role,
     User,
 )
+from backend.app.rules.calibration import PERSISTENCE_WINDOW_HOURS
+from backend.app.rules.engine import MeasurementEvaluation, upsert_alert_for_measurement
+from backend.app.rules.evaluation import PersonalBaseline, PreviousReading, Thresholds, evaluate_reading
 from backend.app.security.auth import hash_password
 
 DATA_DIR = Path(__file__).resolve().parent / "data"
@@ -98,14 +107,31 @@ def _read_csv(path: Path, subjects: Iterable[str]) -> Dict[str, list]:
     return rows
 
 
-def _state(value: float, version: Optional[ClinicalRuleVersion]) -> str:
-    if version is None:
-        return "NORMAL"
-    if value < version.monitor_min or value > version.monitor_max:
-        return "WARNING"
-    if value < version.normal_min or value > version.normal_max:
-        return "MONITOR"
-    return "NORMAL"
+def _personal_baseline(base: Optional[Dict[str, str]], code: str) -> Optional[PersonalBaseline]:
+    """Línea base personal del sujeto tal como queda en `health_baselines` (media, DE y media secundaria)."""
+    if base is None:
+        return None
+    mean_col, sd_col, sec_col = BASELINE_COLUMNS[code]
+    mean, sd = _num(base[mean_col]), _num(base[sd_col])
+    if mean is None or sd is None:
+        return None
+    return PersonalBaseline(mean=mean, sd=sd, secondary_mean=_num(base[sec_col]) if sec_col else None)
+
+
+def _alerted_since(db: Session, astronaut_id: int, indicator_code: str, rule_code: str, since: datetime) -> bool:
+    """¿Hay ya una alerta de esa regla creada o actualizada desde `since`? Evita que cada reinicio
+    del servicio reabra o duplique la alerta del mismo día."""
+    return (
+        db.query(Alert)
+        .filter(
+            Alert.astronaut_id == astronaut_id,
+            Alert.indicator_code == indicator_code,
+            Alert.rule_code == rule_code,
+            Alert.updated_at >= since,
+        )
+        .first()
+        is not None
+    )
 
 
 def _ensure_astronaut(db: Session, role: Role, subject: str, meta: Dict[str, str], sujeto: str) -> User:
@@ -200,13 +226,15 @@ def seed_analog_bed_rest(
         d.code: d for d in db.query(HealthIndicatorDefinition)
         .filter(HealthIndicatorDefinition.code.in_(INDICATOR_COLUMNS)).all()
     }
-    versions: Dict[str, ClinicalRuleVersion] = {}
-    for rule in db.query(ClinicalRule).filter(ClinicalRule.indicator_code.in_(INDICATOR_COLUMNS)).all():
+    rules: Dict[str, Tuple[ClinicalRule, ClinicalRuleVersion]] = {}
+    for rule in db.query(ClinicalRule).filter(
+        ClinicalRule.indicator_code.in_(INDICATOR_COLUMNS), ClinicalRule.is_active.is_(True)
+    ).all():
         version = db.query(ClinicalRuleVersion).filter(
             ClinicalRuleVersion.rule_id == rule.id, ClinicalRuleVersion.is_current.is_(True)
-        ).first()
+        ).order_by(ClinicalRuleVersion.id.desc()).first()
         if version is not None:
-            versions[rule.indicator_code] = version
+            rules[rule.indicator_code] = (rule, version)
 
     mission = _ensure_mission(db, today, now)
     vitals = _read_csv(VITALS_CSV, subjects)
@@ -217,7 +245,9 @@ def seed_analog_bed_rest(
         HealthMeasurement.mission_id == mission.id, HealthMeasurement.source_code == SOURCE_CODE
     ).delete(synchronize_session=False)
 
-    n_meas = n_base = 0
+    n_meas = n_base = n_alerts = 0
+    day_start = datetime.combine(today, time(0), timezone.utc)
+    persistence = timedelta(hours=PERSISTENCE_WINDOW_HOURS)
     for subject, meta in subjects.items():
         rows = vitals.get(subject) or []
         if not rows:
@@ -229,7 +259,10 @@ def seed_analog_bed_rest(
             db.add(MissionAssignment(mission_id=mission.id, user_id=user.id,
                                      assignment_role="ASTRONAUT", is_active=True))
 
-        for row in rows:
+        base = baselines.get(subject)
+        previous: Dict[str, Tuple[datetime, PreviousReading]] = {}
+        todays: Dict[str, Tuple[HealthMeasurement, MeasurementEvaluation]] = {}
+        for row in sorted(rows, key=lambda r: int(r["dia_mision"])):
             day = int(row["dia_mision"])
             if day > current_day:
                 continue
@@ -241,13 +274,28 @@ def seed_analog_bed_rest(
                 definition = definitions.get(code)
                 if value is None or definition is None:
                     continue
-                db.add(HealthMeasurement(
+                secondary = _num(row[sec_col]) if sec_col else None
+                rule, version = rules.get(code, (None, None))
+                state, detail = "UNKNOWN", None
+                reasons = ["No existe versión de regla activa configurada para este indicador."]
+                if version is not None:
+                    prev = previous.get(code)
+                    detail = evaluate_reading(
+                        code, value, secondary, Thresholds.from_version(version),
+                        unit=definition.unit,
+                        min_valid=definition.min_valid_value, max_valid=definition.max_valid_value,
+                        baseline=_personal_baseline(base, code),
+                        previous=prev[1] if prev and measured_at - prev[0] <= persistence else None,
+                        rule_label=f"{rule.rule_code} ({version.version_number})",
+                    )
+                    state, reasons = detail.state, detail.reasons
+                measurement = HealthMeasurement(
                     dedup_key=f"utmb:{row['sujeto']}:{row['fecha']}:{code}",
                     astronaut_id=user.id,
                     mission_id=mission.id,
                     indicator_code=code,
                     value=value,
-                    secondary_value=_num(row[sec_col]) if sec_col else None,
+                    secondary_value=secondary,
                     unit=definition.unit,
                     measured_at=measured_at,
                     received_at=measured_at,
@@ -255,15 +303,32 @@ def seed_analog_bed_rest(
                     environment_code=BED_REST_ENV if in_bed else PRE_ENV,
                     source_code=SOURCE_CODE,
                     data_quality="VALIDATED",
-                    calculated_state=_state(value, versions.get(code)),
-                    rule_version_id=versions[code].id if code in versions else None,
+                    calculated_state=state,
+                    rule_version_id=version.id if version is not None else None,
                     is_simulated=False,
                     notes=(f"Dato real NASA UTMB, sujeto {row['sujeto']}, fecha original {row['fecha']}, "
                            f"día de reposo {day}. Fecha trasladada para la demo."),
-                ))
+                )
+                db.add(measurement)
                 n_meas += 1
+                if state != "INVALID":
+                    previous[code] = (measured_at, PreviousReading(value=value, secondary_value=secondary))
+                if day == current_day:
+                    todays[code] = (measurement, MeasurementEvaluation(state, rule, version, reasons, detail))
 
-        base = baselines.get(subject)
+        # Alertas: solo las lecturas de hoy, con el mismo upsert que la API (una abierta por indicador).
+        # Si esa regla ya tiene una alerta creada o actualizada hoy no se toca, para que reiniciar el
+        # servicio no la duplique ni reabra una que alguien ya resolvió.
+        db.flush()
+        for code, (measurement, evaluation) in todays.items():
+            if evaluation.rule is None or _alerted_since(db, user.id, code, evaluation.rule.rule_code, day_start):
+                continue
+            alert, created = upsert_alert_for_measurement(
+                db, measurement, definitions[code], evaluation, created_at=min(measurement.measured_at, now)
+            )
+            if alert is not None:
+                n_alerts += 1
+
         if base is None:
             continue
         for code, (mean_col, sd_col, sec_col) in BASELINE_COLUMNS.items():
@@ -285,4 +350,4 @@ def seed_analog_bed_rest(
             n_base += 1
 
     db.commit()
-    return {"measurements": n_meas, "baselines": n_base}
+    return {"measurements": n_meas, "baselines": n_base, "alerts": n_alerts}

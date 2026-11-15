@@ -1142,8 +1142,12 @@ function limitsText(rule, kind) {
   const lo = kind === "Y" ? r.monitor_min : r.warning_min;
   const hi = kind === "Y" ? r.monitor_max : r.warning_max;
   const parts = [];
-  if (lo !== null && lo !== undefined && lo > (rule.min_valid_value ?? -Infinity) && lo < r.normal_min) parts.push(`<${num(lo, lo % 1 ? 1 : 0)}`);
-  if (hi !== null && hi !== undefined && hi > r.normal_max) parts.push(`>${num(hi, hi % 1 ? 1 : 0)}`);
+  /* Un límite se pinta si existe de verdad: no coincide con el límite físico de validación (así se guarda
+     "sin umbral en esa dirección") y, el amarillo, no coincide con el rojo (no hay zona amarilla).
+     En las reglas calibradas con el dataset el rango normal es igual al amarillo, por eso <= y >=. */
+  const yellowIsRed = (v, red) => kind === "Y" && v === red;
+  if (lo !== null && lo !== undefined && lo > (rule.min_valid_value ?? -Infinity) && lo <= r.normal_min && !yellowIsRed(lo, r.warning_min)) parts.push(`<${num(lo, lo % 1 ? 1 : 0)}`);
+  if (hi !== null && hi !== undefined && hi < (rule.max_valid_value ?? Infinity) && hi >= r.normal_max && !yellowIsRed(hi, r.warning_max)) parts.push(`>${num(hi, hi % 1 ? 1 : 0)}`);
   return parts.length ? parts.join(" ") : "—";
 }
 function sparkPoints(values, w = 132, h = 34) {

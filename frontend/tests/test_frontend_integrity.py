@@ -482,6 +482,64 @@ def test_branding_is_semsa_and_status_bar_shows_telecreation_mission():
     assert not hits, f"Restos de la marca anterior: {hits}"
 
 
+def test_alert_recommendations_and_rule_sources_have_english_translation():
+    """Motor de alertas calibrado con el dataset: cada recomendación del catálogo (paso del indicador,
+    paso del nivel y seguimiento), los textos de reserva, las instrucciones de la versión de regla y la
+    fuente de cada umbral tienen traducción al inglés; el bloque de dos pasos y los motivos nuevos tienen
+    su patrón. Los límites amarillo/rojo se pintan también cuando el rango normal coincide con el amarillo."""
+    from backend.app.rules import recommendations as rec
+    from backend.app.rules.calibration import CALIBRATION, CALIBRATION_APPROVED_BY
+
+    runtime_js = (I18N_DIR / "backend-en-runtime.js").read_text(encoding="utf-8")
+    runtime_keys = _en_keys(I18N_DIR / "backend-en-runtime.js")
+    seed_keys = _en_keys(I18N_DIR / "backend-en-seed.js")
+
+    texts = rec.all_texts()
+    alert_texts = texts["now"] | texts["followup"] | texts["level"] | {rec.FALLBACK_IMMEDIATE, rec.FALLBACK_FOLLOWUP}
+    assert len(texts["now"]) >= 20 and len(texts["followup"]) >= 20 and len(texts["level"]) == 3
+    missing = sorted({_norm(t) for t in alert_texts} - runtime_keys)
+    assert not missing, f"backend-en-runtime.js is missing English translations for: {missing}"
+
+    rule_texts = {
+        rec.RULE_IMMEDIATE_INSTRUCTIONS, rec.RULE_FOLLOWUP_INSTRUCTIONS, rec.RULE_ESCALATION_CONDITIONS,
+        CALIBRATION_APPROVED_BY, *(cal.source for cal in CALIBRATION.values()),
+    }
+    missing_rule = sorted({_norm(t) for t in rule_texts} - seed_keys)
+    assert not missing_rule, f"backend-en-seed.js is missing English translations for: {missing_rule}"
+
+    # Acción inmediata = "1. <paso>\n2. Nivel ...": se traduce con un patrón que traduce cada paso
+    assert r"(2\. Nivel (?:de observación|de seguimiento|crítico): .+)$/" in runtime_js
+    for state, step in rec.LEVEL_STEP.items():
+        assert re.match(r"^2\. Nivel (de observación|de seguimiento|crítico): .+$", step), state
+    # Motivos nuevos del motor (rules/evaluation.py y rules/engine.py)
+    for fragment in (
+        "sin línea base personal válida, se aplica solo el umbral absoluto",
+        "además se aleja de la línea base personal",
+        "es habitual para esta persona",
+        "desvío fuerte frente a la línea base personal",
+        "desvío frente a la línea base personal confirmado en dos lecturas seguidas",
+        "desvío aislado frente a la línea base personal",
+        "Se evalúa la media de las últimas",
+        "Noche aislada de",
+        "Aún hay menos de",
+        "Dosis acumulada registrada de",
+        "Última lectura en nivel",
+    ):
+        assert fragment in runtime_js, f"backend-en-runtime.js needs a pattern for: {fragment}"
+    evaluation_src = (PROJECT_ROOT / "backend" / "app" / "rules" / "evaluation.py").read_text(encoding="utf-8")
+    engine_src = (PROJECT_ROOT / "backend" / "app" / "rules" / "engine.py").read_text(encoding="utf-8")
+    for fragment in ("sin línea base personal válida", "es habitual para esta persona", "Noche aislada de",
+                     "Dosis acumulada registrada de"):
+        assert fragment in evaluation_src
+    assert "Última lectura en nivel" in engine_src
+
+    # Límites: en las reglas calibradas normal == amarillo, así que la comparación incluye la igualdad
+    console_js = (FRONTEND_ROOT / "src" / "console" / "console.js").read_text(encoding="utf-8")
+    trends_js = (FRONTEND_ROOT / "src" / "console" / "views" / "logbook-trends.js").read_text(encoding="utf-8")
+    assert "lo <= r.normal_min" in console_js and "hi >= r.normal_max" in console_js
+    assert "Number(v) <= nLo" in trends_js and "Number(v) >= nHi" in trends_js
+
+
 def test_predictions_view_wired_and_handles_all_states():
     """Issue #28: pestaña Predicciones (solo astronautas), gráfica propia en SVG y estados del modelo."""
     index_html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")

@@ -214,6 +214,10 @@ function parseNum(raw) {
 }
 
 function rangeText(lo, hi, ind) {
+  /* Un extremo igual al límite físico de validación significa "sin umbral en esa dirección"
+     (así lo guardan las reglas calibradas con el dataset): se muestra solo el otro extremo. */
+  if (!isNil(lo) && ind && !isNil(ind.min_valid_value) && lo <= ind.min_valid_value) lo = null;
+  if (!isNil(hi) && ind && !isNil(ind.max_valid_value) && hi >= ind.max_valid_value) hi = null;
   if (isNil(lo) && isNil(hi)) return "—";
   if (isNil(hi)) return `≥ ${fmtV(lo, ind)}`;
   if (isNil(lo)) return `≤ ${fmtV(hi, ind)}`;

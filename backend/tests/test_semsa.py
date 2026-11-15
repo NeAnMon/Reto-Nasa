@@ -174,6 +174,9 @@ def test_03_health_validation_rules_and_alerts(client: TestClient):
     - Out-of-bounds values are flagged as INVALID.
     - Critical values trigger immediate CRITICAL alerts with rule & version traceability.
     - Alert acknowledgement and follow-up persist.
+
+    Umbrales calibrados con el dataset (versión de regla 2.0-DATASET): SpO2 < 95 % es zona amarilla y
+    < 92 % zona roja (antes < 93 % / < 90 %). Una sola alerta abierta por indicador, con recomendación.
     """
     elena = login_as(client, settings.DEMO_ASTRONAUT1_EMAIL, settings.DEMO_ASTRONAUT1_PASSWORD)
     leader = login_as(client, settings.DEMO_LEADER_EMAIL, settings.DEMO_LEADER_PASSWORD)
@@ -211,6 +214,44 @@ def test_03_health_validation_rules_and_alerts(client: TestClient):
     assert crit_data["measurement"]["calculated_state"] == "CRITICAL"
     assert crit_data["alert_generated"] is not None
     alert_id = crit_data["alert_generated"]["id"]
+    assert crit_data["alert_generated"]["priority"] == "CRITICAL"
+    assert crit_data["alert_generated"]["is_new"] is True
+    # Recomendación concreta para esta alerta (qué hacer ahora y cómo mejorar), nunca vacía
+    assert "médico de vuelo" in crit_data["alert_generated"]["immediate_action"]
+    assert "Fuente:" in crit_data["alert_generated"]["followup_recommendation"]
+    assert crit_data["recommended_next_step"] == crit_data["alert_generated"]["immediate_action"]
+
+    alert_detail = client.get(f"/api/v1/alerts/{alert_id}", headers=elena["headers"]).json()["alert"]
+    assert alert_detail["operational_state"] == "CRITICAL" and alert_detail["status"] == "ESCALATED"
+    # Trazabilidad: regla, versión calibrada con el dataset y nota de que no es un diagnóstico
+    assert alert_detail["rule_code"] == "RULE_SPO2_DEMO" and alert_detail["rule_version_label"] == "2.0-DATASET"
+    assert "RULE_SPO2_DEMO v2.0-DATASET" in alert_detail["explanation"]
+    assert "no constituye un diagnóstico médico" in alert_detail["explanation"]
+
+    # 2b. El rojo del dataset empieza en 91 % (antes 89 %): 91 % ya es CRITICAL y 92 % es WARNING.
+    #     Las dos lecturas actualizan la alerta abierta en vez de crear otra.
+    for value, expected_state in ((91.0, "CRITICAL"), (92.0, "WARNING")):
+        again = client.post(
+            "/api/v1/health/measurements",
+            headers=elena["headers"],
+            json={
+                "indicator_code": "SPO2",
+                "value": value,
+                "source_code": "DEMO_SIMULATION",
+                "data_quality": "SYNTHETIC_DEMO",
+                "is_simulated": True,
+            },
+        ).json()
+        assert again["measurement"]["calculated_state"] == expected_state
+        assert again["alert_generated"]["id"] == alert_id and again["alert_generated"]["is_new"] is False
+    open_spo2 = [
+        a for a in client.get(
+            f"/api/v1/alerts?astronaut_id={elena['user']['id']}", headers=elena["headers"]
+        ).json()["alerts"]
+        if a["indicator_code"] == "SPO2" and a["rule_code"] == "RULE_SPO2_DEMO" and a["status"] != "RESOLVED"
+    ]
+    assert [a["id"] for a in open_spo2] == [alert_id]
+    assert open_spo2[0]["operational_state"] == "CRITICAL" and open_spo2[0]["value_recorded"] == "92"
 
     # 3. Acknowledge & follow up alert
     ack_res = client.post(
