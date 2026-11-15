@@ -480,3 +480,56 @@ def test_branding_is_semsa_and_status_bar_shows_telecreation_mission():
             text = re.sub(r'"astrovital_(session_token|csrf_token|offline_queue)"', "", text)
         hits += [f"{path.relative_to(FRONTEND_ROOT)}: {word}" for word in ("AstroVital", "astrovital", "ARTEMIS-IV") if word in text]
     assert not hits, f"Restos de la marca anterior: {hits}"
+
+
+def test_predictions_view_wired_and_handles_all_states():
+    """Issue #28: pestaña Predicciones (solo astronautas), gráfica propia en SVG y estados del modelo."""
+    index_html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+    app_js = (FRONTEND_ROOT / "src" / "app" / "app.js").read_text(encoding="utf-8")
+    api_js = (FRONTEND_ROOT / "src" / "services" / "api.js").read_text(encoding="utf-8")
+    i18n_src = (FRONTEND_ROOT / "src" / "i18n" / "i18n.js").read_text(encoding="utf-8")
+    views_dir = FRONTEND_ROOT / "src" / "console" / "views"
+    view_js = (views_dir / "predictions.js").read_text(encoding="utf-8")
+    chart_js = (views_dir / "prediction-chart.js").read_text(encoding="utf-8")
+
+    # Módulos, hojas e importmap versionados
+    for name in ("predictions", "prediction-chart"):
+        assert (views_dir / f"{name}.css").is_file()
+        assert f"/src/console/views/{name}.js?v=__BUILD__" in index_html
+        assert f"/src/console/views/{name}.css?v=__BUILD__" in index_html
+
+    # Pestaña antes de Recomendaciones (que sigue siendo la última), textos es/en y ruta en app.js
+    tabs = re.findall(r'class="av-tab"[^>]*data-nav-section="([\w-]+)"', index_html)
+    assert "predictions" in tabs and tabs[-1] == "recommendations"
+    assert i18n_src.count('"tab.predictions":') == 2, "tab.predictions must exist in es and en"
+    assert 'sectionId === "predictions"' in app_js
+    assert "renderPredictions(container, appState" in app_js
+    # El endpoint responde 403 a quien no es astronauta: la pestaña se oculta por rol
+    assert 'sec === "predictions" && role !== "ASTRONAUT"' in app_js
+
+    # Cliente de la API
+    assert "getIndicatorPrediction(" in api_js
+    assert "/predictions/indicators/" in api_js
+    for param in ("mission_id", "horizon_days", "include_simulated"):
+        assert param in api_js
+
+    # Vista: export, DICT es/en con las mismas claves, estados del servicio y aviso no diagnóstico
+    assert "export async function renderPredictions" in view_js
+    assert view_js.count("const DICT = {") == 1
+    es_block, en_block = _dict_blocks(view_js)
+    for indent in (4, 6):
+        assert _keys(es_block, indent) == _keys(en_block, indent), f"predictions.js DICT es/en differ at indent {indent}"
+    assert "tr(DICT)" in view_js
+    for state in ("ok", "insufficient_data", "model_not_reliable"):
+        assert state in view_js, f"predictions.js must handle status {state}"
+    assert 'p.status === "ok"' in view_js and '"model_not_reliable"' in view_js
+    for code in ("403", "404", "422", "503"):
+        assert code in view_js, f"predictions.js must map HTTP {code}"
+    assert "getAnalyticsTimeseries" in view_js  # historial y baseline (la predicción no los trae)
+    assert "disclaimer" in view_js
+
+    # Gráfica: módulo propio, sin librerías externas
+    assert "export function renderPredictionChart" in chart_js
+    assert 'from "./prediction-chart.js"' in view_js
+    assert not re.search(r'["/]chart(\.umd)?(\.min)?\.js', index_html, re.I), "no external Chart.js"
+    assert "new Chart(" not in view_js

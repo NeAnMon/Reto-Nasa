@@ -418,6 +418,17 @@ export const apiService = {
     return this.request(`/analytics/phase-comparison?${params.toString()}`);
   },
 
+  /* Predicción fisiológica (OLS + MAE + puntaje Z) de la persona astronauta autenticada (issue #28).
+   * El backend deduce astronaut_id de la sesión; solo responde al rol ASTRONAUT con asignación activa. */
+  getIndicatorPrediction(indicatorCode, { missionId, horizonDays = 7, includeSimulated = false } = {}) {
+    const params = new URLSearchParams({
+      mission_id: String(missionId),
+      horizon_days: String(horizonDays),
+      include_simulated: includeSimulated ? "true" : "false",
+    });
+    return this.request(`/predictions/indicators/${encodeURIComponent(indicatorCode)}?${params.toString()}`);
+  },
+
   async downloadReport(astronautId, missionId, format, justification) {
     const blob = await this.request("/reports/export", {
       method: "POST",
