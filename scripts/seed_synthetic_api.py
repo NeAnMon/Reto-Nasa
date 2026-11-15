@@ -118,13 +118,19 @@ ENV_PARAMETERS: Tuple[Tuple[str, str, str, float, float, int], ...] = (
     ("CABIN_TEMP", "Temperatura Ambiental de Cabina", "°C", 21.5, 0.6, 1),
     ("HUMIDITY", "Humedad Relativa", "%", 45.0, 3.0, 0),
     ("CABIN_PRESSURE", "Presión Total de Hábitat", "kPa", 101.3, 0.4, 1),
-    ("CO2_LEVEL", "Concentración de CO₂", "mmHg", 2.6, 0.3, 1),
+    # Media dentro del rango normal del motor ambiental (≤ 2,5 mmHg) con margen: el ruido no genera alertas
+    ("CO2_LEVEL", "Concentración de CO₂", "mmHg", 2.0, 0.1, 1),
     ("PPO2", "Presión Parcial de Oxígeno (ppO₂)", "kPa", 21.0, 0.3, 1),
     ("RADIATION_DOSE", "Tasa de Radiación Ambiental", "mSv/día", 0.40, 0.05, 2),
     ("AIR_QUALITY", "Índice de Calidad del Aire (VOCs)", "ICA", 94.0, 2.0, 0),
 )
 # La exposición en órbita lunar es algo mayor (sin la protección del hábitat): ficticio.
-ENV_PHASE_SHIFT = {"LUNAR_ORBIT": {"RADIATION_DOSE": 0.15, "CO2_LEVEL": 0.3}}
+ENV_PHASE_SHIFT = {"LUNAR_ORBIT": {"RADIATION_DOSE": 0.15, "CO2_LEVEL": 0.2}}
+# Anomalía ambiental INTENCIONAL (ficticia): en la fase de tránsito el depurador de CO₂ del módulo cislunar
+# rinde menos y el CO₂ queda en 3,1 mmHg, fuera del rango normal (≤ 2,5) pero dentro del de observación
+# (≤ 4,0): el motor ENVIRONMENT abre una alerta MONITOR (prioridad LOW) para cada astronauta de la misión.
+# Es la única alerta ambiental esperada; el resto de parámetros se generan dentro de su rango normal.
+ENV_ANOMALIES: Dict[Tuple[str, str], float] = {("LUNAR_ORBIT", "CO2_LEVEL"): 3.1}
 
 
 # --------------------------------------------------------------------------------------------------
@@ -150,6 +156,9 @@ class Config:
     confirm_reset: bool = False
     allow_remote: bool = False
     verify: bool = True
+    # True si la contraseña de los astronautas sintéticos se dio explícitamente (SEMSA_SYNTH_PASSWORD o en la
+    # Config) y no sale de la cuenta demo por defecto. Obligatorio con --allow-remote.
+    synth_password_explicit: bool = False
 
 
 ALL_MODULES = ("health", "environment", "wellness", "gamification")
@@ -179,6 +188,8 @@ def resolve_credentials(cfg: Config) -> Config:
         "SEMSA_ADMIN_PASSWORD", "DEMO_ADMIN_PASSWORD", settings_attr="DEMO_ADMIN_PASSWORD")
     cfg.leader_email = cfg.leader_email or _env_or_settings(
         "SEMSA_LEADER_EMAIL", "DEMO_LEADER_EMAIL", settings_attr="DEMO_LEADER_EMAIL")
+    cfg.synth_password_explicit = cfg.synth_password_explicit or bool(
+        cfg.astronaut_password or os.getenv("SEMSA_SYNTH_PASSWORD"))
     cfg.astronaut_password = cfg.astronaut_password or _env_or_settings(
         "SEMSA_SYNTH_PASSWORD", "DEMO_ASTRONAUT1_PASSWORD", settings_attr="DEMO_ASTRONAUT1_PASSWORD")
     missing = [n for n, v in (("SEMSA_ADMIN_EMAIL", cfg.admin_email), ("SEMSA_ADMIN_PASSWORD", cfg.admin_password),
@@ -306,6 +317,8 @@ class Stats:
     errors: List[str] = field(default_factory=list)
     states: Counter = field(default_factory=Counter)
     alerts_touched: int = 0
+    env_states: Counter = field(default_factory=Counter)
+    env_alerts: int = 0  # alertas ambientales creadas o actualizadas (una por astronauta de la misión)
 
     def fail(self, kind: str, message: str) -> None:
         self.failed[kind] += 1
@@ -582,6 +595,7 @@ def _load_environment(api: Api, admin: AuthSession, cfg: Config, mission: Dict[s
                 continue
             r = _rng(cfg.seed, cfg.mission_code, "env", phase, code, today.isoformat())
             value = round(mean + ENV_PHASE_SHIFT.get(env, {}).get(code, 0.0) + r.gauss(0.0, sd), decimals)
+            value = ENV_ANOMALIES.get((env, code), value)
             resp = api.call("POST", f"{API}/environment/measurements", admin, json={
                 "mission_id": mission["id"], "environment_code": env, "phase_code": phase,
                 "parameter_code": code, "parameter_name": name, "value": value,
@@ -589,6 +603,9 @@ def _load_environment(api: Api, admin: AuthSession, cfg: Config, mission: Dict[s
             })
             if resp.status_code in (200, 201):
                 stats.created["environment_measurements"] += 1
+                body = resp.json()
+                stats.env_states[body.get("calculated_state") or "NORMAL"] += 1
+                stats.env_alerts += int(body.get("crew_alerts_count", len(body.get("alerts_generated") or [])))
             else:
                 stats.fail("environment_measurements", f"{code}/{phase} -> {resp.status_code} {resp.text[:200]}")
 
@@ -757,9 +774,19 @@ def verify(api: Api, admin: AuthSession, cfg: Config, mission: Dict[str, Any], c
 def run(cfg: Config, client: httpx.Client, session_factory: Optional[Callable[[], Any]] = None,
         now: Optional[datetime] = None) -> Dict[str, Any]:
     """Ejecuta la precarga contra `client` (httpx.Client o TestClient de FastAPI) y devuelve el resumen."""
-    host = urlparse(str(client.base_url)).hostname or ""
-    if host not in LOCAL_HOSTS and not cfg.allow_remote:
-        raise SeedError(f"Host '{host}' no es local: use --allow-remote solo contra entornos de desarrollo/pruebas.")
+    parsed = urlparse(str(client.base_url))
+    host = parsed.hostname or ""
+    if host not in LOCAL_HOSTS:
+        if not cfg.allow_remote:
+            raise SeedError(f"Host '{host}' no es local: use --allow-remote solo contra entornos de desarrollo/pruebas.")
+        # Host remoto: credenciales cifradas en tránsito, contraseña sintética propia y sin acceso directo a la BD
+        if parsed.scheme != "https":
+            raise SeedError("--allow-remote exige una URL https (las credenciales no viajan en claro).")
+        if not cfg.synth_password_explicit:
+            raise SeedError("--allow-remote exige definir SEMSA_SYNTH_PASSWORD explícitamente "
+                            "(no se reutiliza la contraseña demo).")
+        if cfg.baselines_db:
+            raise SeedError("--baselines-db no se permite con --allow-remote: escribe directamente en la BD local.")
     if cfg.days < 1 or cfg.astronauts < 1:
         raise SeedError("--days y --astronauts deben ser >= 1.")
     unknown_modules = set(cfg.modules) - set(ALL_MODULES)
@@ -830,6 +857,8 @@ def run(cfg: Config, client: httpx.Client, session_factory: Optional[Callable[[]
         "errors": stats.errors,
         "measurement_states_created": dict(stats.states),
         "measurements_with_alert": stats.alerts_touched,
+        "environment_states_created": dict(stats.env_states),
+        "environment_alerts": stats.env_alerts,
         "reset": reset_stats,
     }
     if cfg.verify:

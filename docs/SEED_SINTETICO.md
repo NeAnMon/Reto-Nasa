@@ -34,7 +34,8 @@ comparación de fases, alertas, entorno y bienestar con datos suficientes.
 Docker: `docker compose exec <servicio> python scripts/seed_synthetic_api.py --baselines-db`.
 
 Al terminar imprime un resumen JSON: entidades creadas/omitidas/fallidas, estados calculados por el backend,
-mediciones que generaron alerta y una **verificación** (días por indicador, serie temporal, comparación de
+mediciones que generaron alerta, estados ambientales (`environment_states_created`) y alertas ambientales
+creadas o actualizadas (`environment_alerts`, una por astronauta de la misión) y una **verificación** (días por indicador, serie temporal, comparación de
 fases, resumen de salud, predicciones por astronauta e indicador, alertas, entorno y bienestar).
 Código de salida: `0` todo correcto, `1` hubo fallos o alguna verificación no se cumplió, `2` error de
 configuración/conexión.
@@ -63,9 +64,9 @@ Si no hay variables y el paquete `backend` es importable, se usan las cuentas de
 | `--crew-prefix` | `SEMSA_SEED_CREW_PREFIX` | `SYN24` | Prefijo de códigos y correos (`syn24.astro1@semsa.demo`) |
 | `--indicators` | `SEMSA_SEED_INDICATORS` | los 10 del issue | Lista separada por comas |
 | `--modules` | `SEMSA_SEED_MODULES` | `health,environment,wellness,gamification` | Módulos habilitados |
-| `--baselines-db` | — | no | Crea líneas base con SQLAlchemy (no existe endpoint) |
+| `--baselines-db` | — | no | Crea líneas base con SQLAlchemy (no existe endpoint). Prohibida con `--allow-remote` |
 | `--reset --confirm-reset` | — | no | Llama a `POST /simulator/reset` antes de cargar (ver abajo) |
-| `--allow-remote` | — | no | Permite un host no local (solo desarrollo/pruebas, **nunca producción**) |
+| `--allow-remote` | — | no | Permite un host no local (solo desarrollo/pruebas, **nunca producción**). Exige URL `https`, `SEMSA_SYNTH_PASSWORD` explícita (no se reutiliza la contraseña demo) y no admite `--baselines-db` |
 | `--no-verify` | — | no | Omite la verificación posterior |
 
 ## Qué genera
@@ -98,7 +99,12 @@ En la prueba de integración (3 astronautas, 30 días) salen predicciones `ok`, 
 el motor de alertas, así que con otras opciones el reparto puede variar (la verificación lo informa).
 
 **Entorno.** Una instantánea diaria por fase de `CABIN_TEMP`, `HUMIDITY`, `CABIN_PRESSURE`, `CO2_LEVEL`,
-`PPO2`, `RADIATION_DOSE` y `AIR_QUALITY` (`POST /environment/measurements`).
+`PPO2`, `RADIATION_DOSE` y `AIR_QUALITY` (`POST /environment/measurements`). Las medias están dentro del
+rango normal del motor ambiental con margen (CO₂ 2,0 ± 0,1 mmHg, +0,2 en órbita; normal ≤ 2,5), así que el
+ruido no genera alertas. La única anomalía ambiental es **intencional** y está fijada en el script
+(`ENV_ANOMALIES`): en la fase de tránsito (`LUNAR_ORBIT`) el CO₂ queda en 3,1 mmHg (depurador del módulo
+cislunar degradado, ficticio), fuera del rango normal pero dentro del de observación, y el motor abre una
+alerta `MONITOR` / `LOW` por astronauta de la misión (`environment_alerts` en el resumen).
 
 **Bienestar y gamificación** (con la sesión de cada astronauta): una evaluación al día
 (`POST /wellness/assessments`, puntuaciones ficticias de ánimo, estrés, sueño, fatiga, concentración y

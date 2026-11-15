@@ -204,3 +204,38 @@ def test_refuses_non_local_host_without_flag():
     with httpx.Client(base_url="https://semsa.example.org") as remote:
         with pytest.raises(seeder.SeedError, match="allow-remote"):
             seeder.run(_config(), remote)
+
+
+def test_remote_host_requires_https_explicit_password_and_no_db_access():
+    remote_kwargs = dict(allow_remote=True, baselines_db=False, synth_password_explicit=True)
+    with httpx.Client(base_url="http://semsa.example.org") as plain:
+        with pytest.raises(seeder.SeedError, match="https"):
+            seeder.run(_config(**remote_kwargs), plain)
+    with httpx.Client(base_url="https://semsa.example.org") as remote:
+        with pytest.raises(seeder.SeedError, match="SEMSA_SYNTH_PASSWORD"):
+            seeder.run(_config(**{**remote_kwargs, "synth_password_explicit": False}), remote)
+        with pytest.raises(seeder.SeedError, match="baselines-db"):
+            seeder.run(_config(**{**remote_kwargs, "baselines_db": True}), remote)
+
+
+def test_synthetic_password_is_explicit_only_from_env_or_config(monkeypatch):
+    monkeypatch.delenv("SEMSA_SYNTH_PASSWORD", raising=False)
+    fallback = seeder.resolve_credentials(seeder.Config())
+    assert fallback.synth_password_explicit is False  # contraseña demo por defecto
+    monkeypatch.setenv("SEMSA_SYNTH_PASSWORD", "una-clave-propia-123")
+    explicit = seeder.resolve_credentials(seeder.Config())
+    assert explicit.synth_password_explicit is True and explicit.astronaut_password == "una-clave-propia-123"
+
+
+def test_environment_noise_stays_in_range_and_only_the_documented_anomaly_alerts(first_run):
+    from backend.app.rules.environment_alerts import ENVIRONMENT_LIMITS
+
+    co2 = next(p for p in seeder.ENV_PARAMETERS if p[0] == "CO2_LEVEL")
+    worst_shift = max(s.get("CO2_LEVEL", 0.0) for s in seeder.ENV_PHASE_SHIFT.values())
+    # media + desplazamiento + 3 DE sigue dentro del rango normal del motor ambiental
+    assert co2[3] + worst_shift + 3 * co2[4] <= ENVIRONMENT_LIMITS["CO2_LEVEL"].thresholds.normal_max
+    # La única alerta ambiental es la anomalía intencional (CO₂ en tránsito): una por astronauta sintético
+    assert seeder.ENV_ANOMALIES == {("LUNAR_ORBIT", "CO2_LEVEL"): 3.1}
+    n_params = len(seeder.ENV_PARAMETERS) * len(seeder.PHASES)
+    assert first_run["environment_states_created"] == {"NORMAL": n_params - 1, "MONITOR": 1}
+    assert first_run["environment_alerts"] == 3
