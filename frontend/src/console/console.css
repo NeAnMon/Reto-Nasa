@@ -114,10 +114,26 @@ body[data-theme="daylight-clean"] .av-console {
 
 /* Layout */
 .av-grid { display: flex; flex-wrap: wrap; gap: 12px; padding: 12px; align-items: flex-start; }
+/* Resumen: las tres columnas llegan al mismo borde inferior; "Signos y registros" ocupa lo que sobra (issue #3) */
+.av-grid-sum { align-items: stretch; }
+.av-grid-sum > .av-col-b > .av-table-panel { flex: 1 1 auto; }
 .av-col-a { flex: 1 1 290px; max-width: 330px; min-width: 0; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
 .av-col-b { flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.av-grid-sum > .av-col-b { container-type: inline-size; container-name: av-col-b; }
 .av-col-c { flex: 1 1 320px; max-width: 400px; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
 .av-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; }
+/* Prioridad 1 del Resumen: grilla 3×2 (5 tarjetas + alertas C&W). Las celdas de una fila se
+ * estiran a la misma altura (align-items: stretch) y el pie se empuja al fondo de cada tarjeta. */
+.av-cards.av-cards-3x2 { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: stretch; }
+.av-cards-3x2 > .av-card > .av-foot { margin-top: auto; }
+@container av-col-b (max-width: 640px) { .av-cards.av-cards-3x2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container av-col-b (max-width: 400px) { .av-cards.av-cards-3x2 { grid-template-columns: minmax(0, 1fr); } }
+/* Lista de alertas C&W dentro de su tarjeta: scroll propio para no crecer más que las demás. */
+.av-alert-list { list-style: none; margin: 0; padding: 0; max-height: 190px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--av-strong) var(--av-bg); }
+.av-alert-list::-webkit-scrollbar { width: 6px; }
+.av-alert-list::-webkit-scrollbar-track { background: var(--av-bg); }
+.av-alert-list::-webkit-scrollbar-thumb { background: var(--av-strong); }
+.av-alert-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: start; padding: 6px 0; border-top: 1px solid var(--av-row); font-size: 13px; }
 .av-card { padding: 12px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .av-card-C { border-color: var(--av-y); }
 .av-card-W { border-color: var(--av-r); }
@@ -134,6 +150,22 @@ body[data-theme="daylight-clean"] .av-console {
 .av-hscroll::-webkit-scrollbar-track { background: var(--av-bg); border-top: 1px solid var(--av-border); }
 .av-hscroll::-webkit-scrollbar-thumb { background: var(--av-strong); border: 2px solid var(--av-bg); }
 .av-hscroll::-webkit-scrollbar-thumb:hover { background: var(--av-text2); }
+
+/* Resumen, columna derecha: 2 cuadros del mismo alto (tareas de hoy y mensajes sin leer).
+   Solo .av-col-sum: .av-col-c se usa también en otras vistas. */
+.av-col-sum { display: grid; grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 12px; align-self: stretch; }
+.av-sum-box { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.av-sum-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--av-strong) var(--av-bg); }
+.av-sum-scroll::-webkit-scrollbar { width: 10px; }
+.av-sum-scroll::-webkit-scrollbar-track { background: var(--av-bg); border-left: 1px solid var(--av-border); }
+.av-sum-scroll::-webkit-scrollbar-thumb { background: var(--av-strong); border: 2px solid var(--av-bg); }
+.av-sum-scroll::-webkit-scrollbar-thumb:hover { background: var(--av-text2); }
+/* insignia con texto ("3 sin leer"): conserva alto y fuente de .av-badge, solo se ensancha */
+.av-badge.av-pill { width: auto; padding: 0 8px; white-space: nowrap; }
+/* mensajes sin leer: borde amarillo (.av-card-C) + encabezado resaltado; el texto sigue con su color normal */
+.av-msg-box.av-msg-unread .av-panel-head { border-bottom-color: var(--av-y); box-shadow: inset 0 3px 0 var(--av-y); background: rgba(242, 201, 76, .08); }
+body[data-theme="high-contrast"] .av-msg-box.av-msg-unread .av-panel-head { background: transparent; }
+body[data-theme="daylight-clean"] .av-msg-box.av-msg-unread .av-panel-head { background: #fdf3d2; }
 .av-table { width: 100%; border-collapse: collapse; }
 .av-table th { text-align: left; color: var(--av-muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; font-weight: 600; padding: 8px; }
 .av-table td { padding: 0 8px; border-top: 1px solid var(--av-row); height: 44px; }
@@ -157,10 +189,6 @@ body[data-theme="daylight-clean"] .av-console {
 @media (prefers-reduced-motion: reduce) { .av-nom-caret { transition: none; } }
 
 /* Sistemas y figura */
-.av-sys-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--av-border); }
-.av-sys-list li { border-bottom: 1px solid var(--av-row); }
-.av-sys-btn { width: 100%; min-height: 40px; display: flex; align-items: center; gap: 10px; padding: 6px 8px; border: 0; background: transparent; color: var(--av-text); cursor: pointer; text-align: left; font: inherit; }
-.av-sys-btn:hover, .av-sys-btn[aria-pressed="true"] { background: var(--av-hover); }
 .av-figure { position: relative; width: 100%; max-width: 272px; aspect-ratio: 660 / 1440; align-self: center; }
 .av-figure svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; overflow: visible; }
 .av-credits { margin: 0; font-size: 11px; line-height: 1.4; color: var(--av-muted); }
@@ -456,6 +484,9 @@ button.av-pop-row:hover { background: var(--av-hover); }
 @media (max-width: 980px) {
   .av-console { margin: -1rem -1rem 0; }
   .av-col-a, .av-col-c, .av-col-a.av-col-body { max-width: none; }
+  /* Resumen en móvil: cuadros de alto automático, sin filas iguales ni scroll interno */
+  .av-col-sum { grid-template-rows: none; grid-auto-rows: auto; align-self: auto; }
+  .av-sum-scroll { overflow-y: visible; }
   /* en móvil el encabezado no es fijo para no tapar la pantalla; la barra de estado se reparte en filas */
   .av-console.av-chrome { position: static; }
   .av-chrome .av-status { flex-wrap: wrap; }
@@ -468,4 +499,16 @@ button.av-pop-row:hover { background: var(--av-hover); }
   .av-navtools { width: 100%; justify-content: flex-end; flex-wrap: wrap; padding: 0 8px; border-top: 1px solid var(--av-border); }
   .av-crew { flex: 1 1 200px; }
   .av-crew .av-input { max-width: none; flex: 1 1 auto; }
+}
+
+/* Resumen · "Otros sistemas": solo los sistemas sin zona en la figura (issue #3) */
+.av-sys-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-top: 8px; border-top: 1px solid var(--av-border); }
+.av-sys-chips .av-lbl { flex: 1 1 100%; }
+.av-sys-chip { min-height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 6px; border: 1px solid var(--av-border); background: transparent; color: var(--av-text); cursor: pointer; font: inherit; font-size: 13px; }
+.av-sys-chip:hover, .av-sys-chip[aria-pressed="true"] { background: var(--av-hover); border-color: var(--av-strong); }
+.av-sys-chip:focus-visible { outline: 2px solid var(--av-text); outline-offset: 1px; }
+/* Ancho intermedio: la columna derecha baja sola a otra fila; tareas y mensajes se ponen lado a lado
+   a todo el ancho para no dejar un hueco a la derecha (issue #3) */
+@media (min-width: 981px) and (max-width: 1380px) {
+  .av-col-c.av-col-sum { flex: 1 1 100%; max-width: none; grid-template-rows: none; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
