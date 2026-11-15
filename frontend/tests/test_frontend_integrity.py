@@ -115,13 +115,15 @@ def test_frontend_files_exist_and_have_required_sections():
     assert "data-nav-section" not in wellbeing_js.split("*/", 1)[1]
     assert "data-act=" not in wellbeing_js
 
-    # Evaluación cognitiva y Check-in emocional salieron del menú "Más":
-    # se abren desde Bienestar → Hoy, y sus rutas siguen funcionando
-    for sub_id in ["cognitive-center", "emotional-center"]:
+    # Evaluación cognitiva y Check-in emocional salieron del menú "Más" y son pestañas de Bienestar
+    # (issue #26), como Cuestionarios o Respiración; sus rutas antiguas abren Bienestar en esa pestaña
+    for sub_id, tab in [("cognitive-center", "cognitive"), ("emotional-center", "emotional")]:
         assert f'data-nav-section="{sub_id}"' not in index_html, f"{sub_id} should not be a menu item"
-        assert f'sectionId === "{sub_id}"' in app_js, f"Missing handler for {sub_id}"
-        assert f'tool("{sub_id}"' in wellbeing_js, f"Bienestar → Hoy must link to {sub_id}"
-    assert 'data-wb-go="${sec}"' in wellbeing_js
+        assert f'"{sub_id}": "wellbeing-hub"' in app_js, f"{sub_id} must redirect to Bienestar"
+        assert f'"{sub_id}": "{tab}"' in app_js, f"{sub_id} must open the {tab} tab"
+        assert f'"{tab}"' in wellbeing_js.split("const SUBS = ", 1)[1].split(";", 1)[0], f"Missing tab {tab}"
+    assert "renderEmotionalView" in wellbeing_js and "renderCognitiveView" in wellbeing_js
+    assert "toolsHTML" not in wellbeing_js
 
     # El cuestionario de bienestar psicológico volvió a Bienestar, en la pestaña interna
     # "Cuestionarios" (questionnaires.js) junto al chequeo del turno (shift-check.js: estrés, FC,
@@ -135,7 +137,7 @@ def test_frontend_files_exist_and_have_required_sections():
     assert "wellness-center" not in wellbeing_js
     assert 'data-nav-section="wellness-center"' not in index_html
     assert '"wellness-center": "wellbeing-hub"' in app_js
-    assert 'openWellbeingSub("checks")' in app_js
+    assert '"wellness-center": "checks"' in app_js and "openWellbeingSub(WELLBEING_TAB_OF[" in app_js
     assert "export function openWellbeingSub" in wellbeing_js
     measure_js = (views_dir / "measure.js").read_text(encoding="utf-8")
     assert "questionnaire" not in measure_js.lower() and "WELLNESS_QUESTIONNAIRE" not in app_js
