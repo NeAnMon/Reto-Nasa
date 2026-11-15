@@ -659,6 +659,14 @@ body[data-theme="daylight-clean"] .av-env-banner-logo { content: url("../assets/
 .av-more-item:hover { background: var(--av-hover); }
 .av-more-item[aria-current="page"] { border-left-color: var(--av-text); font-weight: 600; background: var(--av-raised); }
 
+/* Enlace al repositorio en GitHub (junto al botón "Más") */
+.av-gh-link {
+  display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
+  min-width: 44px; min-height: 44px; color: var(--av-muted, var(--av-text)); text-decoration: none;
+}
+.av-gh-link:hover { color: var(--av-text); background: var(--av-hover); }
+.av-chrome .av-gh-link:focus-visible { outline: 2px solid var(--av-text); outline-offset: -2px; }
+
 /* Foco visible en el encabezado (cubre también los controles del alto contraste) */
 .av-chrome button:focus-visible, .av-chrome select:focus-visible { outline: 2px solid var(--av-text); outline-offset: -2px; }
 

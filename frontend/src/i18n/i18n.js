@@ -117,6 +117,8 @@ export const STATIC = {
     "more.crew": "Monitoreo de tripulación",
     "more.admin": "Administración",
     "more.settings": "Ajustes y ayuda",
+    "nav.github": "Repositorio en GitHub",
+    "nav.githubAria": "Repositorio en GitHub (abre en una pestaña nueva)",
     "btn.contrast": "Contraste",
     "btn.contrastTitle": "Alternar alto contraste",
     // Modal
@@ -146,6 +148,8 @@ export const STATIC = {
     "more.crew": "Crew monitoring",
     "more.admin": "Administration",
     "more.settings": "Settings & help",
+    "nav.github": "GitHub repository",
+    "nav.githubAria": "GitHub repository (opens in a new tab)",
     "btn.contrast": "Contrast",
     "btn.contrastTitle": "Toggle high contrast",
   },
