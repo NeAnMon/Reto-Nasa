@@ -295,6 +295,24 @@ export const apiService = {
     });
   },
 
+  /* Lecturas del dosímetro activo de tripulación (CAD), por astronauta y misión.
+   * Respuesta: { readings: [...] } en orden cronológico ascendente (las más recientes al final). */
+  getDosimeterReadings(astronautId = null, missionId = null, limit = null) {
+    const params = new URLSearchParams();
+    if (astronautId) params.set("astronaut_id", astronautId);
+    if (missionId) params.set("mission_id", missionId);
+    if (limit) params.set("limit", limit);
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    return this.request(`/radiation/dosimeter-readings${qs}`);
+  },
+
+  createDosimeterReading(payload) {
+    return this.request("/radiation/dosimeter-readings", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
   importMeasurements(payload) {
     return this.request("/health/measurements/import", {
       method: "POST",

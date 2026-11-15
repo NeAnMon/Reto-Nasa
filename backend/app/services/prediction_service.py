@@ -573,14 +573,28 @@ def _band_crossing(ctx: ProjectionContext, lower: float, upper: float) -> dict |
     """Peor estado que alcanza el tramo [lower, upper].
 
     El estado del motor solo empeora al alejarse por cada lado, así que basta evaluar los extremos.
-    Si los dos salen del rango con la misma gravedad por lados distintos, la dirección es "both".
+    Si los dos salen del rango con la misma gravedad por lados distintos, la dirección es "both":
+    no hay un único umbral, así que `sides` trae el de cada lado (`below` / `above`) con su
+    referencia. `reference` solo se informa si los dos lados comparten la misma, y
+    `alert_direction` es PERSONAL si lo que decide en ambos es el desvío frente a la persona.
     """
     low = _crossing(ctx, evaluate_level(ctx, lower))
     high = _crossing(ctx, evaluate_level(ctx, upper))
     if low is None or high is None:
         return high or low
     if _STATE_SEVERITY[low["state"]] == _STATE_SEVERITY[high["state"]] and low["direction"] != high["direction"]:
-        return {"state": high["state"], "direction": "both", "threshold": None, "reference": None, "alert_direction": None}
+        sides = {
+            c["direction"]: {"threshold": c["threshold"], "reference": c["reference"]}
+            for c in (low, high) if c["direction"] in ("below", "above")
+        }
+        return {
+            "state": high["state"],
+            "direction": "both",
+            "threshold": None,
+            "reference": low["reference"] if low["reference"] == high["reference"] else None,
+            "alert_direction": PERSONAL if low["alert_direction"] == high["alert_direction"] == PERSONAL else None,
+            "sides": sides,
+        }
     return high if _STATE_SEVERITY[high["state"]] >= _STATE_SEVERITY[low["state"]] else low
 
 
@@ -605,9 +619,16 @@ def _recommendation_texts(ctx: ProjectionContext, version, target: dict, out_now
     se usan las instrucciones de seguimiento de la versión de regla; y si la regla solo remite a
     la alerta, la entrada genérica del catálogo. La acción inmediata solo se da cuando el último
     valor ya está fuera de rango: ante un cruce previsto lo útil es la pauta para los próximos días.
+
+    Si la banda sale por los dos lados no se presupone dirección: solo se usa la entrada de desvío
+    personal propia del indicador (cuando los dos lados son desvíos frente a la persona), nunca un
+    alias hacia "alto" o "bajo"; en otro caso, la regla o la entrada genérica.
     """
     direction = target.get("alert_direction")
-    rec = get_recommendation(ctx.indicator_code, direction) if direction else None
+    if target.get("direction") == "both":
+        rec = CATALOG.get((ctx.indicator_code, PERSONAL)) if direction == PERSONAL else None
+    else:
+        rec = get_recommendation(ctx.indicator_code, direction) if direction else None
     generic = any(rec is entry for key, entry in CATALOG.items() if key[0] == GENERIC)
     if rec is not None and not generic:
         return {
@@ -698,6 +719,7 @@ def project_thresholds(
         "threshold": target["threshold"] if target else None,
         "reference": target["reference"] if target else None,
         "alert_direction": target["alert_direction"] if target else None,
+        "sides": target.get("sides") if target else None,
         "date": target["date"] if target else None,
         "days_ahead": target["days_ahead"] if target else None,
         "text": None,

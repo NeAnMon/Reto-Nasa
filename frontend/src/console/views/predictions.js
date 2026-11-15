@@ -120,6 +120,8 @@ const DICT = {
     projPersonal: "Tu banda habitual (línea base ± 2 DE): {lo} – {hi} {unit}",
     projPersonalLow: "Desvío personal por debajo de {lo} {unit} (línea base − 2 DE)",
     projRefPersonal: " (límite de tu banda habitual)",
+    projRefPersonalBoth: " (límites de tu banda habitual)",
+    projMedianNote: "El estado se calcula con la mediana del día: una lectura aislada puede generar una alerta de otro nivel.",
     projState: {
       NORMAL: "Normal",
       MONITOR: "Vigilar",
@@ -129,7 +131,8 @@ const DICT = {
     projDir: {
       above: "por encima de {thr} {unit}",
       below: "por debajo de {thr} {unit}",
-      both: "a ambos lados del rango normal",
+      both: "tanto por arriba como por abajo",
+      bothThr: "por debajo de {lo} o por encima de {hi} {unit}",
     },
     projExpected: "Cruce previsto: el valor esperado pasaría a «{state}» el {date} (en {days}){detail}.",
     projPossible: "Cruce posible: la banda del 80 % alcanza «{state}» el {date} (en {days}){detail}.",
@@ -169,6 +172,8 @@ const DICT = {
       band80: "Banda de predicción 80 %",
       band95: "Banda de predicción 95 %",
       baseline: "Línea base individual",
+      normalRange: "Rango normal",
+      personalBand: "Tu banda habitual",
       outOfRange: "Fuera del rango válido",
       aria: "Gráfica de {name}: {n} días de histórico y {h} días de pronóstico",
     },
@@ -264,6 +269,8 @@ const DICT = {
     projPersonal: "Your usual band (baseline ± 2 SD): {lo} – {hi} {unit}",
     projPersonalLow: "Personal deviation below {lo} {unit} (baseline − 2 SD)",
     projRefPersonal: " (edge of your usual band)",
+    projRefPersonalBoth: " (edges of your usual band)",
+    projMedianNote: "The state is computed from the daily median: a single reading can raise an alert at a different level.",
     projState: {
       NORMAL: "Nominal",
       MONITOR: "Advisory",
@@ -273,7 +280,8 @@ const DICT = {
     projDir: {
       above: "above {thr} {unit}",
       below: "below {thr} {unit}",
-      both: "on both sides of the normal range",
+      both: "both above and below",
+      bothThr: "below {lo} or above {hi} {unit}",
     },
     projExpected: "Expected crossing: the expected value would move to “{state}” on {date} (in {days}){detail}.",
     projPossible: "Possible crossing: the 80% band reaches “{state}” on {date} (in {days}){detail}.",
@@ -313,6 +321,8 @@ const DICT = {
       band80: "80% prediction band",
       band95: "95% prediction band",
       baseline: "Individual baseline",
+      normalRange: "Normal range",
+      personalBand: "Your usual band",
       outOfRange: "Outside valid range",
       aria: "{name} chart: {n} days of history and {h} days of forecast",
     },
@@ -660,7 +670,17 @@ function stateTone(state) {
 function crossDetail(c, unit) {
   const T = tr(DICT);
   if (!c) return "";
-  if (c.direction === "both") return `, ${T.projDir.both}`;
+  if (c.direction === "both") {
+    // la banda sale por los dos lados: cada uno trae su umbral (rango de la regla o banda personal)
+    const lo = c.sides && typeof c.sides === "object" ? c.sides.below : null;
+    const hi = c.sides && typeof c.sides === "object" ? c.sides.above : null;
+    if (lo && hi && isNum(lo.threshold) && isNum(hi.threshold)) {
+      const personal = lo.reference === "personal_baseline" && hi.reference === "personal_baseline";
+      const txt = fmt(T.projDir.bothThr, { lo: num1(lo.threshold), hi: num1(hi.threshold), unit }).trim();
+      return `, ${txt}${personal ? T.projRefPersonalBoth : ""}`;
+    }
+    return `, ${T.projDir.both}`;
+  }
   if ((c.direction === "above" || c.direction === "below") && isNum(c.threshold)) {
     // el umbral puede ser el del rango de la regla o el de la banda personal (línea base ± Z·DE)
     const ref = c.reference === "personal_baseline" ? T.projRefPersonal : "";
@@ -730,7 +750,8 @@ function projectionHTML(r) {
         <span class="av-pr-badge av-pr-tone-${stateTone(tp.current_state)}">${esc(stateName(tp.current_state))}</span>
         ${range ? `<span class="av-sub">${esc(range)}</span>` : ""}
         ${personal ? `<span class="av-sub">${esc(personal)}</span>` : ""}
-      </div>`
+      </div>
+      <p class="av-sub av-pr-p">${esc(T.projMedianNote)}</p>`
     : "";
   // Acción inmediata: solo llega cuando el último valor ya está fuera de rango
   const nowText = rec && typeof rec.immediate_action === "string" && rec.immediate_action.trim() ? rec.immediate_action : "";
@@ -876,6 +897,8 @@ function mountChart(r, name) {
   }
   const baselineOk = p.baseline_status !== "missing" && p.baseline_status !== "invalid_baseline";
   const nHist = history.filter((h) => h.value !== null).length;
+  const tp = p.threshold_projection;
+  const tpRanges = tp && typeof tp === "object" && tp.ranges && typeof tp.ranges === "object" ? tp.ranges : null;
   try {
     st.chart = renderPredictionChart(host, {
       history,
@@ -883,12 +906,16 @@ function mountChart(r, name) {
       // valor de /analytics/timeseries o, si no se pudo cargar, el que trae la predicción (contrato nuevo)
       baseline: baselineOk && isNum(r.baselineValue) ? r.baselineValue : baselineOk && isNum(p.baseline_value) ? Number(p.baseline_value) : null,
       unit: bt(r.unit || ""),
+      // umbrales del motor de alertas: rango normal de la regla y banda personal (línea base ± 2 DE)
+      ranges: tpRanges ? { normal: tpRanges.normal, personal: tpRanges.personal_yellow } : null,
       labels: {
         history: T.chart.history,
         forecast: T.chart.forecast,
         band80: T.chart.band80,
         band95: T.chart.band95,
         baseline: T.chart.baseline,
+        normalRange: T.chart.normalRange,
+        personalBand: T.chart.personalBand,
         outOfRange: T.chart.outOfRange,
         ariaLabel: fmt(T.chart.aria, { name, n: nHist, h: forecast.length }),
       },

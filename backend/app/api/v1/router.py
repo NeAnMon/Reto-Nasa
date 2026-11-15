@@ -4,7 +4,7 @@ import json
 import math
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import case
@@ -24,6 +24,7 @@ from backend.app.models.models import (
     DailyMission,
     DataQualityEvent,
     DataSource,
+    DosimeterReading,
     EnvironmentalMeasurement,
     EnvironmentProfile,
     FollowUpAction,
@@ -69,6 +70,7 @@ from backend.app.schemas.schemas import (
     AlertFollowUpRequest,
     BulkImportRequest,
     ContextUpdateRequest,
+    DosimeterReadingCreate,
     EnvironmentalMeasurementCreate,
     GamificationCompleteRequest,
     HealthMeasurementCreate,
@@ -256,6 +258,29 @@ def _serialize_user(db: Session, user: User) -> Dict[str, object]:
         "missions": missions_assigned,
         "astronaut_profile": astro_prof,
     }
+
+
+def _measurement_phase_and_environment(db: Session, mission: Mission, ctx: Dict[str, object]) -> Tuple[str, str]:
+    """Fase y entorno con los que se guarda una medición.
+
+    Con contexto operativo confirmado se usa ese contexto. Sin él (ContextResolver devuelve
+    UNKNOWN / UNKNOWN_ENVIRONMENT) se usa la fase vigente del plan de la misión y su entorno: así la
+    lectura continúa la serie de su fase en vez de abrir un segmento "UNKNOWN" aparte, que dejaba el
+    pronóstico de ese indicador en datos insuficientes (misión análoga, que no tiene contexto
+    confirmado). El contexto que se muestra al usuario sigue siendo "no confirmado".
+    """
+    phase, env = ctx.get("phase_code"), ctx.get("environment_code")
+    if ctx.get("determination_source") != "UNCONFIRMED" and phase and env:
+        return str(phase), str(env)
+    current = (
+        db.query(MissionPhase)
+        .filter(MissionPhase.mission_id == mission.id, MissionPhase.is_current.is_(True))
+        .order_by(MissionPhase.sequence_order.desc())
+        .first()
+    )
+    if current is not None:
+        return current.phase_code, current.environment_code
+    return str(phase or mission.current_phase), str(env or "LUNAR_SURFACE")
 
 
 def _resolve_target_astronaut_and_mission(
@@ -1482,6 +1507,7 @@ def create_health_measurement(
         raise HTTPException(status_code=404, detail="Indicador de salud no encontrado.")
 
     ctx = ContextResolver.resolve_active_context(db, mission.id, target_user.id)
+    meas_phase, meas_env = _measurement_phase_and_environment(db, mission, ctx)
     meas_dt = ensure_aware(payload.measured_at) or utcnow()
 
     evaluation = evaluate_measurement(
@@ -1512,8 +1538,8 @@ def create_health_measurement(
         unit=defn.unit,
         measured_at=meas_dt,
         received_at=utcnow(),
-        phase_code=str(ctx.get("phase_code") or mission.current_phase),
-        environment_code=str(ctx.get("environment_code") or "LUNAR_SURFACE"),
+        phase_code=meas_phase,
+        environment_code=meas_env,
         source_code=payload.source_code,
         data_quality=quality,
         calculated_state=state,
@@ -1623,6 +1649,102 @@ def _refresh_prediction_alert(db: Session, m: HealthMeasurement) -> Optional[Dic
     }
 
 
+# ----------------------------------------------------------------------------
+# Dosímetro activo de tripulación (CAD): lecturas manuales por astronauta y misión.
+# Mismo modelo de permisos que /health/measurements: el objetivo se resuelve con
+# _resolve_target_astronaut_and_mission (verify_astronaut_access) y un ASTRONAUT
+# solo puede registrar sus propias lecturas.
+# ----------------------------------------------------------------------------
+
+def _serialize_dosimeter_reading(r: DosimeterReading) -> Dict[str, object]:
+    return {
+        "id": r.id,
+        "astronaut_id": r.astronaut_id,
+        "mission_id": r.mission_id,
+        "device": r.device,
+        "measured_at": ensure_aware(r.measured_at).isoformat(),
+        "dose_mgy": r.dose_mgy,
+        "rate_ugy_h": r.rate_ugy_h,
+        "location": r.location,
+        "notes": r.notes,
+        "recorded_by_user_id": r.recorded_by_user_id,
+        "created_at": ensure_aware(r.created_at).isoformat() if r.created_at else None,
+        "dedup_key": r.dedup_key,
+    }
+
+
+@router.get("/radiation/dosimeter-readings")
+def list_dosimeter_readings(
+    astronaut_id: Optional[int] = None,
+    mission_id: Optional[int] = None,
+    limit: int = Query(default=50, ge=1, le=500),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Últimas `limit` lecturas del astronauta en la misión resuelta, en orden
+    cronológico ASCENDENTE (la más reciente al final), listo para la vista."""
+    target_user, mission = _resolve_target_astronaut_and_mission(db, user, astronaut_id, mission_id)
+    rows = (
+        db.query(DosimeterReading)
+        .filter(
+            DosimeterReading.astronaut_id == target_user.id,
+            DosimeterReading.mission_id == mission.id,
+        )
+        .order_by(DosimeterReading.measured_at.desc(), DosimeterReading.id.desc())
+        .limit(limit)
+        .all()
+    )
+    rows.reverse()
+    return {
+        "astronaut_id": target_user.id,
+        "mission_id": mission.id,
+        "readings": [_serialize_dosimeter_reading(r) for r in rows],
+    }
+
+
+@router.post("/radiation/dosimeter-readings", status_code=status.HTTP_201_CREATED)
+def create_dosimeter_reading(
+    payload: DosimeterReadingCreate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    target_user, mission = _resolve_target_astronaut_and_mission(
+        db, user, payload.astronaut_id, payload.mission_id
+    )
+    if user.role.code == "ASTRONAUT" and target_user.id != user.id:
+        raise HTTPException(status_code=403, detail="Solo puede registrar sus propias lecturas de dosímetro.")
+
+    if payload.dedup_key:
+        existing = (
+            db.query(DosimeterReading)
+            .filter(DosimeterReading.dedup_key == payload.dedup_key)
+            .first()
+        )
+        if existing:
+            return {
+                "duplicate_prevented": True,
+                "reading": _serialize_dosimeter_reading(existing),
+            }
+
+    r = DosimeterReading(
+        astronaut_id=target_user.id,
+        mission_id=mission.id,
+        device=payload.device,
+        measured_at=ensure_aware(payload.measured_at),
+        dose_mgy=payload.dose_mgy,
+        rate_ugy_h=payload.rate_ugy_h,
+        location=payload.location or "",
+        notes=payload.notes,
+        recorded_by_user_id=user.id,
+        created_at=utcnow(),
+        dedup_key=payload.dedup_key,
+    )
+    db.add(r)
+    db.commit()
+    db.refresh(r)
+    return {"duplicate_prevented": False, "reading": _serialize_dosimeter_reading(r)}
+
+
 @router.post("/health/measurements/import")
 def import_health_measurements(
     payload: BulkImportRequest,
@@ -1654,6 +1776,7 @@ def import_health_measurements(
         raise HTTPException(status_code=400, detail=f"Error al procesar archivo importado: {exc}")
 
     ctx = ContextResolver.resolve_active_context(db, mission.id, target_user.id)
+    meas_phase, meas_env = _measurement_phase_and_environment(db, mission, ctx)
     imported_count = 0
     invalid_count = 0
     touched_alert_ids = set()  # alertas creadas o actualizadas (una por indicador)
@@ -1693,8 +1816,8 @@ def import_health_measurements(
             unit=defn.unit,
             measured_at=meas_dt,
             received_at=utcnow(),
-            phase_code=str(ctx.get("phase_code") or mission.current_phase),
-            environment_code=str(ctx.get("environment_code") or "LUNAR_SURFACE"),
+            phase_code=meas_phase,
+            environment_code=meas_env,
             source_code="CSV_JSON_IMPORT",
             data_quality="INVALID" if state == "INVALID" else ("SYNTHETIC_DEMO" if payload.is_simulated else "VALIDATED"),
             calculated_state=state,

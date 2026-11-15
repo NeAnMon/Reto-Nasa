@@ -89,6 +89,41 @@ class HealthMeasurementCreate(BaseModel):
     dedup_key: Optional[str] = Field(default=None, max_length=120)
 
 
+class DosimeterReadingCreate(BaseModel):
+    """Lectura manual del dosímetro activo de tripulación (CAD)."""
+
+    astronaut_id: Optional[int] = None
+    mission_id: Optional[int] = None
+    device: str = Field(..., min_length=1, max_length=32)
+    measured_at: datetime
+    dose_mgy: float = Field(..., ge=0, le=100000)
+    rate_ugy_h: Optional[float] = Field(default=None, ge=0, le=1000000)
+    location: str = Field(default="", max_length=60)
+    notes: Optional[str] = Field(default=None, max_length=140)
+    dedup_key: Optional[str] = Field(default=None, max_length=120)
+
+    @field_validator("device")
+    @classmethod
+    def _device_not_blank(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("El identificador del dosímetro no puede estar vacío.")
+        return v
+
+    @field_validator("location")
+    @classmethod
+    def _strip_location(cls, v: str) -> str:
+        return (v or "").strip()
+
+    @field_validator("notes", "dedup_key")
+    @classmethod
+    def _blank_to_none(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        v = v.strip()
+        return v or None
+
+
 class BulkImportRequest(BaseModel):
     astronaut_id: Optional[int] = None
     mission_id: Optional[int] = None
@@ -477,14 +512,22 @@ class PredictionEmpiricalValidation(BaseModel):
     note: str
 
 
+class CrossingSide(BaseModel):
+    """Umbral de un lado cuando la banda sale del rango por los dos (`direction = both`)."""
+
+    threshold: Optional[float] = None
+    reference: Optional[str] = None  # absolute_range / personal_baseline
+
+
 class ThresholdCrossing(BaseModel):
     date: Optional[str] = None
     days_ahead: Optional[int] = None
     state: str
     direction: Optional[str] = None  # above / below / both
-    threshold: Optional[float] = None
+    threshold: Optional[float] = None  # None si direction = both (ver sides)
     reference: Optional[str] = None  # absolute_range / personal_baseline: de dónde sale el umbral
     alert_direction: Optional[str] = None  # dirección del motor de alertas: HIGH / LOW / PERSONAL
+    sides: Optional[Dict[str, CrossingSide]] = None  # solo con direction = both: {"below": ..., "above": ...}
     basis: str  # expected_value / interval_80
 
 
@@ -511,6 +554,7 @@ class PredictionRecommendation(BaseModel):
     threshold: Optional[float] = None
     reference: Optional[str] = None
     alert_direction: Optional[str] = None
+    sides: Optional[Dict[str, CrossingSide]] = None  # solo con direction = both
     date: Optional[str] = None
     days_ahead: Optional[int] = None
     text: Optional[str] = None  # cómo mejorar el indicador en los próximos días (con su fuente)
