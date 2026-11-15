@@ -128,8 +128,8 @@ export async function renderSettingsView(container, appState, helpers) {
           <div class="av-panel-head"><h2 class="av-h2" id="av-set-lang-h">${T.langTitle}</h2></div>
           <div class="av-mx-pad">
             <div class="av-field">
-              <label for="av-set-lang">${T.langLabel}</label>
-              <select class="av-input" id="av-set-lang" data-av-lang></select>
+              <label id="av-set-lang-lbl">${T.langLabel}</label>
+              <div class="av-lang-switch" id="av-set-lang" role="radiogroup" aria-labelledby="av-set-lang-lbl" data-av-lang></div>
             </div>
             <span class="av-sub">${T.langSub}</span>
           </div>

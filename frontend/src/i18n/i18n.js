@@ -182,24 +182,62 @@ export function applyStaticI18n(root = document) {
 }
 
 /* ---------------------------------------------------------------------------
-   Selector de idioma: cualquier <select data-av-lang> en la página.
+   Selector de idioma: interruptor segmentado ES | EN en cualquier elemento
+   [data-av-lang] de la página (role="radiogroup" con dos botones role="radio").
+   Clic en un lado → ese idioma; flechas / Inicio / Fin mueven y seleccionan;
+   Enter / Espacio activan el botón enfocado. Tabindex móvil: solo el activo es tabulable.
+   El contenedor recibe data-active="es|en" para desplazar el "thumb" (CSS en main.css).
    --------------------------------------------------------------------------- */
 function syncSelectors() {
-  document.querySelectorAll("select[data-av-lang]").forEach((sel) => {
-    if (sel.value !== current) sel.value = current;
+  document.querySelectorAll("[data-av-lang]").forEach((group) => {
+    group.setAttribute("data-active", current);
+    group.querySelectorAll("[data-lang]").forEach((btn) => {
+      const on = btn.getAttribute("data-lang") === current;
+      btn.setAttribute("aria-checked", on ? "true" : "false");
+      btn.tabIndex = on ? 0 : -1;
+    });
   });
 }
 
+function langSwitchKeydown(e) {
+  const btns = [...e.currentTarget.querySelectorAll("[data-lang]")];
+  const i = btns.indexOf(document.activeElement);
+  let next = -1;
+  if (e.key === "ArrowRight" || e.key === "ArrowDown") next = (i + 1) % btns.length;
+  else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = (i - 1 + btns.length) % btns.length;
+  else if (e.key === "Home") next = 0;
+  else if (e.key === "End") next = btns.length - 1;
+  if (next < 0) return;
+  e.preventDefault();
+  const group = e.currentTarget;
+  const code = btns[next].getAttribute("data-lang");
+  setLang(code);
+  // si la vista se volvió a pintar (p. ej. Ajustes), enfocar el interruptor nuevo con el mismo id
+  const live = group.isConnected ? group : (group.id && document.getElementById(group.id));
+  live?.querySelector(`[data-lang="${code}"]`)?.focus();
+}
+
 export function initLangSelectors(root = document) {
-  root.querySelectorAll("select[data-av-lang]").forEach((sel) => {
-    if (!sel.options.length) {
-      sel.innerHTML = LANGS.map((l) => `<option value="${l.code}" lang="${l.code}">${l.short} · ${l.label}</option>`).join("");
+  root.querySelectorAll("[data-av-lang]").forEach((group) => {
+    if (!group.querySelector("[data-lang]")) {
+      group.innerHTML =
+        `<span class="av-lang-thumb" aria-hidden="true"></span>` +
+        LANGS.map(
+          (l) => `<button type="button" role="radio" class="av-lang-opt" data-lang="${l.code}" lang="${l.code}" aria-label="${l.label}" title="${l.label}">${l.short}</button>`
+        ).join("");
     }
-    sel.value = current;
-    if (sel.dataset.avLangBound) return;
-    sel.dataset.avLangBound = "1";
-    sel.addEventListener("change", () => setLang(sel.value));
+    group.classList.add("av-lang-switch");
+    if (!group.hasAttribute("role")) group.setAttribute("role", "radiogroup");
+    if (group.dataset.avLangBound) return;
+    group.dataset.avLangBound = "1";
+    // Enter / Espacio disparan "click" en el <button> enfocado
+    group.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-lang]");
+      if (btn && group.contains(btn)) setLang(btn.getAttribute("data-lang"));
+    });
+    group.addEventListener("keydown", langSwitchKeydown);
   });
+  syncSelectors();
 }
 
 /** Llamar una vez al arrancar (app.js). */

@@ -272,3 +272,58 @@ textarea:focus-visible,
   box-shadow: var(--shadow-soft);
   font-size: 0.85rem;
 }
+
+/* Selector de idioma ES | EN: interruptor segmentado con "thumb" deslizante
+   (marcado generado por initLangSelectors en i18n.js; estilo HUD de la consola).
+   El contenedor .av-lang y su etiqueta siguen en console.css. */
+.av-lang-switch {
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  align-self: flex-start;
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 2px;
+  background: var(--av-panel, #161b22);
+  border: 1px solid var(--av-border, #2a313c);
+  isolation: isolate;
+}
+.av-lang-switch:hover { border-color: var(--av-text, #e6eaf0); }
+.av-lang-thumb {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: calc(50% - 2px);
+  background: var(--av-text, #e6eaf0);
+  transition: transform 160ms ease;
+  z-index: -1;
+  pointer-events: none;
+}
+.av-lang-switch[data-active="en"] .av-lang-thumb { transform: translateX(100%); }
+.av-lang-opt {
+  min-width: 40px;
+  min-height: 38px;
+  padding: 0 10px;
+  margin: 0;
+  background: transparent;
+  border: 0;
+  color: var(--av-text2, #a7b0bd);
+  font: 600 12px/1 "IBM Plex Mono", monospace;
+  letter-spacing: .06em;
+  cursor: pointer;
+  transition: color 160ms ease;
+}
+.av-lang-opt:hover { color: var(--av-text, #e6eaf0); }
+.av-lang-opt[aria-checked="true"] { color: var(--av-bg, #0e1116); cursor: default; }
+.av-lang-opt:focus-visible { outline: 2px solid var(--av-text, #e6eaf0); outline-offset: 2px; }
+@media (max-width: 480px) {
+  .av-lang-opt { min-width: 34px; padding: 0 6px; font-size: 11px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .av-lang-thumb, .av-lang-opt { transition: none; }
+}
+@media (forced-colors: active) {
+  .av-lang-thumb { background: Highlight; }
+  .av-lang-opt[aria-checked="true"] { color: HighlightText; forced-color-adjust: none; }
+}

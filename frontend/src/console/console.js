@@ -143,6 +143,11 @@ const DICT = {
     tableAria: "Tabla de signos, desplazable en horizontal",
     thParam: "Parámetro", thValue: "Valor", thUnit: "Unid.", thState: "Est.", thLimY: "Lím. Y", thLimR: "Lím. R",
     noIndicatorsFilter: "Sin indicadores para este filtro.",
+    allNominal: "Todos los parámetros nominales",
+    nominalShow: "Mostrar {n} parámetros nominales",
+    nominalShowOne: "Mostrar 1 parámetro nominal",
+    nominalHide: "Ocultar {n} parámetros nominales",
+    nominalHideOne: "Ocultar 1 parámetro nominal",
     // mapa corporal
     agoMin: "hace {n} min",
     agoH: "hace {n} h",
@@ -414,6 +419,11 @@ const DICT = {
     tableAria: "Vitals table, scrolls horizontally",
     thParam: "Parameter", thValue: "Value", thUnit: "Unit", thState: "St.", thLimY: "Lim. Y", thLimR: "Lim. R",
     noIndicatorsFilter: "No indicators for this filter.",
+    allNominal: "All parameters nominal",
+    nominalShow: "Show {n} nominal parameters",
+    nominalShowOne: "Show 1 nominal parameter",
+    nominalHide: "Hide {n} nominal parameters",
+    nominalHideOne: "Hide 1 nominal parameter",
     agoMin: "{n} min ago",
     agoH: "{n} h ago",
     agoD: "{n} d ago",
@@ -984,6 +994,13 @@ function renderHeraBar() {
   const env = ENV_BY_KEY[envState.key];
   const alarm = HERA_LEVELS.indexOf(lvl) >= 2;
   const acked = hera.ackedLevel === lvl;
+  // La barra solo se muestra desde precaución (CAUTION, WARNING, EMERGENCY); en el resto queda oculta
+  if (!alarm) {
+    bar.style.display = "none";
+    bar.innerHTML = "";
+    return;
+  }
+  bar.style.display = "";
   bar.className = `av-hera av-hera-${lvl}`;
   bar.setAttribute("role", alarm ? "alert" : "status");
   const T = tt();
@@ -1017,6 +1034,9 @@ onLangChange(() => {
 });
 
 /* ───────────────────────── estado de la consola ───────────────────────── */
+
+/* Tabla de signos: sección de parámetros nominales desplegada (persiste entre repintados y refrescos) */
+let nominalOpen = false;
 
 const consoleState = {
   view: "summary", // summary | indicator | radiation
@@ -1703,7 +1723,7 @@ function summaryHTML(appState, d, data, alerts) {
     .filter((c) => !filterCodes || filterCodes.includes(c.indicator_code))
     .map((c) => ({ c, l: LETTER[c.state] || "M" }))
     .sort((a, b) => RANK[b.l] - RANK[a.l]);
-  const rowHTML = rows.map(({ c, l }) => {
+  const rowOf = ({ c, l }) => {
     const rule = ruleOf(appState, c.indicator_code);
     const alarm = isAlarm(l);
     const valCls = alarm ? `av-val-${l}` : l === "S" ? "av-val-S" : "";
@@ -1716,7 +1736,19 @@ function summaryHTML(appState, d, data, alerts) {
       <td class="av-mono av-sub">${esc(limitsText(rule, "R"))}</td>
       <td class="av-mono" style="font-size:13px;padding-right:12px;color:${l === "S" ? "var(--av-s)" : "var(--av-text2)"}">${c.measured_at ? gmt(toDate(c.measured_at), false) : "—"}${l === "S" && c.age_hours ? ` · ${num(c.age_hours, 0)} h` : ""}</td>
     </tr>`;
-  }).join("");
+  };
+  // Por defecto solo se ven las filas no nominales (cualquier estado con letra: A, C, W, S, M, I);
+  // las nominales (N) van en una sección plegable debajo.
+  const offRows = rows.filter((r) => r.l !== "N");
+  const nomRows = rows.filter((r) => r.l === "N");
+  const nomN = nomRows.length;
+  const nomLabel = nominalOpen
+    ? (nomN === 1 ? T.nominalHideOne : fmt(T.nominalHide, { n: nomN }))
+    : (nomN === 1 ? T.nominalShowOne : fmt(T.nominalShow, { n: nomN }));
+  const rowHTML = !rows.length ? "" : `${offRows.map(rowOf).join("")}${!offRows.length ? `
+    <tr class="av-allnom-row"><td colspan="7"><span class="av-badge av-b-N" aria-hidden="true">–</span> ${esc(T.allNominal)}</td></tr>` : ""}${nomN ? `
+    <tr class="av-nom-toggle-row"><td colspan="7"><button type="button" class="av-nom-toggle" data-act="toggle-nominal" data-focus-id="nom-toggle" aria-expanded="${nominalOpen}" aria-controls="av-nom-rows"><span>${esc(nomLabel)}</span> <span class="av-nom-caret" aria-hidden="true">▾</span></button></td></tr>` : ""}`;
+  const nomBody = nomN ? `<tbody id="av-nom-rows" class="av-nom-rows"${nominalOpen ? "" : " hidden"}>${nomRows.map(rowOf).join("")}</tbody>` : "";
   const table = `
   <section class="av-panel" aria-label="${esc(T.tableTitle)}">
     <div class="av-panel-head">
@@ -1726,7 +1758,7 @@ function summaryHTML(appState, d, data, alerts) {
     <div class="av-hscroll" tabindex="0" role="region" aria-label="${esc(T.tableAria)}">
       <table class="av-table" style="min-width:600px">
         <thead><tr><th scope="col" style="padding-left:12px">${esc(T.thParam)}</th><th scope="col" style="text-align:right">${esc(T.thValue)}</th><th scope="col">${esc(T.thUnit)}</th><th scope="col">${esc(T.thState)}</th><th scope="col">${esc(T.thLimY)}</th><th scope="col">${esc(T.thLimR)}</th><th scope="col" style="padding-right:12px">GMT</th></tr></thead>
-        <tbody>${rowHTML || `<tr><td colspan="7" class="av-sub" style="padding:12px">${esc(T.noIndicatorsFilter)}</td></tr>`}</tbody>
+        <tbody>${rowHTML || `<tr><td colspan="7" class="av-sub" style="padding:12px">${esc(T.noIndicatorsFilter)}</td></tr>`}</tbody>${nomBody}
       </table>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:6px 16px;padding:8px 12px;border-top:1px solid var(--av-border)" class="av-sub">
@@ -2673,6 +2705,11 @@ function bindOnce(container, appState, helpers) {
         focusQuiet(container, container.querySelector(`[data-focus-id="sys-${code}"]`));
       }
       else if (act === "clear-sys") { consoleState.sys = null; consoleState.pop = null; paint(container, st); }
+      else if (act === "toggle-nominal") {
+        nominalOpen = !nominalOpen;
+        paint(container, st);
+        focusQuiet(container, container.querySelector('[data-focus-id="nom-toggle"]'));
+      }
       else if (act === "layer") {
         const k = el.getAttribute("data-layer"); consoleState.layers[k] = !consoleState.layers[k]; paint(container, st);
         focusQuiet(container, container.querySelector(`[data-focus-id="layer-${k}"]`));

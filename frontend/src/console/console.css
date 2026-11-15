@@ -143,6 +143,17 @@ body[data-theme="daylight-clean"] .av-console {
 .av-val-S { color: var(--av-s); }
 .av-link-row { color: var(--av-text); text-decoration: none; display: flex; align-items: center; min-height: 44px; background: none; border: 0; padding: 0; cursor: pointer; font: inherit; text-align: left; }
 .av-link-row:hover { text-decoration: underline; }
+/* Tabla de signos: filas nominales plegables */
+.av-table tr.av-allnom-row td { color: var(--av-text2); font-size: 13px; padding: 0 12px; }
+.av-table tr.av-allnom-row .av-badge { margin-right: 6px; vertical-align: middle; }
+.av-table tr.av-nom-toggle-row td { padding: 0; height: auto; }
+.av-nom-toggle { width: 100%; min-height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 0; background: var(--av-raised); color: var(--av-text2); font-family: inherit; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; text-align: left; cursor: pointer; }
+.av-nom-toggle:hover { background: var(--av-hover); color: var(--av-text); }
+.av-nom-toggle:focus-visible { outline: 2px solid var(--av-s); outline-offset: -2px; }
+.av-nom-caret { display: inline-block; transition: transform .15s ease; }
+.av-nom-toggle[aria-expanded="true"] .av-nom-caret { transform: rotate(180deg); }
+.av-nom-rows[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) { .av-nom-caret { transition: none; } }
 
 /* Sistemas y figura */
 .av-sys-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--av-border); }
@@ -336,7 +347,8 @@ button.av-pop-row:hover { background: var(--av-hover); }
 .av-hera .av-mono { font-weight: 600; }
 .av-hera-ADVISORY { box-shadow: inset 4px 0 0 #a7b0bd; }
 .av-hera-CAUTION { background: #f2c94c; color: #0e1116; border-bottom-color: #f2c94c; }
-.av-hera-WARNING, .av-hera-EMERGENCY { background: #d13438; color: #fff; border-bottom-color: #d13438; }
+.av-hera-WARNING { background: #e8541c; color: #fff; border-bottom-color: #e8541c; }
+.av-hera-EMERGENCY { background: #d13438; color: #fff; border-bottom-color: #d13438; }
 .av-hera-flash { animation: av-flash 1s steps(2, start) infinite; }
 @keyframes av-flash { to { visibility: hidden; } }
 .av-hera .av-btn { min-height: 32px; font-size: 12px; padding: 0 10px; border-color: currentColor; background: transparent; color: inherit; }
@@ -409,8 +421,6 @@ button.av-pop-row:hover { background: var(--av-hover); }
 .av-crew .av-input { min-height: 44px; max-width: 200px; padding: 4px 8px; font: 13px "IBM Plex Sans", system-ui, sans-serif; }
 /* Selector de idioma (ES / EN): compacto, mismo estilo HUD que el selector de tripulante */
 .av-lang { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
-.av-lang .av-input { width: auto; min-height: 44px; max-width: 132px; padding: 4px 6px; font: 600 12px "IBM Plex Mono", monospace; cursor: pointer; }
-.av-lang .av-input option { background: var(--av-panel); color: var(--av-text); }
 @media (max-width: 1440px) {
   /* en pantallas estrechas la etiqueta visible se oculta (queda para lectores de pantalla) */
   .av-lang .av-lbl { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -419,7 +429,6 @@ button.av-pop-row:hover { background: var(--av-hover); }
   /* teléfono: Más + idioma + Contraste + Salir en una sola fila */
   .av-navtools { gap: 4px; }
   .av-navtools > .av-btn { padding: 0 8px; }
-  .av-lang .av-input { padding: 4px 2px; font-size: 11px; }
 }
 
 /* Menú "Más" (disclosure: botón con aria-expanded + lista de botones) */

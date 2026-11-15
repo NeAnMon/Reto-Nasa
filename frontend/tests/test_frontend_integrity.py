@@ -139,6 +139,10 @@ def test_frontend_files_exist_and_have_required_sections():
     assert '"/src/i18n/i18n.js": "/src/i18n/i18n.js?v=__BUILD__"' in index_html
     assert index_html.count("data-av-lang") == 1, "Language selector missing in header"
     assert 'id="av-lang-select"' in index_html
+    # interruptor segmentado ES | EN (radiogroup), ya no un <select>
+    assert '<select id="av-lang-select"' not in index_html
+    assert 'role="radiogroup" aria-labelledby="av-lang-lbl"' in index_html
+    assert 'role="radio"' in i18n_src and "aria-checked" in i18n_src
     assert 'data-i18n="lang.label"' in index_html
     assert 'data-i18n="tab.summary"' in index_html
     assert "initI18n()" in app_js
