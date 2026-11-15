@@ -215,14 +215,10 @@ function chartGeometry(width, allPoints, data, fmt) {
   if (isNum(baseline)) vals.push(Number(baseline));
   let lo = Math.min(...vals);
   let hi = Math.max(...vals);
-  // ...y los umbrales cercanos a los datos (a menos de 0,6 veces su recorrido): uno lejano
-  // (p. ej. el máximo de sueño) aplastaría la serie, así que no se dibuja y queda solo en la leyenda
+  // umbrales cercanos a los datos (a menos de 0,6 veces su recorrido): uno lejano (p. ej. el
+  // máximo de sueño) aplastaría la serie, así que no se dibuja y queda solo en la leyenda
   const reach = ((hi - lo) || Math.abs(hi) * 0.1 || 1) * 0.6;
   const near = thresholdEdges(ranges).map((e) => e.v).filter((v) => v >= lo - reach && v <= hi + reach);
-  if (near.length) {
-    lo = Math.min(lo, ...near);
-    hi = Math.max(hi, ...near);
-  }
   if (hi === lo) {
     const d = Math.abs(hi) * 0.1 || 1;
     lo -= d;
@@ -231,6 +227,11 @@ function chartGeometry(width, allPoints, data, fmt) {
   const span = hi - lo;
   lo -= span * 0.08;
   hi += span * 0.08;
+  // ...que amplían el eje sin margen extra: el margen es para que los datos no toquen el borde
+  if (near.length) {
+    lo = Math.min(lo, ...near);
+    hi = Math.max(hi, ...near);
+  }
   const step = niceStep(hi - lo, W < 520 ? 4 : 5);
   lo = Math.floor(lo / step) * step;
   hi = Math.ceil(hi / step) * step;
