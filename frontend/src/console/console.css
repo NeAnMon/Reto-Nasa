@@ -353,7 +353,9 @@ body[data-theme="daylight-clean"] .av-console { --av-grid: rgba(20, 26, 34, .07)
   font: 600 10.5px/1 "IBM Plex Mono", monospace; letter-spacing: .06em; text-transform: uppercase;
 }
 .av-side-L .av-side-lbl { flex-direction: row-reverse; }
-.av-side-lbl .av-badge { min-width: 18px; height: 18px; padding: 0 4px; font-size: 11px; }
+/* la etiqueta nunca se parte: si no cabe junto a la insignia, se recorta con "…" */
+.av-side-lbl > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.av-side-lbl .av-badge { flex: none; min-width: 18px; height: 18px; padding: 0 4px; font-size: 11px; }
 /* número y unidad nunca se parten; si no caben juntos, la unidad baja a su propia línea */
 .av-side-val {
   display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 4px; max-width: 100%;
