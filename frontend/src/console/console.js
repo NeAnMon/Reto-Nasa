@@ -77,6 +77,7 @@ const DICT = {
     mission: "Misión",
     crewMember: "Tripulante",
     groundLink: "Enlace con Tierra",
+    envBannerAlt: "Entorno {label}: {scene}",
     delay: "· retardo",
     countsAria: "Contadores de alertas",
     unacked: "Sin reconocer",
@@ -361,6 +362,7 @@ const DICT = {
     mission: "Mission",
     crewMember: "Crew member",
     groundLink: "Ground link",
+    envBannerAlt: "{label} environment: {scene}",
     delay: "· delay",
     countsAria: "Alert counters",
     unacked: "Unacknowledged",
@@ -714,18 +716,18 @@ const SPE_PROFILE = [[0, 0.6], [8, 5], [15, 22], [25, 90], [35, 300], [45, 650],
  * al backend se envía siempre serverLocation (el módulo en español, estable entre idiomas). */
 const ENV_TEXT = {
   es: {
-    spacecraft: { label: "Nave espacial", short: "Nave", locationModule: "Cabina de la nave (tránsito en espacio profundo)", note: "espacio profundo, fuera de la magnetosfera" },
-    station: { label: "Estación espacial", short: "Estación", locationModule: "Módulo de la estación orbital (LEO)", note: "órbita baja, protegida en parte por la magnetosfera" },
-    rover: { label: "Rover", short: "Rover", locationModule: "Rover presurizado (superficie lunar)", note: "superficie lunar, blindaje ligero del rover" },
-    base: { label: "Base planetaria (Marte)", short: "Base Marte", locationModule: "Base marciana (hábitat presurizado)", note: "superficie de Marte, hábitat cubierto de regolito" },
-    moon: { label: "Luna (superficie)", short: "Luna", locationModule: "Superficie lunar (base Polo Sur)", note: "superficie lunar, sin atmósfera ni magnetosfera" },
+    spacecraft: { label: "Nave espacial", short: "Nave", locationModule: "Cabina de la nave (tránsito en espacio profundo)", note: "espacio profundo, fuera de la magnetosfera", scene: "nave espacial en tránsito con la Tierra al fondo" },
+    station: { label: "Estación espacial", short: "Estación", locationModule: "Módulo de la estación orbital (LEO)", note: "órbita baja, protegida en parte por la magnetosfera", scene: "vehículo orbital sobre la Tierra" },
+    rover: { label: "Rover", short: "Rover", locationModule: "Rover presurizado (superficie lunar)", note: "superficie lunar, blindaje ligero del rover", scene: "rover presurizado sobre la superficie" },
+    base: { label: "Base planetaria (Marte)", short: "Base Marte", locationModule: "Base marciana (hábitat presurizado)", note: "superficie de Marte, hábitat cubierto de regolito", scene: "base de cúpulas presurizadas en la superficie de Marte" },
+    moon: { label: "Luna (superficie)", short: "Luna", locationModule: "Superficie lunar (base Polo Sur)", note: "superficie lunar, sin atmósfera ni magnetosfera", scene: "paisaje de la superficie lunar" },
   },
   en: {
-    spacecraft: { label: "Spacecraft", short: "Spacecraft", locationModule: "Spacecraft cabin (deep-space transit)", note: "deep space, outside the magnetosphere" },
-    station: { label: "Space station", short: "Station", locationModule: "Orbital station module (LEO)", note: "low Earth orbit, partly shielded by the magnetosphere" },
-    rover: { label: "Rover", short: "Rover", locationModule: "Pressurized rover (lunar surface)", note: "lunar surface, light rover shielding" },
-    base: { label: "Planetary base (Mars)", short: "Mars base", locationModule: "Martian base (pressurized habitat)", note: "Martian surface, regolith-covered habitat" },
-    moon: { label: "Moon (surface)", short: "Moon", locationModule: "Lunar surface (South Pole base)", note: "lunar surface, no atmosphere or magnetosphere" },
+    spacecraft: { label: "Spacecraft", short: "Spacecraft", locationModule: "Spacecraft cabin (deep-space transit)", note: "deep space, outside the magnetosphere", scene: "spacecraft in transit with Earth in the background" },
+    station: { label: "Space station", short: "Station", locationModule: "Orbital station module (LEO)", note: "low Earth orbit, partly shielded by the magnetosphere", scene: "orbital vehicle above Earth" },
+    rover: { label: "Rover", short: "Rover", locationModule: "Pressurized rover (lunar surface)", note: "lunar surface, light rover shielding", scene: "pressurized rover on the surface" },
+    base: { label: "Planetary base (Mars)", short: "Mars base", locationModule: "Martian base (pressurized habitat)", note: "Martian surface, regolith-covered habitat", scene: "pressurized dome base on the Martian surface" },
+    moon: { label: "Moon (surface)", short: "Moon", locationModule: "Lunar surface (South Pole base)", note: "lunar surface, no atmosphere or magnetosphere", scene: "lunar surface landscape" },
   },
 };
 export const CREW_ENVIRONMENTS = [
@@ -736,6 +738,25 @@ export const CREW_ENVIRONMENTS = [
   { key: "moon", code: "LUNAR_SURFACE", phaseCode: "SURFACE", refMGyDay: 1.4, shielding: 1.0, speFactor: 1.0, cadLoc: "Hábitat" },
 ].map((e) => withText({ ...e, serverLocation: ENV_TEXT.es[e.key].locationModule }, ENV_TEXT, e.key));
 const ENV_BY_KEY = Object.fromEntries(CREW_ENVIRONMENTS.map((e) => [e.key, e]));
+/* Banner del entorno en la barra de estado (tras "Enlace con Tierra"): entorno → imagen en
+ * frontend/src/assets/env/. "station" no tiene imagen propia y reutiliza la de la nave; para darle
+ * una, basta con añadir el archivo y cambiar su entrada aquí. */
+const ENV_BANNER_FILE = {
+  spacecraft: "env-spacecraft.webp",
+  station: "env-spacecraft.webp",
+  rover: "env-rover.webp",
+  base: "env-base.webp",
+  moon: "env-moon.webp",
+};
+/* Sube este sello al cambiar las imágenes: Cloudflare cachea por URL (max-age 4 h) */
+const ENV_BANNER_VER = "2";
+const envBannerSrc = (key) =>
+  new URL(`../assets/env/${ENV_BANNER_FILE[key] || ENV_BANNER_FILE.spacecraft}?v=${ENV_BANNER_VER}`, import.meta.url).href;
+/* Logo SEMSA con fondo transparente, fijo a la izquierda del banner (la escena llena el resto).
+ * Versión aclarada para la barra oscura; el tema claro la cambia por la original en console.css. */
+const ENV_BANNER_LOGO = new URL(`../assets/env/semsa-logo-dark.webp?v=${ENV_BANNER_VER}`, import.meta.url).href;
+/* Encuadre vertical de cada escena al recortarla a lo ancho de la barra */
+const ENV_BANNER_FOCUS = { spacecraft: "50% 45%", station: "50% 45%", rover: "50% 62%", base: "50% 55%", moon: "50% 70%" };
 const ENV_STORAGE_KEY = "av_crew_env";
 const DEFAULT_ENV_KEY = "moon";
 /* mGy/día × blindaje → µGy/min (línea base simulada de HERA) */
@@ -1353,6 +1374,53 @@ function tickChromeClock() {
   if (el) el.textContent = gmt(chromeNow());
 }
 
+/* Banner del entorno: un nodo persistente (dos <img> superpuestas para el fundido) que se
+ * vuelve a colocar en su hueco cada vez que se reescribe la barra de estado. */
+const envBanner = { node: null, preloaded: [] };
+
+function preloadEnvBanners() {
+  if (envBanner.preloaded.length) return;
+  [...new Set([ENV_BANNER_LOGO, ...Object.keys(ENV_BANNER_FILE).map(envBannerSrc)])].forEach((src) => {
+    const img = new Image();
+    img.decoding = "async";
+    img.src = src;
+    if (img.decode) img.decode().catch(() => { /* se reintenta al mostrarla */ });
+    envBanner.preloaded.push(img);
+  });
+}
+
+function placeEnvBanner() {
+  const slot = document.getElementById("av-env-banner-slot");
+  if (!slot) return;
+  if (!envBanner.node) {
+    const box = document.createElement("div");
+    box.className = "av-env-banner";
+    box.innerHTML = `<img class="av-env-banner-logo" decoding="async" alt="SEMSA" src="${ENV_BANNER_LOGO}"><div class="av-env-banner-scene"><img class="av-env-banner-img" decoding="async" alt=""><img class="av-env-banner-img" decoding="async" alt="" aria-hidden="true"></div>`;
+    envBanner.node = box;
+  }
+  envBanner.node.style.setProperty("--av-env-focus", ENV_BANNER_FOCUS[envState.key] || "50% 50%");
+  const env = ENV_BY_KEY[envState.key];
+  const src = envBannerSrc(envState.key);
+  const alt = env ? fmt(tt().envBannerAlt, { label: env.label, scene: env.scene }) : "";
+  const [a, b] = envBanner.node.querySelectorAll(".av-env-banner-img");
+  const on = a.classList.contains("is-on") ? a : b.classList.contains("is-on") ? b : null;
+  if (!on) {
+    a.src = src; a.alt = alt; a.removeAttribute("aria-hidden"); a.classList.add("is-on");
+  } else if (on.getAttribute("src") === src) {
+    on.alt = alt; // mismo archivo (p. ej. nave ↔ estación): solo cambia el texto alternativo
+  } else {
+    const next = on === a ? b : a;
+    next.src = src;
+    next.alt = alt;
+    next.removeAttribute("aria-hidden");
+    on.alt = "";
+    on.setAttribute("aria-hidden", "true");
+    next.classList.add("is-on");
+    on.classList.remove("is-on");
+  }
+  if (envBanner.node.parentNode !== slot) slot.appendChild(envBanner.node);
+}
+
 /* Solo reescribe el HTML si cambió (evita repetir el anuncio de role="alert") */
 function setHTML(el, html) {
   if (!el || el.__avHtml === html) return;
@@ -1541,6 +1609,7 @@ export function initChrome(appState, helpers = {}) {
     () => { /* sin perfiles: se usan los nombres locales */ }
   );
 
+  preloadEnvBanners();
   hera.listeners.add(chromeHeraListener);
   clearInterval(chromeState.clockTimer);
   chromeState.clockTimer = setInterval(tickChromeClock, 1000);
@@ -1569,6 +1638,7 @@ export function renderChrome(appState) {
   const envFocused = document.activeElement && document.activeElement.id === "av-env-select";
   setHTML(statusEl, statusBarHTML(st, d, alerts));
   if (envFocused && document.activeElement?.id !== "av-env-select") document.getElementById("av-env-select")?.focus({ preventScroll: true });
+  placeEnvBanner();
   setHTML(alarmEl, alarmBarHTML(alerts));
   chromeState.lastLevel = hera.level;
   chromeState.lastAcked = hera.ackedLevel;
@@ -1600,6 +1670,7 @@ function statusBarHTML(appState, d, alerts) {
     </div>
     ${envCellHTML(ctx, envName)}
     <div class="av-st"><span class="av-lbl">${esc(T.groundLink)}</span><span class="av-st-line"><span class="av-mono av-v">${esc(link === "ONLINE" ? "AOS" : link === "OFFLINE" ? "LOS" : link)}</span> <span class="av-sub">${esc(T.delay)}</span> <span class="av-mono">${delay}</span></span></div>
+    <div class="av-st av-st-fixed av-st-banner" id="av-env-banner-slot"></div>
     <div class="av-grow"></div>
     <div class="av-st av-st-row av-st-fixed av-st-counts" role="group" aria-label="${esc(T.countsAria)}">
       <span class="av-st-count">${w ? badge("W", CLASS_PLURAL.W) : `<span class="av-badge" style="color:var(--av-r-text);border-color:var(--av-r)" title="${esc(CLASS_PLURAL.W)}">W</span>`}<span class="av-mono av-v">${w}</span></span>

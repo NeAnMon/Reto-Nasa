@@ -1,4 +1,5 @@
 import logging
+import mimetypes
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -14,6 +15,10 @@ from backend.app.database.session import Base, SessionLocal, engine
 import backend.app.models.models  # noqa: F401
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend"
+
+# Python 3.12 de la imagen no conoce .webp y lo serviría como application/octet-stream:
+# se registra antes de montar los estáticos (banners de entorno de la consola).
+mimetypes.add_type("image/webp", ".webp")
 
 
 logger = logging.getLogger("astrovital")

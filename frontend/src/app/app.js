@@ -550,7 +550,7 @@ function bindStaticEvents() {
  * se vuelven a pintar el encabezado global y la sección abierta, y se reaplica la navegación por rol. */
 function bindLanguageChange() {
   onLangChange(() => {
-    if (!appState.currentUser) return; // pantalla de acceso: solo textos estáticos
+    if (!appState.currentUser) return; // sesión aún sin abrir: solo textos estáticos
     updateRoleNavigation();
     renderChrome(appState);
     syncNavigationState(appState.currentSection);

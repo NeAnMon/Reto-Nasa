@@ -78,7 +78,12 @@ def test_01_frontend_and_svg_delivery(client: TestClient):
     assert res_html.status_code == 200
     html_text = res_html.text
     assert "AstroVital" in html_text
-    assert "Your health. Your mission. Your future." in html_text
+    # Sin pantalla de acceso: "/" sirve directamente la consola (la sesión demo la abre app.js)
+    assert 'id="app-shell"' in html_text
+    assert 'id="av-chrome-status"' in html_text
+    assert 'id="section-view-container"' in html_text
+    assert 'src="/src/app/app.js?v=' in html_text
+    assert "Your health. Your mission. Your future." not in html_text
 
     res_js = client.get("/src/app/app.js")
     assert res_js.status_code == 200
@@ -100,6 +105,15 @@ def test_01_frontend_and_svg_delivery(client: TestClient):
     ]:
         assert region_code in res_console.text
         assert region_code in res_figure.text
+
+
+def test_01b_env_banner_webp_served_as_image(client: TestClient):
+    """Las imágenes .webp del banner de entorno se sirven como image/webp (no application/octet-stream)."""
+    for name in ["env-spacecraft.webp", "semsa-logo-dark.webp"]:
+        res = client.get(f"/src/assets/env/{name}")
+        assert res.status_code == 200, name
+        assert res.headers["content-type"].split(";")[0].strip() == "image/webp", res.headers["content-type"]
+        assert res.content[:4] == b"RIFF" and res.content[8:12] == b"WEBP"
 
 
 def test_02_rbac_and_horizontal_access_protection(client: TestClient):
