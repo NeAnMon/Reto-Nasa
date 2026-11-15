@@ -191,6 +191,14 @@ const DICT = {
     surgeonTitle: "Médico de vuelo",
     unreadMsgs: "Mensajes sin leer",
     unreadPill: "{n} sin leer",
+    // recordatorio de contramedidas pendientes (no es alerta médica: no crea filas de Alert)
+    cmPendingPill: "{n} pendientes",
+    cmReminderOne: "1 contramedida pendiente hoy",
+    cmReminderMany: "{n} contramedidas pendientes hoy",
+    cmMore: "y {n} más",
+    cmGo: "Ir a contramedidas",
+    cmTabBadgeOne: "1 contramedida pendiente",
+    cmTabBadgeMany: "{n} contramedidas pendientes",
     otherSystems: "Otros sistemas",
     groundLead: "Líder en Tierra",
     openSupport: "Solicitudes de apoyo abiertas",
@@ -465,6 +473,13 @@ const DICT = {
     surgeonTitle: "Flight surgeon",
     unreadMsgs: "Unread messages",
     unreadPill: "{n} unread",
+    cmPendingPill: "{n} pending",
+    cmReminderOne: "1 countermeasure pending today",
+    cmReminderMany: "{n} countermeasures pending today",
+    cmMore: "and {n} more",
+    cmGo: "Go to countermeasures",
+    cmTabBadgeOne: "1 pending countermeasure",
+    cmTabBadgeMany: "{n} pending countermeasures",
     otherSystems: "Other systems",
     groundLead: "Ground lead",
     openSupport: "Open support requests",
@@ -1050,6 +1065,8 @@ onLangChange(() => {
   }
   if (hera.started) renderHeraBar();
   if (chromeState.appState) renderChrome();
+  // la insignia de la pestaña Contramedidas lleva texto para lectores de pantalla: se reescribe en el idioma nuevo
+  if (cache.data) syncCountermeasuresBadge(cache.data);
 });
 
 /* ───────────────────────── estado de la consola ───────────────────────── */
@@ -1169,8 +1186,31 @@ async function loadData(appState) {
     act: ok(act, { points: [] }).points || [],
     sleep: ok(sleep, { points: [] }).points || [],
     rad: ok(rad, { points: [] }).points || [],
+    // si getDailyMissions falla no se muestra ningún recordatorio de contramedidas
+    missionsOk: missions.status === "fulfilled" && !!missions.value,
     errors: [sum, alerts, regions, missions].filter((r) => r.status === "rejected").length,
   };
+}
+
+/* Contramedidas accionables hoy: PENDING y no bloqueadas por seguridad. Si la petición de misiones
+ * falló (missionsOk false) devuelve [] para no mostrar ningún recordatorio con datos dudosos. */
+function pendingCountermeasures(data) {
+  if (!data || !data.missionsOk || !Array.isArray(data.missions)) return [];
+  return data.missions.filter((m) => m && m.status_today === "PENDING" && !m.safety_blocked);
+}
+
+/* Insignia de la pestaña Contramedidas (.js-cm-badge en index.html): número visible + texto para
+ * lectores de pantalla en el idioma actual; oculta con 0 pendientes o sin datos. */
+export function syncCountermeasuresBadge(data) {
+  if (typeof document === "undefined") return;
+  const n = pendingCountermeasures(data).length;
+  const T = tt();
+  const label = n === 1 ? T.cmTabBadgeOne : fmt(T.cmTabBadgeMany, { n: num(n) });
+  document.querySelectorAll(".js-cm-badge").forEach((el) => {
+    el.classList.toggle("hidden", n === 0);
+    el.title = n > 0 ? label : "";
+    el.innerHTML = n > 0 ? `<span aria-hidden="true">${esc(num(n))}</span><span class="av-tab-sr">${esc(label)}</span>` : "0";
+  });
 }
 
 /* Vuelve a pedir los datos de la consola y los deja en caché (una sola carga en curso por clave). */
@@ -1184,6 +1224,7 @@ export function refreshConsoleData(appState) {
         cache.at = Date.now();
         cache.pending = null;
         cache.pendingKey = null;
+        syncCountermeasuresBadge(data);
       }
       return data;
     },
@@ -1191,6 +1232,7 @@ export function refreshConsoleData(appState) {
       if (cache.pending === p) {
         cache.pending = null;
         cache.pendingKey = null;
+        syncCountermeasuresBadge(null); // sin datos fiables: la insignia se oculta
       }
       throw err;
     }
@@ -2263,6 +2305,30 @@ function alertsCardHTML(alerts) {
   </article>`;
 }
 
+/* Apertura del cuadro "Tareas de hoy" (<section> + encabezado + recordatorio). Con contramedidas
+ * pendientes se resalta igual que "Mensajes sin leer" (borde .av-card-C + insignia con texto
+ * "N pendientes"): es un recordatorio, no una alerta médica, así que no usa rojo ni crea alertas.
+ * Lista los primeros títulos y lleva a la pestaña Contramedidas (data-nav, manejado en console.js). */
+const CM_REMINDER_TITLES = 3;
+function tasksBoxOpenHTML(data, T) {
+  const pending = pendingCountermeasures(data);
+  const n = pending.length;
+  if (n === 0) {
+    return `<section class="av-panel av-sum-box">
+      <div class="av-panel-head"><h2 class="av-h2">${esc(T.tasksTitle)}</h2><button type="button" class="av-btn av-btn-sm" data-nav="daily-missions">${esc(T.seeAll)}</button></div>`;
+  }
+  const titles = pending.slice(0, CM_REMINDER_TITLES).map((m) => `<li>${esc(bt(m.title) || m.code || "")}</li>`).join("");
+  const rest = n - CM_REMINDER_TITLES;
+  const headline = n === 1 ? T.cmReminderOne : fmt(T.cmReminderMany, { n: num(n) });
+  return `<section class="av-panel av-sum-box av-card-C av-sum-remind" aria-label="${esc(T.tasksTitle)}: ${esc(headline)}">
+      <div class="av-panel-head"><h2 class="av-h2">${esc(T.tasksTitle)}</h2><span class="av-badge av-b-C av-pill">${esc(fmt(T.cmPendingPill, { n: num(n) }))}</span></div>
+      <div class="av-cm-remind">
+        <p class="av-cm-remind-head">${esc(headline)}</p>
+        <ul class="av-cm-remind-list">${titles}${rest > 0 ? `<li class="av-sub">${esc(fmt(T.cmMore, { n: num(rest) }))}</li>` : ""}</ul>
+        <button type="button" class="av-btn av-btn-sm av-btn-primary" data-nav="daily-missions">${esc(T.cmGo)}</button>
+      </div>`;
+}
+
 function rightColHTML(appState, d, data, alerts) {
   const T = tt();
   const missions = (data.missions || []).slice(0, 5);
@@ -2281,8 +2347,7 @@ function rightColHTML(appState, d, data, alerts) {
   // nunca solo color: la insignia "N sin leer" lo dice en texto
   return `
   <aside class="av-col-c av-col-sum" aria-label="${esc(T.rightAria)}">
-    <section class="av-panel av-sum-box">
-      <div class="av-panel-head"><h2 class="av-h2">${esc(T.tasksTitle)}</h2><button type="button" class="av-btn av-btn-sm" data-nav="daily-missions">${esc(T.seeAll)}</button></div>
+    ${tasksBoxOpenHTML(data, T)}
       <ol class="av-sum-scroll" style="list-style:none;margin:0;padding:0">${tasks || `<li class="av-sub" style="padding:12px">${esc(T.noTasks)}</li>`}</ol>
     </section>
     <section class="av-panel av-sum-box av-msg-box${unread > 0 ? " av-card-C av-msg-unread" : ""}">

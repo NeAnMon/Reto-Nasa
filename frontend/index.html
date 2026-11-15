@@ -68,7 +68,10 @@
               <button type="button" class="av-tab" data-nav-section="radiation" data-i18n="tab.radiation">Radiación</button>
               <button type="button" class="av-tab" data-nav-section="environments" data-i18n="tab.environments">Entornos</button>
               <button type="button" class="av-tab" data-nav-section="my-health-check" data-i18n="tab.measure">Registrar medición</button>
-              <button type="button" class="av-tab" data-nav-section="daily-missions" data-i18n="tab.countermeasures">Contramedidas</button>
+              <button type="button" class="av-tab" data-nav-section="daily-missions">
+                <!-- la insignia (contramedidas pendientes hoy) la rellena syncCountermeasuresBadge en console.js -->
+                <span data-i18n="tab.countermeasures">Contramedidas</span> <span class="av-tab-badge js-cm-badge hidden">0</span>
+              </button>
               <button type="button" class="av-tab" data-nav-section="wellbeing-hub">
                 <span data-i18n="tab.wellbeing">Bienestar</span> <span class="av-tab-badge js-emo-badge hidden" title="Cuestionarios pendientes" data-i18n-attr="title:badge.emo">0</span>
               </button>
