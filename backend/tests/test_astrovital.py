@@ -78,7 +78,12 @@ def test_01_frontend_and_svg_delivery(client: TestClient):
     assert res_html.status_code == 200
     html_text = res_html.text
     assert "AstroVital" in html_text
-    assert "Your health. Your mission. Your future." in html_text
+    # Sin pantalla de acceso: "/" sirve directamente la consola (la sesión demo la abre app.js)
+    assert 'id="app-shell"' in html_text
+    assert 'id="av-chrome-status"' in html_text
+    assert 'id="section-view-container"' in html_text
+    assert 'src="/src/app/app.js?v=' in html_text
+    assert "Your health. Your mission. Your future." not in html_text
 
     res_js = client.get("/src/app/app.js")
     assert res_js.status_code == 200
