@@ -727,7 +727,9 @@ export async function renderEnvironmentsView(container, appState, helpers) {
     ui.langOff();
     ui.langOff = null;
   }
-  if (ui.preview && !ENV_KEYS.includes(ui.preview)) ui.preview = null;
+  // Al entrar a la sección siempre se muestra el entorno general seleccionado (issue #5):
+  // una vista previa de una visita anterior no sobrevive a la navegación
+  ui.preview = null;
   const T = tr(DICT);
 
   container.innerHTML = `
@@ -790,7 +792,8 @@ export async function renderEnvironmentsView(container, appState, helpers) {
       return;
     }
     const cur = currentEnv();
-    if (ui.preview === cur) ui.preview = null;
+    // El entorno general manda: un cambio global descarta cualquier vista previa local
+    ui.preview = null;
     renderAll(ctx);
     announce(ctx, tr(DICT).announceCurrent(envLabel(cur)));
   };
