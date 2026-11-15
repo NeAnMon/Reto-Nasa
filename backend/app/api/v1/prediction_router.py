@@ -35,7 +35,6 @@ from backend.app.database.session import get_db
 from backend.app.models.models import User
 from backend.app.schemas.schemas import PredictionResponse
 from backend.app.security.auth import get_current_user
-from backend.app.rules.prediction_alerts import open_prediction_alerts
 from backend.app.services.prediction_service import predict_indicator
 
 
@@ -233,25 +232,6 @@ def get_indicator_prediction(
     #
     # These are expected statistical outcomes, not HTTP errors.
 
-    # ========================================================
-    # 5. EARLY WARNING ALERT (issue #30)
-    # ========================================================
-
-    # Read-only: this GET never creates, updates or resolves alerts (the
-    # Logbook calls it with include_simulated=true just by opening). The
-    # early-warning alert (RULE_PREDICTION_EARLY_WARNING) is only written by
-    # POST /health/measurements (router._refresh_prediction_alert). Here we
-    # only report the id of the one already open for this astronaut,
-    # indicator and mission, if any. See backend/app/rules/prediction_alerts.py.
-
-    open_alerts = [
-        a for a in open_prediction_alerts(db, astronaut_id, prediction.indicator_code)
-        if a.mission_id == mission_id
-    ]
-    response = PredictionResponse.model_validate(
+    return PredictionResponse.model_validate(
         asdict(prediction)
     )
-    response.early_warning_alert_id = (
-        max(open_alerts, key=lambda a: a.id).id if open_alerts else None
-    )
-    return response

@@ -24,15 +24,11 @@
 .av-pc-key-h { border-top: 2px solid var(--av-s, #4fc3f7); }
 .av-pc-key-f { border-top: 2px dashed var(--av-m, #b39ddb); }
 .av-pc-key-base { border-top: 2px dashed var(--av-text2, #a7b0bd); }
-.av-pc-key-thr-normal { border-top: 2px solid var(--av-y, #f2c94c); }
-.av-pc-key-thr-personal { border-top: 2px dotted var(--av-text2, #a7b0bd); position: relative; }
-.av-pc-key-thr-personal::after { content: ""; position: absolute; left: 0; top: -2px; width: 9px; border-top: 2px solid var(--av-text2, #a7b0bd); }
 /* Bandas: recuadro con el relleno translúcido de la gráfica (80 % = solape de las dos áreas) */
 .av-pc-key-band { position: relative; height: 10px; box-sizing: border-box; border: 1px solid var(--av-m, #b39ddb); }
 .av-pc-key-band::before { content: ""; position: absolute; inset: 0; background: var(--av-m, #b39ddb); }
 .av-pc-key-b80::before { opacity: .32; }
 .av-pc-key-b95::before { opacity: .14; }
-.av-pc-key-b95 { border-style: dashed; }
 .av-pc-key-oor {
   width: 10px; height: 10px; border-radius: 50%;
   background: var(--av-r, #d13438); box-shadow: 0 0 0 2px var(--av-panel, #161b22), 0 0 0 3px var(--av-r, #d13438);
@@ -57,11 +53,7 @@
 
 /* Línea base */
 .av-pc-base { stroke: var(--av-text2, #a7b0bd); stroke-width: 1.5; stroke-dasharray: 8 4; }
-/* La etiqueta lleva un halo del color del panel para leerse sobre la línea del histórico */
-.av-pc-base-txt {
-  font: 11px "IBM Plex Sans", system-ui, sans-serif; fill: var(--av-text2, #a7b0bd);
-  paint-order: stroke; stroke: var(--av-panel, #161b22); stroke-width: 3px; stroke-linejoin: round;
-}
+.av-pc-base-txt { font: 11px "IBM Plex Sans", system-ui, sans-serif; fill: var(--av-text2, #a7b0bd); }
 
 /* Histórico */
 .av-pc-hline { fill: none; stroke: var(--av-s, #4fc3f7); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
@@ -74,16 +66,9 @@
 .av-pc-oor-ring { fill: none; stroke: var(--av-r, #d13438); stroke-width: 1.5; }
 
 /* Bandas de predicción: la del 80 % se pinta sobre la del 95 % y el solape la hace más marcada */
-.av-pc-band { fill: var(--av-m, #b39ddb); stroke: var(--av-m, #b39ddb); stroke-width: 1; stroke-opacity: .75; stroke-linejoin: round; pointer-events: none; }
-.av-pc-band95 { fill-opacity: .14; stroke-dasharray: 2 3; }
-.av-pc-band80 { fill-opacity: .3; }
-/* El relleno translúcido solo no contrasta lo suficiente sobre el fondo oscuro: cada banda lleva
- * además su contorno, continuo la del 80 % y punteado la del 95 % */
-
-/* Umbrales del motor de alertas: rango normal (ámbar, continua) y banda personal (gris, raya-punto) */
-.av-pc-thr { fill: none; stroke-width: 1.25; pointer-events: none; }
-.av-pc-thr-normal { stroke: var(--av-y, #f2c94c); }
-.av-pc-thr-personal { stroke: var(--av-text2, #a7b0bd); stroke-dasharray: 10 3 2 3; }
+.av-pc-band { fill: var(--av-m, #b39ddb); stroke: none; pointer-events: none; }
+.av-pc-band95 { fill-opacity: .14; }
+.av-pc-band80 { fill-opacity: .2; }
 
 /* Cursor */
 .av-pc-cursor-line { stroke: var(--av-strong, #5a6473); stroke-width: 1; }
@@ -112,27 +97,21 @@
 /* Variantes de tema */
 body[data-theme="daylight-clean"] .av-pc-tip { box-shadow: 0 2px 8px rgba(0, 0, 0, .15); }
 body[data-theme="daylight-clean"] .av-pc-tip-oor { color: var(--av-r, #d13438); }
-/* El ámbar del tema oscuro no contrasta sobre blanco */
-body[data-theme="daylight-clean"] .av-pc-thr-normal { stroke: #8a6100; }
-body[data-theme="daylight-clean"] .av-pc-key-thr-normal { border-top-color: #8a6100; }
 body[data-theme="high-contrast"] .av-pc-fczone { fill: none; }
 body[data-theme="high-contrast"] .av-pc-grid { stroke: var(--av-row, #888); stroke-dasharray: 2 4; }
 body[data-theme="high-contrast"] .av-pc-hline, body[data-theme="high-contrast"] .av-pc-fline { stroke-width: 2.5; }
 body[data-theme="high-contrast"] .av-pc-today { stroke-width: 1.5; }
 /* Alto contraste: sin rellenos translúcidos; contorno continuo (80 %) y punteado (95 %) */
-body[data-theme="high-contrast"] .av-pc-band { fill: none; stroke: var(--av-m, #b39ddb); stroke-width: 1; stroke-opacity: 1; }
-body[data-theme="high-contrast"] .av-pc-thr { stroke-width: 1.5; }
+body[data-theme="high-contrast"] .av-pc-band { fill: none; stroke: var(--av-m, #b39ddb); stroke-width: 1; }
 body[data-theme="high-contrast"] .av-pc-band95 { stroke-dasharray: 2 3; }
 body[data-theme="high-contrast"] .av-pc-key-band::before { display: none; }
 body[data-theme="high-contrast"] .av-pc-key-b95 { border-style: dashed; }
 
 @media (forced-colors: active) {
-  .av-pc-hline, .av-pc-fline, .av-pc-base, .av-pc-today, .av-pc-oor-ring, .av-pc-thr { stroke: CanvasText; }
-  .av-pc-base-txt { stroke: Canvas; }
-  .av-pc-key-thr-normal, .av-pc-key-thr-personal, .av-pc-key-thr-personal::after { border-top-color: CanvasText; }
+  .av-pc-hline, .av-pc-fline, .av-pc-base, .av-pc-today, .av-pc-oor-ring { stroke: CanvasText; }
   .av-pc-hdot, .av-pc-fdot, .av-pc-cursor-dot { fill: CanvasText; }
   .av-pc-fczone { fill: none; }
-  .av-pc-band { fill: none; stroke: CanvasText; stroke-width: 1; stroke-opacity: 1; }
+  .av-pc-band { fill: none; stroke: CanvasText; stroke-width: 1; }
   .av-pc-band95 { stroke-dasharray: 2 3; }
   .av-pc-key-band::before { display: none; }
   .av-pc-key-b95 { border-style: dashed; }

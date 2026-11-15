@@ -20,8 +20,7 @@ import { apiService } from "../services/api.js";
 import { FIG, FIG_VIEWBOX, FIG_ATTRIBUTION_I18N, BONES, FIG_HOTSPOTS } from "./body-figure.js";
 import { tr, fmt, fmtNum, getLang, onLangChange } from "../i18n/i18n.js";
 import { bt, btLines } from "/src/i18n/backend.js";
-import { LETTER, RANK, STATE_WORD, STATE_LEGEND, CLASS_PLURAL, HERA_LETTER, alertClassOf, isAlarm, classFromRank } from "./alert-classes.js";
-import { engineOf, engineName, moduleOf, counterOf, isUnacked, isOpen, isIsolationEarly, PRIORITY_RANK, requestAlertOpen } from "./alert-model.js";
+import { LETTER, RANK, STATE_WORD, STATE_LEGEND, CLASS_PLURAL, HERA_LETTER, alertClassOf, isAlarm, classFromRank, isEarlyAlert } from "./alert-classes.js";
 
 /* ───────────────────────── idioma ─────────────────────────
  * Textos de la consola en DICT ({ es, en }); cada render obtiene el idioma actual con tr(DICT).
@@ -80,9 +79,6 @@ const DICT = {
     crewSelectHelp: "Elige el astronauta cuyas métricas muestra la consola. {session}.",
     crewSrHelp: "Cambia el astronauta que muestra toda la consola. {session}.",
     crewRename: "Editar nombre",
-    crewModeLabel: "Modo tripulante",
-    crewModeExit: "Volver a supervisión",
-    crewModeExitHelp: "Respondes como este tripulante. Vuelve a la cuenta de supervisión.",
     crewRenameHint: "Clic derecho para editar el nombre.",
     crewRenameTitle: "Editar nombre · {code}",
     crewRenameLabel: "Nombre del tripulante",
@@ -194,18 +190,8 @@ const DICT = {
     // columna derecha
     rightAria: "Alertas y actividades",
     cwTitle: "Alertas C&amp;W",
-    cwSub: "Todas las alertas abiertas, de cualquier motor, por prioridad y con su recomendación.",
-    cwListAria: "Alertas abiertas por prioridad",
-    cwCount: "{n} abiertas",
-    cwCountOne: "1 abierta",
-    cwNow: "Qué hacer ahora",
-    cwNew: "Nueva",
-    cwUnacked: "Sin reconocer",
-    cwSeeAlertAria: "Ver la alerta «{t}» en la sección Alertas",
-    cwMore: "Mostrar {n} más",
-    cwLess: "Mostrar menos",
-    cwAnnNew: "Nueva alerta {w} ({e}): {t}{more}. Su recomendación está en Alertas C&W del Resumen.",
-    cwAnnMore: " y {n} más",
+    hideAdv: "Ocultar vigilancia (A)",
+    showAdv: "Mostrar vigilancia (A): {n}",
     thClass: "Cl.", thMsg: "Mensaje",
     onboard: "a bordo",
     noActiveAlerts: "Sin alertas activas.",
@@ -339,7 +325,7 @@ const DICT = {
     location: "Ubicación",
     notes: "Notas",
     saveReading: "Guardar lectura",
-    cadNote: "CAD = dosímetro activo de tripulación (muestra dosis total y tasa). El CPD pasivo solo se lee al volver a Tierra.",
+    cadNote: "CAD = dosímetro activo de tripulación (muestra dosis total y tasa). El CPD pasivo solo se lee al volver a Tierra. Las lecturas se guardan en este dispositivo hasta que el backend tenga su propio registro.",
     lastReading: "Última lectura",
     over24: "Más de 24 h sin lectura",
     over24Note: " · más de 24 h: registra una nueva",
@@ -365,6 +351,7 @@ const DICT = {
     hydNoteApi: "+{ml} mL registrados desde el procedimiento guiado",
     measureNoteApi: "Registrado desde el procedimiento guiado",
     badDose: "dosis no válida",
+    saveLocalFailed: "no se pudo guardar en este dispositivo",
     toastCadSaved: "Lectura del dosímetro guardada.",
     saveFailed: "No se pudo guardar: {msg}",
     queuedOffline: "Sin enlace: medición en cola ({n}). Se enviará al reconectar.",
@@ -398,9 +385,6 @@ const DICT = {
     crewSelectHelp: "Choose the astronaut whose metrics the console shows. {session}.",
     crewSrHelp: "Changes the astronaut shown across the whole console. {session}.",
     crewRename: "Edit name",
-    crewModeLabel: "Crew mode",
-    crewModeExit: "Back to supervision",
-    crewModeExitHelp: "You are answering as this crew member. Return to the supervision account.",
     crewRenameHint: "Right-click to edit the name.",
     crewRenameTitle: "Edit name · {code}",
     crewRenameLabel: "Crew member name",
@@ -504,18 +488,8 @@ const DICT = {
     figCredits: "On the figure: head, chest, abdomen, arm, skin and bones; other systems are under “Other systems”. Simplified skeletal layer only: no organs are drawn.",
     rightAria: "Alerts and activities",
     cwTitle: "C&amp;W alerts",
-    cwSub: "Every open alert, from any engine, by priority and with its recommendation.",
-    cwListAria: "Open alerts by priority",
-    cwCount: "{n} open",
-    cwCountOne: "1 open",
-    cwNow: "What to do now",
-    cwNew: "New",
-    cwUnacked: "Unacknowledged",
-    cwSeeAlertAria: "See the alert “{t}” in the Alerts section",
-    cwMore: "Show {n} more",
-    cwLess: "Show less",
-    cwAnnNew: "New {w} alert ({e}): {t}{more}. Its recommendation is in the Summary C&W alerts.",
-    cwAnnMore: " and {n} more",
+    hideAdv: "Hide advisories (A)",
+    showAdv: "Show advisories (A): {n}",
     thClass: "Cl.", thMsg: "Message",
     onboard: "onboard",
     noActiveAlerts: "No active alerts.",
@@ -644,7 +618,7 @@ const DICT = {
     location: "Location",
     notes: "Notes",
     saveReading: "Save reading",
-    cadNote: "CAD = crew active dosimeter (shows total dose and rate). The passive CPD is read only after return to Earth.",
+    cadNote: "CAD = crew active dosimeter (shows total dose and rate). The passive CPD is read only after return to Earth. Readings are stored on this device until the backend has its own log.",
     lastReading: "Last reading",
     over24: "More than 24 h without a reading",
     over24Note: " · over 24 h: log a new one",
@@ -669,6 +643,7 @@ const DICT = {
     hydNoteApi: "+{ml} mL logged from the guided procedure",
     measureNoteApi: "Logged from the guided procedure",
     badDose: "invalid dose",
+    saveLocalFailed: "could not be saved on this device",
     toastCadSaved: "Dosimeter reading saved.",
     saveFailed: "Could not save: {msg}",
     queuedOffline: "No link: measurement queued ({n}). It will be sent on reconnection.",
@@ -1136,7 +1111,7 @@ const consoleState = {
   sys: null,
   pop: null, // región del mapa corporal con la ficha fijada (solo se muestra si coincide con sys)
   popFrom: null, // data-focus-id del control que fijó la ficha (para devolverle el foco)
-  cwAll: false, // panel de alertas del Resumen: todas a la vista (si no, las CW_VISIBLE primeras)
+  showAdv: false,
   radFold: {}, // secciones plegadas de la vista Radiación (clave → false si está cerrada)
   layers: { mus: true, bon: true },
   proc: { step: 1, result: null },
@@ -1275,18 +1250,15 @@ export function syncCountermeasuresBadge(data) {
 /* Vuelve a pedir los datos de la consola y los deja en caché (una sola carga en curso por clave). */
 export function refreshConsoleData(appState) {
   const key = cacheKey(appState);
-  const startedAt = Date.now();
   const p = loadData(appState).then(
     (data) => {
       if (cache.pending === p) {
         cache.key = key;
         cache.data = data;
         cache.at = Date.now();
-        cache.startedAt = startedAt;
         cache.pending = null;
         cache.pendingKey = null;
         syncCountermeasuresBadge(data);
-        noteAlerts(key, data.alerts);
       }
       return data;
     },
@@ -1315,160 +1287,6 @@ export async function getConsoleData(appState, maxAgeMs = CACHE_MAX_AGE_MS) {
 /* Lectura síncrona de la caché (vacía si es de otro tripulante o aún no hay datos) */
 function dataFor(appState) {
   return cache.data && cache.key === cacheKey(appState) ? cache.data : EMPTY_DATA;
-}
-
-/* ───────────────────────── alertas en vivo (issue #30) ─────────────────────────
- * Las alertas aparecen en el Resumen en cuanto se generan, sin recargar la página:
- *  1. Tras cualquier escritura correcta en la API (medición, check-in, cuestionario, evaluación
- *     cognitiva, ACK…) services/api.js emite "semsa:data-changed"; aquí se espera un momento y, si la
- *     vista que escribió no refrescó ya los datos, se refresca el estado global (refreshGlobalHeaderAndSummary).
- *  2. Sondeo ligero cada ALERTS_POLL_MS con la consola abierta: solo GET /alerts; si cambió algo, el
- *     refresco completo. Se pausa con la pestaña oculta y se pone al día al volver.
- * renderChrome repinta el panel del Resumen (updateSummaryAlerts) sin tocar el resto ni el foco.
- * Las alertas nuevas se anuncian en una región aria-live educada (role="status"), sin mover el foco. */
-const ALERTS_POLL_MS = 45000;
-const MUTATION_SETTLE_MS = 700;
-const alertsLive = {
-  key: null, // tripulante|misión de los ids conocidos
-  known: null, // ids de alertas abiertas ya vistas (null: sin sembrar; la primera carga no se anuncia)
-  fresh: new Set(), // ids aparecidos en esta sesión y aún sin reconocer: llevan la etiqueta "Nueva"
-  lastHtml: null, // último HTML pintado del panel de alertas del Resumen
-  timer: null,
-  settle: null,
-  changedAt: 0,
-  lastPoll: 0,
-  polling: false,
-};
-const alertsSig = (list) => (list || [])
-  .map((a) => `${a.id}:${a.status}:${(a.acknowledgements || []).length}:${(a.followups || []).length}`).sort().join(",");
-
-/* Compara con las alertas ya vistas: marca las nuevas y las anuncia */
-function noteAlerts(key, list) {
-  const open = (list || []).filter(isOpen);
-  if (alertsLive.key !== key || !alertsLive.known) {
-    alertsLive.key = key;
-    alertsLive.known = new Set(open.map((a) => a.id));
-    alertsLive.fresh = new Set();
-    return;
-  }
-  const added = open.filter((a) => !alertsLive.known.has(a.id));
-  added.forEach((a) => { alertsLive.known.add(a.id); alertsLive.fresh.add(a.id); });
-  // "Nueva" se quita al reconocerla o resolverla
-  const unacked = new Set(open.filter(isUnacked).map((a) => a.id));
-  [...alertsLive.fresh].forEach((id) => { if (!unacked.has(id)) alertsLive.fresh.delete(id); });
-  if (added.length) announceNewAlerts(added);
-}
-
-function announceNewAlerts(added) {
-  // la sección Alertas tiene su propio anuncio de alertas nuevas
-  if (chromeState.appState?.currentSection === "alerts-center") return;
-  const el = document.getElementById("av-alerts-live");
-  if (!el) return;
-  const T = tt();
-  const top = [...added].sort((a, b) => RANK[alertClassOf(b.operational_state)] - RANK[alertClassOf(a.operational_state)])[0];
-  const msg = fmt(T.cwAnnNew, {
-    w: STATE_WORD[alertClassOf(top.operational_state)],
-    e: engineName(engineOf(top)),
-    t: bt(top.title) || "",
-    more: added.length > 1 ? fmt(T.cwAnnMore, { n: num(added.length - 1) }) : "",
-  });
-  el.textContent = "";
-  // pequeño retardo para que el lector de pantalla repita mensajes iguales
-  setTimeout(() => { el.textContent = msg; }, 60);
-}
-
-/* Refresco completo del estado global (resumen, insignias, caché de la consola y barras) */
-async function refreshAlertState() {
-  const st = chromeState.appState;
-  const hp = chromeState.helpers || {};
-  if (!st || !st.currentUser) return;
-  try {
-    if (hp.refreshGlobalHeaderAndSummary) await hp.refreshGlobalHeaderAndSummary();
-    else { await refreshConsoleData(st); renderChrome(st); }
-  } catch {
-    renderChrome(st); // sin enlace: se pinta con lo disponible
-  }
-}
-
-/* Tras una escritura: si nadie refrescó los datos después de ella, se refrescan aquí */
-async function afterMutation() {
-  const st = chromeState.appState;
-  if (!st || !st.currentUser) return;
-  if (cache.pending) {
-    try { await cache.pending; } catch { /* se reintenta abajo */ }
-  }
-  if (cache.key === cacheKey(st) && (cache.startedAt || 0) >= alertsLive.changedAt) return;
-  await refreshAlertState();
-}
-
-/* Sondeo ligero: solo la lista de alertas; el refresco completo, únicamente si cambió */
-async function pollAlerts() {
-  const st = chromeState.appState;
-  if (!st || !st.currentUser || !st.selectedAstronautId || document.hidden || alertsLive.polling) return;
-  // la sección Alertas ya sondea y sincroniza la cabecera; sin enlace no se pide nada
-  if (st.currentSection === "alerts-center" || apiService.simulatedOfflineMode) return;
-  const key = cacheKey(st);
-  if (!cache.data || cache.key !== key || cache.pending) return;
-  alertsLive.polling = true;
-  alertsLive.lastPoll = Date.now();
-  try {
-    const res = await apiService.getAlerts(st.selectedAstronautId);
-    if (cacheKey(st) !== key || !cache.data || cache.key !== key) return;
-    if (alertsSig(res?.alerts) !== alertsSig(cache.data.alerts)) await refreshAlertState();
-  } catch {
-    // sin enlace: se mantiene lo último
-  } finally {
-    alertsLive.polling = false;
-  }
-}
-
-/* Engancha el refresco por escritura, el sondeo y la región aria-live (una sola vez, desde initChrome) */
-function startAlertsLive() {
-  if (!document.getElementById("av-alerts-live")) {
-    const live = document.createElement("div");
-    live.id = "av-alerts-live";
-    live.className = "av-tab-sr";
-    live.setAttribute("role", "status");
-    live.setAttribute("aria-live", "polite");
-    live.setAttribute("aria-atomic", "true");
-    document.body.appendChild(live);
-  }
-  window.addEventListener("semsa:data-changed", () => {
-    alertsLive.changedAt = Date.now();
-    clearTimeout(alertsLive.settle);
-    alertsLive.settle = setTimeout(afterMutation, MUTATION_SETTLE_MS);
-  });
-  document.addEventListener("visibilitychange", () => {
-    if (!document.hidden && Date.now() - alertsLive.lastPoll >= ALERTS_POLL_MS) pollAlerts();
-  });
-  clearInterval(alertsLive.timer);
-  alertsLive.timer = setInterval(pollAlerts, ALERTS_POLL_MS);
-}
-
-/* Repinta solo el panel de alertas del Resumen si está a la vista y cambió; conserva el foco */
-function updateSummaryAlerts() {
-  const st = chromeState.appState;
-  const c = document.getElementById("section-view-container");
-  if (!st || !c || st.currentSection !== "mission-control" || consoleState.view !== "summary") return;
-  const el = c.querySelector(`${ROOT_SEL} #av-sum-alerts`);
-  if (!el) return;
-  const prev = alertsLive.lastHtml;
-  const data = dataFor(st);
-  const html = alertsCardHTML(buildAlerts(derive(st, data), data));
-  if (html === prev) return;
-  const act = el.contains(document.activeElement) ? document.activeElement : null;
-  let sel = null;
-  if (act) {
-    const fid = act.getAttribute("data-focus-id");
-    const a = act.getAttribute("data-act");
-    const id = act.getAttribute("data-alert");
-    sel = fid ? `[data-focus-id="${CSS.escape(fid)}"]` : a ? `[data-act="${CSS.escape(a)}"]${id ? `[data-alert="${CSS.escape(id)}"]` : ""}` : null;
-  }
-  el.outerHTML = html;
-  if (!act) return;
-  const panel = c.querySelector("#av-sum-alerts");
-  const target = (sel && panel?.querySelector(sel)) || panel?.querySelector("#av-cw-h");
-  if (target) focusQuiet(c, target);
 }
 
 /* Valores derivados que usan varias vistas */
@@ -1517,40 +1335,35 @@ function derive(appState, data) {
     co2, co2v, co2Letter, weekMin, weekLetter, nights, sleepDebt, sleepCard, debtLetter };
 }
 
-/* Alertas: API (cualquier motor) + alertas derivadas a bordo (CO2, deuda de sueño, HERA).
- * Cada una lleva su recomendación temprana (rec) y, las de la API, su motor de origen (alert-model.js). */
+/* Alertas: API + alertas derivadas a bordo (CO2, deuda de sueño, HERA) */
 function buildAlerts(d, data) {
   const T = tt();
   const list = (data.alerts || [])
-    .filter(isOpen)
+    .filter((a) => a.status !== "RESOLVED")
     .map((a) => ({
       id: a.id,
       cls: alertClassOf(a.operational_state),
       // Las CRITICAL nacen ESCALATED por el motor sin ACK: siguen sin reconocer (misma regla que alerts.js)
-      acked: !isUnacked(a),
+      acked: !(a.status === "NEW" ||
+        (a.status === "ESCALATED" && !(a.acknowledgements || []).length && !(a.followups || []).length)),
       msg: bt(a.title),
       detail: `${a.value_recorded ?? ""} ${bt(a.unit ?? "")}`.trim(),
-      rec: bt(a.immediate_action) || counterOf(moduleOf(a))[0],
-      engine: engineOf(a),
       t: toDate(a.created_at),
       indicator: a.indicator_code,
       api: true,
       raw: a,
     }));
   if (isAlarm(d.co2Letter)) {
-    list.push({ id: "co2", cls: d.co2Letter, acked: consoleState.localAcks.has("co2"), msg: T.co2Alert, detail: `${num(d.co2v, 1)} mmHg · ${T.co2Limits}`, rec: T.co2Act, t: toDate(d.co2.measured_at), local: true });
+    list.push({ id: "co2", cls: d.co2Letter, acked: consoleState.localAcks.has("co2"), msg: T.co2Alert, detail: `${num(d.co2v, 1)} mmHg · ${T.co2Limits}`, t: toDate(d.co2.measured_at), local: true });
   }
   if (d.debtLetter !== "N") {
-    list.push({ id: "sleep-debt", cls: d.debtLetter, acked: consoleState.localAcks.has("sleep-debt"), msg: T.sleepDebtAlert, detail: fmt(T.sleepDebtDetail, { h: num(d.sleepDebt, 1) }), rec: T.sleepAdvice, t: d.nights.length ? toDate(d.nights[d.nights.length - 1].measured_at) : null, local: true });
+    list.push({ id: "sleep-debt", cls: d.debtLetter, acked: consoleState.localAcks.has("sleep-debt"), msg: T.sleepDebtAlert, detail: fmt(T.sleepDebtDetail, { h: num(d.sleepDebt, 1) }), t: d.nights.length ? toDate(d.nights[d.nights.length - 1].measured_at) : null, local: true });
   }
   const hl = HERA_LEVELS.indexOf(hera.level);
   if (hl >= 1) {
-    list.push({ id: "hera", cls: classFromRank(Math.min(hl, 3)), acked: hera.ackedLevel === hera.level, msg: fmt(T.heraAlert, { lvl: HERA_TEXT[hera.level].short }), detail: `${num(heraCurrent().v, 1)} µGy/min`, rec: HERA_TEXT[hera.level].msg, t: heraCurrent().t, local: true, hera: true, heraLevel: hera.level });
+    list.push({ id: "hera", cls: classFromRank(Math.min(hl, 3)), acked: hera.ackedLevel === hera.level, msg: fmt(T.heraAlert, { lvl: HERA_TEXT[hera.level].short }), detail: `${num(heraCurrent().v, 1)} µGy/min`, t: heraCurrent().t, local: true, hera: true, heraLevel: hera.level });
   }
-  // Prioridad: clase (W > C > A), sin reconocer primero, prioridad del backend y la más reciente
-  const pr = (a) => (a.api ? PRIORITY_RANK[a.raw.priority] ?? 0 : 0);
-  list.sort((a, b) => RANK[b.cls] - RANK[a.cls] || Number(a.acked) - Number(b.acked) || pr(b) - pr(a) ||
-    (a.t && b.t ? b.t - a.t : 0));
+  list.sort((a, b) => RANK[b.cls] - RANK[a.cls] || (a.t && b.t ? a.t - b.t : 0));
   return list;
 }
 
@@ -1571,13 +1384,7 @@ export async function renderConsole(container, appState, helpers, opts = {}) {
   container.innerHTML = `<div class="av-console" ${ROOT_ATTR}><div style="padding:24px" class="av-sub">${esc(tt().loadingConsole)}</div></div>`;
   bindOnce(container, appState, helpers);
   try {
-    // Radiación: las lecturas del dosímetro se piden de nuevo cada vez que se abre la vista
-    // (nunca lanza: en error deja la lista vacía) y se esperan junto a la caché de la consola
-    if (consoleState.view === "radiation") invalidateCad();
-    await Promise.all([
-      getConsoleData(appState),
-      consoleState.view === "radiation" ? loadCad(appState) : null,
-    ]);
+    await getConsoleData(appState);
   } catch (e) {
     container.innerHTML = `<div class="av-console" ${ROOT_ATTR}><div class="av-panel" style="margin:12px;padding:16px">${esc(fmt(tt().loadFailed, { msg: bt(e.message) }))}</div></div>`;
     return;
@@ -1615,10 +1422,8 @@ function paint(container, appState) {
   const alerts = buildAlerts(d, data);
   let body = "";
   if (consoleState.view === "indicator" && consoleState.indicator) body = indicatorHTML(appState, d, alerts);
-  else if (consoleState.view === "radiation") {
-    body = radiationHTML(appState, d);
-    if (!cadReady(appState)) ensureCadThenRepaint(container, appState);
-  } else body = summaryHTML(appState, d, data, alerts);
+  else if (consoleState.view === "radiation") body = radiationHTML(appState, d);
+  else body = summaryHTML(appState, d, data, alerts);
   // la barra de estado, la de alarma y las pestañas viven en el encabezado global (#av-chrome)
   container.innerHTML = `<div class="av-console" ${ROOT_ATTR}>${body}</div>`;
   if (consoleState.view === "indicator") loadIndicatorExtras(container, appState);
@@ -1908,9 +1713,6 @@ export function initChrome(appState, helpers = {}) {
       } else if (act === "crew-rename") {
         const r = el.getBoundingClientRect();
         openCrewRename(r.left, r.bottom + 4);
-      } else if (act === "crew-mode-exit" && hp.exitCrewMode) {
-        el.disabled = true;
-        await hp.exitCrewMode(); // recarga la consola con la cuenta de supervisión
       }
     } catch (e) {
       if (hp.showToast) hp.showToast(fmt(tt().actionFailed, { msg: bt(e.message) }), "error");
@@ -1956,7 +1758,6 @@ export function initChrome(appState, helpers = {}) {
   );
 
   preloadEnvBanners();
-  startAlertsLive();
   hera.listeners.add(chromeHeraListener);
   clearInterval(chromeState.clockTimer);
   chromeState.clockTimer = setInterval(tickChromeClock, 1000);
@@ -1990,8 +1791,6 @@ export function renderChrome(appState) {
   setHTML(alarmEl, alarmBarHTML(alerts));
   chromeState.lastLevel = hera.level;
   chromeState.lastAcked = hera.ackedLevel;
-  // panel de alertas del Resumen al día con la caché (solo si está a la vista y cambió)
-  updateSummaryAlerts();
 }
 
 /* Primera celda de la barra de estado: rótulo = misión, valor = nombre de la app
@@ -2044,12 +1843,7 @@ function crewCellHTML(appState, sessionName) {
   const editBtn = `<button type="button" class="av-crew-edit" data-act="crew-rename" title="${esc(T.crewRename)}" aria-label="${esc(T.crewRename)}">✎</button>`;
   if (!list.length) {
     const canEdit = !!appState.currentUser?.id;
-    // modo tripulante (issue #44): la sesión es la del astronauta; se ofrece volver a supervisión
-    const exitBtn = appState.crewMode
-      ? `<button type="button" class="av-btn av-btn-sm av-crew-exit" data-act="crew-mode-exit" title="${esc(T.crewModeExitHelp)}">${esc(T.crewModeExit)}</button>`
-      : "";
-    const label = appState.crewMode ? `${T.crewMember} · ${T.crewModeLabel}` : T.crewMember;
-    return `<div class="av-st av-st-crew" ${canEdit ? "data-crew-cell" : ""}><span class="av-lbl">${esc(label)}</span><span class="av-v" title="${esc(canEdit ? `${sessionName} — ${T.crewRenameHint}` : sessionName)}">${esc(sessionName)}</span>${canEdit ? editBtn : ""}${exitBtn}</div>`;
+    return `<div class="av-st av-st-crew" ${canEdit ? "data-crew-cell" : ""}><span class="av-lbl">${esc(T.crewMember)}</span><span class="av-v" title="${esc(canEdit ? `${sessionName} — ${T.crewRenameHint}` : sessionName)}">${esc(sessionName)}</span>${canEdit ? editBtn : ""}</div>`;
   }
   const role = appState.currentUser?.role_code;
   const session = fmt(T.crewSession, { name: `${sessionName}${role ? ` [${role}]` : ""}` });
@@ -2242,7 +2036,6 @@ function summaryHTML(appState, d, data, alerts) {
   <section aria-label="${esc(T.p1Aria)}">
     <div class="av-lbl" style="margin:0 0 6px 2px">${esc(T.p1Label)}</div>
     <div class="av-cards av-cards-3x2">
-      ${alertsCardHTML(alerts)}
       ${radCardHTML(d)}
       <article class="av-panel av-card ${RANK[d.co2Letter] >= 2 ? `av-card-${d.co2Letter}` : ""}">
         <div class="av-card-head"><h3 class="av-h3">${esc(T.co2Title)}</h3>${badge(d.co2Letter)}</div>
@@ -2273,6 +2066,7 @@ function summaryHTML(appState, d, data, alerts) {
         <div><button type="button" class="av-btn av-btn-sm" data-nav="wellbeing-hub">${esc(T.openWellbeing)}</button></div>
         <div class="av-foot">${sleep && sleep.measured_at ? `${esc(sleep.source_code || "")} · <span class="av-mono">${gmt(toDate(sleep.measured_at), false)}</span>` : esc(T.noRecord)}</div>
       </article>
+      ${alertsCardHTML(alerts)}
     </div>
   </section>`;
 
@@ -2744,49 +2538,24 @@ function systemsHTML(appState, data, d) {
   </section>`;
 }
 
-/* Panel de alertas C&W del Resumen (issue #30): todas las alertas abiertas de cualquier motor
- * (reglas, predicción, cognitivo, emocional, aislamiento, radiación) y las derivadas a bordo, por
- * prioridad (buildAlerts), cada una con su recomendación temprana ("Qué hacer ahora") y un enlace a
- * su detalle en la sección Alertas. Ocupa todo el ancho de Prioridad 1, encima de las tarjetas.
- * Se repinta solo (updateSummaryAlerts) cuando cambian las alertas: tras registrar algo o en el
- * sondeo ligero. El borde toma el color de la alerta más grave sin reconocer. */
-const CW_VISIBLE = 4;
+/* Tarjeta de alertas C&W dentro de la grilla de Prioridad 1 (3×2). El borde toma el color de la
+ * alerta más grave sin reconocer, igual que las demás tarjetas; la insignia lleva la letra. */
 function alertsCardHTML(alerts) {
+  const shown = alerts.filter((a) => consoleState.showAdv || a.cls !== "A");
+  const nAdv = alerts.filter((a) => a.cls === "A").length;
   const T = tt();
   const top = alerts.filter((a) => !a.acked).reduce((m, a) => (!m || RANK[a.cls] > RANK[m.cls] ? a : m), null);
   const topL = top ? top.cls : "N";
-  const shown = consoleState.cwAll ? alerts : alerts.slice(0, CW_VISIBLE);
-  const rest = alerts.length - CW_VISIBLE;
-  const fresh = alertsLive.fresh;
-  const row = (a) => {
-    const isNew = a.api && fresh.has(a.id);
-    const meta = [a.detail ? `<span class="av-mono">${esc(a.detail)}</span>` : "", esc(a.local ? T.onboard : engineName(a.engine))]
-      .filter(Boolean).join(" · ");
-    const link = a.api
-      ? `<button type="button" class="av-btn av-btn-sm" data-act="open-alert" data-alert="${esc(a.id)}" data-astro="${esc(a.raw.astronaut_id ?? "")}" aria-label="${esc(fmt(T.cwSeeAlertAria, { t: a.msg }))}">${esc(T.recsSeeAlert)}</button>`
-      : a.hera ? `<button type="button" class="av-btn av-btn-sm" data-act="view-radiation">${esc(T.radiation)}</button>`
-      : a.id === "sleep-debt" ? `<button type="button" class="av-btn av-btn-sm" data-nav="wellbeing-hub">${esc(T.openWellbeing)}</button>` : "";
-    return `<li class="av-alert-row av-cw-row${isNew ? " av-cw-new" : ""}" data-cls="${esc(a.cls)}">
+  const rows = shown.map((a) => `<li class="av-alert-row" data-cls="${esc(a.cls)}">
       ${badge(a.cls)}
-      <div class="av-cw-body">
-        <div class="av-cw-title"><span class="av-cw-msg">${esc(a.msg)}</span><span class="av-tab-sr"> · ${esc(STATE_WORD[a.cls])}</span>
-          ${isNew ? `<span class="av-cw-tag av-cw-tag-new">${esc(T.cwNew)}</span>` : ""}${!a.acked ? `<span class="av-cw-tag">${esc(T.cwUnacked)}</span>` : ""}</div>
-        <div class="av-sub">${meta}</div>
-        ${a.rec ? `<p class="av-cw-rec"><span class="av-lbl">${esc(T.cwNow)}</span> ${esc(a.rec)}</p>` : ""}
-        ${link ? `<div class="av-cw-btns">${link}</div>` : ""}
-      </div>
-      <span class="av-mono av-sub av-cw-time">${a.t ? gmt(a.t, false) : ""}${a.acked ? `<span style="display:block" title="ACK">ACK</span>` : ""}</span>
-    </li>`;
-  };
-  const count = alerts.length === 1 ? T.cwCountOne : fmt(T.cwCount, { n: num(alerts.length) });
-  const html = `<section class="av-panel av-card av-card-alerts ${RANK[topL] >= 2 ? `av-card-${topL}` : ""}" id="av-sum-alerts" aria-labelledby="av-cw-h">
-    <div class="av-card-head"><h3 class="av-h3" id="av-cw-h" tabindex="-1">${T.cwTitle}</h3><span class="av-cw-count"><span class="av-sub">${esc(count)}</span>${badge(topL)}</span></div>
-    <p class="av-sub av-cw-sub">${esc(T.cwSub)}</p>
-    <ul class="av-alert-list av-cw-list" role="list" aria-label="${esc(T.cwListAria)}">${shown.map(row).join("") || `<li class="av-sub" style="padding:8px 0">${esc(T.noActiveAlerts)}</li>`}</ul>
-    ${rest > 0 ? `<div class="av-foot"><button type="button" class="av-btn av-btn-sm" data-act="cw-more" data-focus-id="cw-more" aria-expanded="${consoleState.cwAll}" aria-controls="av-sum-alerts">${esc(consoleState.cwAll ? T.cwLess : fmt(T.cwMore, { n: num(rest) }))}</button></div>` : ""}
-  </section>`;
-  alertsLive.lastHtml = html; // lo que queda pintado: updateSummaryAlerts solo repinta si cambia
-  return html;
+      <span style="min-width:0"><span style="font-weight:600;display:block">${esc(a.msg)}</span><span class="av-sub">${esc(a.detail)}${a.local ? ` · ${esc(T.onboard)}` : ""}</span></span>
+      <span class="av-mono av-sub" style="text-align:right">${a.t ? gmt(a.t, false) : ""}${a.acked ? `<span style="display:block" title="ACK">ACK</span>` : ""}</span>
+    </li>`).join("");
+  return `<article class="av-panel av-card av-card-alerts ${RANK[topL] >= 2 ? `av-card-${topL}` : ""}" aria-label="${esc(T.cwTitle.replace("&amp;", "&"))}">
+    <div class="av-card-head"><h3 class="av-h3">${T.cwTitle}</h3>${badge(topL)}</div>
+    <ul class="av-alert-list" role="list">${rows || `<li class="av-sub" style="padding:8px 0">${esc(T.noActiveAlerts)}</li>`}</ul>
+    <div class="av-foot"><button type="button" class="av-btn av-btn-sm" data-act="toggle-adv" aria-pressed="${consoleState.showAdv}">${esc(consoleState.showAdv ? T.hideAdv : fmt(T.showAdv, { n: nAdv }))}</button></div>
+  </article>`;
 }
 
 /* Apertura del cuadro "Tareas de hoy" (<section> + encabezado + recordatorio). Con contramedidas
@@ -2818,7 +2587,7 @@ function tasksBoxOpenHTML(data, T) {
  * (un solo cuadro, columna de 2 del issue #3); la alerta en sí se gestiona en Alertas (desplegables).
  * "Ver canal con Tierra" abre la pestaña Recomendaciones con el cuadro earth-channel desplegado. */
 function activeRecsHTML(appState, alerts, T) {
-  const recs = alerts.filter((a) => a.api && isIsolationEarly(a.raw) && a.raw.immediate_action);
+  const recs = alerts.filter((a) => a.api && isEarlyAlert(a.raw) && a.raw.immediate_action);
   if (!recs.length) return "";
   const leader = (appState.currentUser?.role_code || "ASTRONAUT") !== "ASTRONAUT";
   const items = recs.map(({ raw }) => `<li class="av-ew">
@@ -2852,7 +2621,7 @@ function rightColHTML(appState, d, data, alerts) {
   }).join("");
   // Segundo cuadro: avance del módulo Recomendaciones (el módulo Mensajes se retiró, issue #15)
   const recs = T.recItems.map((t) => `<li style="padding:6px 0;border-top:1px solid var(--av-row)">${esc(t)}</li>`).join("");
-  const nActive = alerts.filter((a) => a.api && isIsolationEarly(a.raw) && a.raw.immediate_action).length;
+  const nActive = alerts.filter((a) => a.api && isEarlyAlert(a.raw) && a.raw.immediate_action).length;
   return `
   <aside class="av-col-c av-col-sum" aria-label="${esc(T.rightAria)}">
     ${tasksBoxOpenHTML(data, T)}
@@ -3042,129 +2811,12 @@ function trendSVG(appState, code, ts) {
 
 /* ───────────────────────── radiación ───────────────────────── */
 
-/* Lecturas del dosímetro activo de tripulación (CAD): viven en la base de datos
- * (GET/POST /radiation/dosimeter-readings), por astronauta y misión seleccionados.
- * Caché propia con la misma clave `${aid}|${mid}` que la de la consola; radiationHTML la lee
- * de forma síncrona (cadEntries) y renderConsole / paint la cargan (loadCad) antes de pintar.
- * `gen` descarta respuestas que llegan después de invalidar la caché (p. ej. tras guardar). */
-const cadCache = { key: null, rows: null, gen: 0, pending: null, pendingKey: null };
-
-/* Fila de la API → forma que usa radiationHTML (la misma que tenían las entradas locales) */
-function cadFromApi(r) {
-  return {
-    device: r.device || "",
-    utc: r.measured_at,
-    mgy: Number(r.dose_mgy),
-    rate: r.rate_ugy_h === null || r.rate_ugy_h === undefined ? null : Number(r.rate_ugy_h),
-    loc: r.location || "",
-    notes: r.notes || "",
-  };
+const CAD_KEY = (aid) => `av_cad_entries_${aid}`;
+function cadEntries(aid) {
+  try { return JSON.parse(localStorage.getItem(CAD_KEY(aid)) || "[]"); } catch (e) { return []; }
 }
-
-/* Lecturas en caché para el tripulante/misión actuales, en orden cronológico (última al final) */
-function cadEntries(appState) {
-  return cadReady(appState) ? cadCache.rows : [];
-}
-function cadReady(appState) {
-  return cadCache.rows !== null && cadCache.key === cacheKey(appState);
-}
-function invalidateCad() {
-  cadCache.gen += 1;
-  cadCache.key = null;
-  cadCache.rows = null;
-  cadCache.pending = null;
-  cadCache.pendingKey = null;
-}
-
-/* Migración única de las lecturas que versiones anteriores guardaban solo en el navegador
- * (localStorage `av_cad_entries_<aid>`): se suben con dedup_key estable (aid + hora + dosis)
- * para que un reintento no duplique, y la clave se borra solo si TODAS se han subido. Silenciosa. */
-const LEGACY_CAD_KEY = (aid) => `av_cad_entries_${aid}`;
-const cadMigrating = new Map(); // aid → promesa en curso
-function migrateLegacyCad(aid, mid) {
-  if (!aid) return Promise.resolve();
-  let raw = null;
-  try { raw = localStorage.getItem(LEGACY_CAD_KEY(aid)); } catch { return Promise.resolve(); }
-  if (raw === null) return Promise.resolve();
-  if (cadMigrating.has(aid)) return cadMigrating.get(aid);
-  const p = (async () => {
-    let list = null;
-    try { list = JSON.parse(raw); } catch { list = null; }
-    let allOk = true;
-    for (const e of Array.isArray(list) ? list : []) {
-      const mgy = Number(e && e.mgy);
-      const t = new Date(e && e.utc);
-      // entradas ilegibles: no se pueden subir nunca, se descartan
-      if (!e || !Number.isFinite(mgy) || mgy < 0 || Number.isNaN(t.getTime())) continue;
-      const utc = t.toISOString();
-      const rate = e.rate === null || e.rate === undefined || e.rate === "" ? null : Number(e.rate);
-      const notes = String(e.notes || "").trim().slice(0, 140);
-      try {
-        await apiService.createDosimeterReading({
-          astronaut_id: aid,
-          mission_id: mid ?? null,
-          device: String(e.device || "CAD").trim().slice(0, 32) || "CAD",
-          measured_at: utc,
-          dose_mgy: mgy,
-          rate_ugy_h: Number.isFinite(rate) && rate >= 0 ? rate : null,
-          location: String(e.loc || "").slice(0, 60),
-          notes: notes || null,
-          dedup_key: `cad-legacy-${aid}-${utc}-${mgy}`.slice(0, 120),
-        });
-      } catch {
-        allOk = false; // se reintentará en la próxima carga (dedup_key evita duplicados)
-      }
-    }
-    if (allOk) {
-      try { localStorage.removeItem(LEGACY_CAD_KEY(aid)); } catch { /* sin almacenamiento */ }
-    }
-  })().finally(() => cadMigrating.delete(aid));
-  cadMigrating.set(aid, p);
-  return p;
-}
-
-/* Carga (migración previa incluida) las lecturas del tripulante/misión actuales y las deja en caché.
- * Si la petición falla se guarda una lista vacía para no reintentar en bucle desde paint;
- * renderConsole vuelve a pedirlas cada vez que se abre la vista Radiación. */
-function loadCad(appState) {
-  const key = cacheKey(appState);
-  if (cadCache.pending && cadCache.pendingKey === key) return cadCache.pending;
-  const aid = appState.selectedAstronautId;
-  const mid = appState.selectedMissionId;
-  const gen = ++cadCache.gen;
-  const p = migrateLegacyCad(aid, mid)
-    .catch(() => { /* la migración nunca bloquea la carga */ })
-    .then(() => apiService.getDosimeterReadings(aid, mid))
-    .then((res) => (res && Array.isArray(res.readings) ? res.readings : []).map(cadFromApi))
-    .catch((e) => {
-      console.warn("No se pudieron cargar las lecturas del dosímetro:", e && e.message);
-      return [];
-    })
-    .then((rows) => {
-      if (cadCache.gen === gen) {
-        cadCache.key = key;
-        cadCache.rows = rows;
-      }
-      if (cadCache.pending === p) {
-        cadCache.pending = null;
-        cadCache.pendingKey = null;
-      }
-      return rows;
-    });
-  cadCache.pending = p;
-  cadCache.pendingKey = key;
-  return p;
-}
-
-/* paint sin lecturas en caché (cambio de tripulante, repintado desde el encabezado): se piden
- * y se repinta al llegar, si la vista Radiación del mismo tripulante/misión sigue abierta. */
-function ensureCadThenRepaint(container, appState) {
-  const key = cacheKey(appState);
-  loadCad(appState).then(() => {
-    if (!document.body.contains(container) || !container.querySelector(ROOT_SEL)) return;
-    if (consoleState.view !== "radiation" || cacheKey(appState) !== key || !cadReady(appState)) return;
-    paint(container, appState);
-  });
+function saveCad(aid, list) {
+  try { localStorage.setItem(CAD_KEY(aid), JSON.stringify(list.slice(-50))); return true; } catch (e) { return false; }
 }
 
 function meterHTML(title, value, limit, unit, note, marks = []) {
@@ -3375,7 +3027,8 @@ function radiationHTML(appState, d) {
   const cur = heraCurrent();
   const lvl = hera.level;
   const lvlLetter = HERA_LETTER[lvl];
-  const entries = cadEntries(appState); // cargadas desde la API antes de pintar (loadCad)
+  const aid = appState.selectedAstronautId;
+  const entries = cadEntries(aid);
   const lastCad = entries[entries.length - 1];
   const cadAgeH = lastCad ? (Date.now() - new Date(lastCad.utc).getTime()) / 3600000 : null;
   const discrepancy = lastCad && lastCad.rate ? Math.abs(lastCad.rate / 60 - cur.v) / Math.max(cur.v, 0.01) : null; // µGy/h → µGy/min
@@ -3513,16 +3166,7 @@ function bindOnce(container, appState, helpers) {
         const k = el.getAttribute("data-layer"); consoleState.layers[k] = !consoleState.layers[k]; paint(container, st);
         focusQuiet(container, container.querySelector(`[data-focus-id="layer-${k}"]`));
       }
-      else if (act === "cw-more") {
-        consoleState.cwAll = !consoleState.cwAll;
-        updateSummaryAlerts();
-        focusQuiet(container, container.querySelector('[data-focus-id="cw-more"]'));
-      } else if (act === "open-alert") {
-        // "Ver en Alertas": la sección Alertas abre el detalle de esta alerta (views/alerts.js)
-        requestAlertOpen(el.getAttribute("data-alert"), el.getAttribute("data-astro"));
-        document.body.classList.remove("av-console-on");
-        await hp.navigateToSection("alerts-center");
-      }
+      else if (act === "toggle-adv") { consoleState.showAdv = !consoleState.showAdv; paint(container, st); }
       else if (act === "spe-start") { heraStartSpe(); paint(container, st); }
       else if (act === "spe-stop") { heraStopSpe(); paint(container, st); }
       else if (act === "proc-next") { consoleState.proc.step += 1; paint(container, st); }
@@ -3624,36 +3268,21 @@ function bindOnce(container, appState, helpers) {
         if (fd.get("secondary")) payload.secondary_value = Number(fd.get("secondary"));
         await submitMeasurement(container, st, hp, payload);
       } else if (form.getAttribute("data-form") === "cad") {
-        // siempre el tripulante y la misión elegidos en el selector (el líder registra para su tripulación)
-        const aid = st.selectedAstronautId;
-        const mid = st.selectedMissionId;
-        const measuredAt = new Date(`${fd.get("utc")}:00Z`).toISOString();
-        const mgy = Number(fd.get("mgy"));
-        if (!Number.isFinite(mgy) || mgy < 0) throw new Error(tt().badDose);
-        const rate = fd.get("rate") ? Number(fd.get("rate")) : null;
-        const notes = String(fd.get("notes") || "").trim().slice(0, 140);
-        const device = String(fd.get("device") || "").trim().slice(0, 32);
-        const submitBtn = form.querySelector('button[type="submit"]');
-        if (submitBtn) submitBtn.disabled = true;
-        try {
-          await apiService.createDosimeterReading({
-            astronaut_id: aid,
-            mission_id: mid,
-            device,
-            measured_at: measuredAt,
-            dose_mgy: mgy,
-            rate_ugy_h: rate,
-            location: String(fd.get("loc") || "").slice(0, 60),
-            notes: notes || null,
-            // misma lectura (tripulante, misión, dispositivo, hora y dosis) enviada dos veces → una sola fila
-            dedup_key: `cad-${aid}-${mid ?? ""}-${measuredAt}-${mgy}-${device}`.slice(0, 120),
-          });
-        } finally {
-          if (submitBtn) submitBtn.disabled = false;
-        }
+        const entry = {
+          device: String(fd.get("device") || "").slice(0, 32),
+          utc: new Date(`${fd.get("utc")}:00Z`).toISOString(),
+          mgy: Number(fd.get("mgy")),
+          rate: fd.get("rate") ? Number(fd.get("rate")) : null,
+          loc: String(fd.get("loc") || ""),
+          notes: String(fd.get("notes") || "").slice(0, 140),
+          savedAt: new Date().toISOString(),
+        };
+        if (!Number.isFinite(entry.mgy) || entry.mgy < 0) throw new Error(tt().badDose);
+        const list = cadEntries(st.selectedAstronautId);
+        list.push(entry);
+        list.sort((a, b) => new Date(a.utc) - new Date(b.utc));
+        if (!saveCad(st.selectedAstronautId, list)) throw new Error(tt().saveLocalFailed);
         hp.showToast(tt().toastCadSaved);
-        invalidateCad();
-        await loadCad(st);
         paint(container, st);
       }
     } catch (e) {

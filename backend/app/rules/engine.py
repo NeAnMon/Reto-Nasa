@@ -522,7 +522,6 @@ def upsert_alert_for_measurement(
         existing.is_simulated = bool(existing.is_simulated and measurement.is_simulated)
         existing.updated_at = now
         db.flush()
-        _retire_prediction_alert(db, measurement.astronaut_id, definition.code, now)
         return existing, False
 
     immediate, followup = build_alert_texts(definition.code, direction, new_state)
@@ -552,16 +551,7 @@ def upsert_alert_for_measurement(
     )
     db.add(alert)
     db.flush()
-    _retire_prediction_alert(db, measurement.astronaut_id, definition.code, now)
     return alert, True
-
-
-def _retire_prediction_alert(db: Session, astronaut_id: int, indicator_code: str, now: datetime) -> None:
-    """La alerta real sustituye al aviso temprano del pronóstico (issue #30): se retira con nota de sistema."""
-    # Import diferido: prediction_alerts importa de este módulo
-    from backend.app.rules.prediction_alerts import PREDICTION_RESOLVED_REAL_ALERT, resolve_prediction_alerts
-
-    resolve_prediction_alerts(db, astronaut_id, indicator_code, PREDICTION_RESOLVED_REAL_ALERT, now)
 
 
 def create_alert_if_needed(

@@ -340,28 +340,6 @@ class HealthMeasurement(Base):
     notes = Column(Text, nullable=True)
 
 
-class DosimeterReading(Base):
-    """Lectura del dosímetro activo personal (CAD) de un astronauta en una misión."""
-
-    __tablename__ = "dosimeter_readings"
-    __table_args__ = (
-        Index("ix_dosimeter_astro_time", "astronaut_id", "measured_at"),
-    )
-
-    id = Column(Integer, primary_key=True, index=True)
-    astronaut_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    mission_id = Column(Integer, ForeignKey("missions.id", ondelete="CASCADE"), nullable=False, index=True)
-    device = Column(String(32), nullable=False)
-    measured_at = Column(DateTime(timezone=True), nullable=False, index=True)
-    dose_mgy = Column(Float, nullable=False)  # dosis acumulada (mGy), >= 0
-    rate_ugy_h = Column(Float, nullable=True)  # tasa de dosis (µGy/h), opcional
-    location = Column(String(60), nullable=False, default="")
-    notes = Column(String(140), nullable=True)
-    recorded_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
-    dedup_key = Column(String(120), unique=True, nullable=True, index=True)
-
-
 class EnvironmentalMeasurement(Base):
     __tablename__ = "environmental_measurements"
 

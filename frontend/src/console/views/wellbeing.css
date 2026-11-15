@@ -90,6 +90,3 @@
   .av-wb-seg { grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); }
   .av-wb-hours { max-width: none; }
 }
-
-/* Modo tripulante (issue #44): aviso de supervisión / cuenta en uso bajo la introducción */
-.av-wb-crewmode { margin: 10px 12px 0; display: flex; flex-direction: column; gap: 6px; white-space: normal; }

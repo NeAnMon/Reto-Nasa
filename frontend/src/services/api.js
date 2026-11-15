@@ -210,17 +210,6 @@ export const apiService = {
       throw err;
     }
 
-    // Escritura correcta (medición, check-in, cuestionario, evaluación, ACK…): puede haber generado o
-    // cambiado alertas. Se avisa a la app para que refresque el estado de alertas (console.js, issue #30).
-    const method = String(options.method || "GET").toUpperCase();
-    if (method !== "GET" && method !== "HEAD" && !path.startsWith("/auth/")) {
-      try {
-        window.dispatchEvent(new CustomEvent("semsa:data-changed", { detail: { path, method } }));
-      } catch {
-        /* sin window (pruebas): nada que avisar */
-      }
-    }
-
     const contentType = response.headers.get("content-type") || "";
     if (contentType.includes("application/json")) {
       return await response.json();
@@ -290,24 +279,6 @@ export const apiService = {
       });
     }
     return this.request("/health/measurements", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-  },
-
-  /* Lecturas del dosímetro activo de tripulación (CAD), por astronauta y misión.
-   * Respuesta: { readings: [...] } en orden cronológico ascendente (las más recientes al final). */
-  getDosimeterReadings(astronautId = null, missionId = null, limit = null) {
-    const params = new URLSearchParams();
-    if (astronautId) params.set("astronaut_id", astronautId);
-    if (missionId) params.set("mission_id", missionId);
-    if (limit) params.set("limit", limit);
-    const qs = params.toString() ? `?${params.toString()}` : "";
-    return this.request(`/radiation/dosimeter-readings${qs}`);
-  },
-
-  createDosimeterReading(payload) {
-    return this.request("/radiation/dosimeter-readings", {
       method: "POST",
       body: JSON.stringify(payload),
     });

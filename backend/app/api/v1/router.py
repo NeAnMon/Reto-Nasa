@@ -1,13 +1,11 @@
 import csv
 import io
 import json
-import math
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
-from sqlalchemy import case
 from sqlalchemy.orm import Session
 
 from backend.app.core.config import settings
@@ -24,7 +22,6 @@ from backend.app.models.models import (
     DailyMission,
     DataQualityEvent,
     DataSource,
-    DosimeterReading,
     EnvironmentalMeasurement,
     EnvironmentProfile,
     FollowUpAction,
@@ -49,28 +46,17 @@ from backend.app.models.models import (
     WellnessRecommendation,
 )
 from backend.app.rules.engine import (
-    OPEN_ALERT_STATUSES,
     ContextResolver,
     evaluate_measurement,
     upsert_alert_for_measurement,
 )
 from backend.app.rules.early_warnings import EARLY_RULE_PREFIX, is_early_rule
-from backend.app.rules.alert_sources import (
-    SOURCE_ENGINES,
-    alert_source_engine,
-    is_early_warning_alert,
-    source_engine_clause,
-)
-from backend.app.rules.environment_alerts import evaluate_and_alert_environment
-from backend.app.rules.prediction_alerts import upsert_prediction_alert
-from backend.app.services.prediction_service import predict_indicator
 from backend.app.schemas.schemas import (
     AlertAckRequest,
     AlertEscalateRequest,
     AlertFollowUpRequest,
     BulkImportRequest,
     ContextUpdateRequest,
-    DosimeterReadingCreate,
     EnvironmentalMeasurementCreate,
     GamificationCompleteRequest,
     HealthMeasurementCreate,
@@ -258,29 +244,6 @@ def _serialize_user(db: Session, user: User) -> Dict[str, object]:
         "missions": missions_assigned,
         "astronaut_profile": astro_prof,
     }
-
-
-def _measurement_phase_and_environment(db: Session, mission: Mission, ctx: Dict[str, object]) -> Tuple[str, str]:
-    """Fase y entorno con los que se guarda una medición.
-
-    Con contexto operativo confirmado se usa ese contexto. Sin él (ContextResolver devuelve
-    UNKNOWN / UNKNOWN_ENVIRONMENT) se usa la fase vigente del plan de la misión y su entorno: así la
-    lectura continúa la serie de su fase en vez de abrir un segmento "UNKNOWN" aparte, que dejaba el
-    pronóstico de ese indicador en datos insuficientes (misión análoga, que no tiene contexto
-    confirmado). El contexto que se muestra al usuario sigue siendo "no confirmado".
-    """
-    phase, env = ctx.get("phase_code"), ctx.get("environment_code")
-    if ctx.get("determination_source") != "UNCONFIRMED" and phase and env:
-        return str(phase), str(env)
-    current = (
-        db.query(MissionPhase)
-        .filter(MissionPhase.mission_id == mission.id, MissionPhase.is_current.is_(True))
-        .order_by(MissionPhase.sequence_order.desc())
-        .first()
-    )
-    if current is not None:
-        return current.phase_code, current.environment_code
-    return str(phase or mission.current_phase), str(env or "LUNAR_SURFACE")
 
 
 def _resolve_target_astronaut_and_mission(
@@ -1507,7 +1470,6 @@ def create_health_measurement(
         raise HTTPException(status_code=404, detail="Indicador de salud no encontrado.")
 
     ctx = ContextResolver.resolve_active_context(db, mission.id, target_user.id)
-    meas_phase, meas_env = _measurement_phase_and_environment(db, mission, ctx)
     meas_dt = ensure_aware(payload.measured_at) or utcnow()
 
     evaluation = evaluate_measurement(
@@ -1538,8 +1500,8 @@ def create_health_measurement(
         unit=defn.unit,
         measured_at=meas_dt,
         received_at=utcnow(),
-        phase_code=meas_phase,
-        environment_code=meas_env,
+        phase_code=str(ctx.get("phase_code") or mission.current_phase),
+        environment_code=str(ctx.get("environment_code") or "LUNAR_SURFACE"),
         source_code=payload.source_code,
         data_quality=quality,
         calculated_state=state,
@@ -1554,10 +1516,6 @@ def create_health_measurement(
     alert_created, alert_is_new = upsert_alert_for_measurement(db, m, defn, evaluation)
     db.commit()
     db.refresh(m)
-
-    # Alerta temprana del pronóstico (issue #30): la lectura sigue en rango, pero la tendencia cruzaría
-    # un umbral del motor calibrado en los próximos días (rules/prediction_alerts.py)
-    early_warning = _refresh_prediction_alert(db, m) if state == "NORMAL" else None
 
     # If valid measurement, also credit DAILY_HEALTH_CHECK or PULSE_CHECK if astronaut
     gamification_bonus = None
@@ -1613,136 +1571,8 @@ def create_health_measurement(
             if alert_created
             else None
         ),
-        "early_warning_alert": early_warning,
         "gamification_update": gamification_bonus,
     }
-
-
-def _refresh_prediction_alert(db: Session, m: HealthMeasurement) -> Optional[Dict[str, object]]:
-    """Pronostica el indicador tras una lectura normal y crea/actualiza su alerta temprana.
-
-    Un fallo del pronóstico nunca impide registrar la medición (ya está guardada): se descarta y sigue.
-    """
-    try:
-        result = predict_indicator(
-            db=db, astronaut_id=m.astronaut_id, mission_id=m.mission_id, indicator_code=m.indicator_code,
-            horizon_days=7, include_simulated=bool(m.is_simulated),
-        )
-        alert, is_new = upsert_prediction_alert(
-            db, m.astronaut_id, m.mission_id, result, is_simulated=bool(m.is_simulated)
-        )
-        db.commit()  # también guarda la retirada de la alerta abierta (sin cruce o con datos desfasados)
-        if alert is None:
-            return None
-    except Exception:
-        db.rollback()
-        return None
-    return {
-        "id": alert.id,
-        "rule_code": alert.rule_code,
-        "source_engine": alert_source_engine(alert.rule_code, alert.indicator_code),
-        "priority": alert.priority,
-        "title": alert.title,
-        "immediate_action": alert.immediate_action,
-        "followup_recommendation": alert.followup_recommendation,
-        "is_new": is_new,
-    }
-
-
-# ----------------------------------------------------------------------------
-# Dosímetro activo de tripulación (CAD): lecturas manuales por astronauta y misión.
-# Mismo modelo de permisos que /health/measurements: el objetivo se resuelve con
-# _resolve_target_astronaut_and_mission (verify_astronaut_access) y un ASTRONAUT
-# solo puede registrar sus propias lecturas.
-# ----------------------------------------------------------------------------
-
-def _serialize_dosimeter_reading(r: DosimeterReading) -> Dict[str, object]:
-    return {
-        "id": r.id,
-        "astronaut_id": r.astronaut_id,
-        "mission_id": r.mission_id,
-        "device": r.device,
-        "measured_at": ensure_aware(r.measured_at).isoformat(),
-        "dose_mgy": r.dose_mgy,
-        "rate_ugy_h": r.rate_ugy_h,
-        "location": r.location,
-        "notes": r.notes,
-        "recorded_by_user_id": r.recorded_by_user_id,
-        "created_at": ensure_aware(r.created_at).isoformat() if r.created_at else None,
-        "dedup_key": r.dedup_key,
-    }
-
-
-@router.get("/radiation/dosimeter-readings")
-def list_dosimeter_readings(
-    astronaut_id: Optional[int] = None,
-    mission_id: Optional[int] = None,
-    limit: int = Query(default=50, ge=1, le=500),
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Últimas `limit` lecturas del astronauta en la misión resuelta, en orden
-    cronológico ASCENDENTE (la más reciente al final), listo para la vista."""
-    target_user, mission = _resolve_target_astronaut_and_mission(db, user, astronaut_id, mission_id)
-    rows = (
-        db.query(DosimeterReading)
-        .filter(
-            DosimeterReading.astronaut_id == target_user.id,
-            DosimeterReading.mission_id == mission.id,
-        )
-        .order_by(DosimeterReading.measured_at.desc(), DosimeterReading.id.desc())
-        .limit(limit)
-        .all()
-    )
-    rows.reverse()
-    return {
-        "astronaut_id": target_user.id,
-        "mission_id": mission.id,
-        "readings": [_serialize_dosimeter_reading(r) for r in rows],
-    }
-
-
-@router.post("/radiation/dosimeter-readings", status_code=status.HTTP_201_CREATED)
-def create_dosimeter_reading(
-    payload: DosimeterReadingCreate,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    target_user, mission = _resolve_target_astronaut_and_mission(
-        db, user, payload.astronaut_id, payload.mission_id
-    )
-    if user.role.code == "ASTRONAUT" and target_user.id != user.id:
-        raise HTTPException(status_code=403, detail="Solo puede registrar sus propias lecturas de dosímetro.")
-
-    if payload.dedup_key:
-        existing = (
-            db.query(DosimeterReading)
-            .filter(DosimeterReading.dedup_key == payload.dedup_key)
-            .first()
-        )
-        if existing:
-            return {
-                "duplicate_prevented": True,
-                "reading": _serialize_dosimeter_reading(existing),
-            }
-
-    r = DosimeterReading(
-        astronaut_id=target_user.id,
-        mission_id=mission.id,
-        device=payload.device,
-        measured_at=ensure_aware(payload.measured_at),
-        dose_mgy=payload.dose_mgy,
-        rate_ugy_h=payload.rate_ugy_h,
-        location=payload.location or "",
-        notes=payload.notes,
-        recorded_by_user_id=user.id,
-        created_at=utcnow(),
-        dedup_key=payload.dedup_key,
-    )
-    db.add(r)
-    db.commit()
-    db.refresh(r)
-    return {"duplicate_prevented": False, "reading": _serialize_dosimeter_reading(r)}
 
 
 @router.post("/health/measurements/import")
@@ -1776,7 +1606,6 @@ def import_health_measurements(
         raise HTTPException(status_code=400, detail=f"Error al procesar archivo importado: {exc}")
 
     ctx = ContextResolver.resolve_active_context(db, mission.id, target_user.id)
-    meas_phase, meas_env = _measurement_phase_and_environment(db, mission, ctx)
     imported_count = 0
     invalid_count = 0
     touched_alert_ids = set()  # alertas creadas o actualizadas (una por indicador)
@@ -1816,8 +1645,8 @@ def import_health_measurements(
             unit=defn.unit,
             measured_at=meas_dt,
             received_at=utcnow(),
-            phase_code=meas_phase,
-            environment_code=meas_env,
+            phase_code=str(ctx.get("phase_code") or mission.current_phase),
+            environment_code=str(ctx.get("environment_code") or "LUNAR_SURFACE"),
             source_code="CSV_JSON_IMPORT",
             data_quality="INVALID" if state == "INVALID" else ("SYNTHETIC_DEMO" if payload.is_simulated else "VALIDATED"),
             calculated_state=state,
@@ -1971,31 +1800,8 @@ def create_environmental_measurement(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    # Una medición ambiental puede alertar (hasta CRITICAL/ESCALATED) a toda la tripulación: solo la registra
-    # administración, un líder o un astronauta con asignación activa a esa misión.
-    if payload.value is not None and not math.isfinite(payload.value):
-        raise HTTPException(status_code=422, detail="value debe ser un número finito.")
-    mission = db.query(Mission).filter(Mission.id == payload.mission_id).first()
-    if not mission:
-        raise HTTPException(status_code=404, detail="Misión no encontrada.")
-    role_code = user.role.code if user.role else ""
-    if role_code == "ASTRONAUT":
-        assigned = (
-            db.query(MissionAssignment.id)
-            .filter(
-                MissionAssignment.user_id == user.id,
-                MissionAssignment.mission_id == mission.id,
-                MissionAssignment.is_active.is_(True),
-            )
-            .first()
-        )
-        if assigned is None:
-            raise HTTPException(status_code=403, detail="Solo puede registrar mediciones ambientales de su misión.")
-    elif role_code not in ("ADMINISTRATOR", "MISSION_LEADER"):
-        raise HTTPException(status_code=403, detail="Insufficient role permissions for this operation.")
-
     em = EnvironmentalMeasurement(
-        mission_id=mission.id,
+        mission_id=payload.mission_id,
         environment_code=payload.environment_code,
         phase_code=payload.phase_code,
         parameter_code=payload.parameter_code,
@@ -2011,33 +1817,9 @@ def create_environmental_measurement(
         is_simulated=payload.is_simulated,
     )
     db.add(em)
-    db.flush()
-    # Alertas del entorno / radiación ambiental para la tripulación (issue #30, rules/environment_alerts.py)
-    env_alerts = evaluate_and_alert_environment(db, em)
     db.commit()
     db.refresh(em)
-    # Solo se detallan las alertas de astronautas que el usuario supervisa (el astronauta, las suyas): nunca
-    # se revelan ids de otros tripulantes. `crew_alerts_count` da el total creado o actualizado.
-    supervised = set(get_authorized_astronaut_ids(db, user))
-    return {
-        "id": em.id,
-        "parameter_code": em.parameter_code,
-        "calculated_state": em.calculated_state,
-        "crew_alerts_count": len(env_alerts),
-        "alerts_generated": [
-            {
-                "id": a.id,
-                "astronaut_id": a.astronaut_id,
-                "rule_code": a.rule_code,
-                "source_engine": alert_source_engine(a.rule_code, a.indicator_code),
-                "priority": a.priority,
-                "operational_state": a.operational_state,
-                "title": a.title,
-            }
-            for a in env_alerts
-            if a.astronaut_id in supervised
-        ],
-    }
+    return {"id": em.id, "parameter_code": em.parameter_code}
 
 
 @router.get("/environment/sources")
@@ -2075,9 +1857,6 @@ def _serialize_alert(db: Session, a: Alert) -> Dict[str, object]:
         "mission_id": a.mission_id,
         "indicator_code": a.indicator_code,
         "rule_code": a.rule_code,
-        # Motor que generó la alerta (prefijo de rule_code, ver rules/alert_sources.py) y si es temprana
-        "source_engine": alert_source_engine(a.rule_code, a.indicator_code),
-        "is_early_warning": is_early_warning_alert(a.rule_code),
         "rule_version_label": a.rule_version_label,
         "value_recorded": a.value_recorded,
         "unit": a.unit,
@@ -2124,17 +1903,9 @@ def list_alerts(
     mission_id: Optional[int] = None,
     status_filter: Optional[str] = None,
     priority: Optional[str] = None,
-    source_engine: Optional[str] = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if source_engine is not None:
-        source_engine = source_engine.strip().upper()
-        if source_engine not in SOURCE_ENGINES:
-            raise HTTPException(
-                status_code=422,
-                detail=f"source_engine no válido. Valores: {', '.join(SOURCE_ENGINES)}.",
-            )
     allowed_ids = get_authorized_astronaut_ids(db, user)
     if astronaut_id is not None:
         verify_astronaut_access(db, user, astronaut_id, action_name="LIST_ALERTS")
@@ -2152,17 +1923,13 @@ def list_alerts(
         query = query.filter(Alert.status == status_filter)
     if priority:
         query = query.filter(Alert.priority == priority)
-    if source_engine:
-        query = query.filter(source_engine_clause(Alert.rule_code, source_engine, Alert.indicator_code))
 
     # Alertas tempranas de bienestar: el líder no las ve si el astronauta no comparte sus señales
     hidden_ids = _early_alert_hidden_astronauts(db, user, filter_ids)
     if hidden_ids:
         query = query.filter(~(Alert.astronaut_id.in_(hidden_ids) & Alert.rule_code.like(f"{EARLY_RULE_PREFIX}%")))
 
-    # Abiertas primero (y luego por fecha): ninguna alerta abierta queda fuera del límite por antigüedad
-    open_first = case((Alert.status.in_(OPEN_ALERT_STATUSES), 0), else_=1)
-    alerts = query.order_by(open_first, Alert.created_at.desc(), Alert.id.desc()).limit(100).all()
+    alerts = query.order_by(Alert.created_at.desc()).limit(100).all()
     return {"alerts": [_serialize_alert(db, a) for a in alerts]}
 
 
@@ -3436,8 +3203,3 @@ router.include_router(expansion_router)
 from backend.app.api.v1.isolation_router import isolation_router  # noqa: E402
 
 router.include_router(isolation_router)
-
-# Bitácora: series de solo lectura para las gráficas por motor (issue #30)
-from backend.app.api.v1.logbook_router import logbook_router  # noqa: E402
-
-router.include_router(logbook_router)

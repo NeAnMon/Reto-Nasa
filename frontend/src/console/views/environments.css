@@ -18,8 +18,11 @@
 .av-env-now { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
 .av-env-nowbox { display: flex; flex-direction: column; gap: 2px; padding-left: 10px; border-left: 3px solid var(--av-text); min-width: 0; }
 .av-env-nowbox-prev { border-left-style: dashed; border-left-color: var(--av-text2); }
-.av-env-nowval { font-weight: 600; overflow-wrap: anywhere; }
-.av-env-code { font-size: 11px; font-weight: 600; letter-spacing: .06em; color: var(--av-muted); }
+.av-env-nowval { font-weight: 600; overflow-wrap: anywhere; display: inline-flex; align-items: center; gap: 6px; }
+.av-env-code { font-size: 11px; font-weight: 600; letter-spacing: .06em; color: var(--av-muted); display: inline-flex; align-items: center; gap: 4px; }
+.av-env-ico { width: 16px; height: 16px; display: block; flex: 0 0 auto; }
+.av-env-opt-ico { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; color: currentColor; flex: 0 0 auto; }
+.av-env-opt-ico .av-env-ico { width: 17px; height: 17px; }
 
 /* Etiquetas ACTUAL / VISTA */
 .av-env-tag { display: inline-flex; align-items: center; padding: 1px 6px; font: 600 11px/1.4 "IBM Plex Mono", monospace; letter-spacing: .04em; border: 1px solid var(--av-text); color: var(--av-text); white-space: nowrap; vertical-align: middle; }
@@ -42,9 +45,495 @@
 .av-env-status:not(:empty) { padding: 0 12px 10px; color: var(--av-text2); }
 .av-env-prevnote { margin: 0; padding: 8px 12px; border-bottom: 1px dashed var(--av-strong); font-size: 13px; color: var(--av-text2); }
 
-/* Distribución: principal + insights */
+/* ---------------------------------------------------------------------------
+ * Rejilla superior de 2 columnas:
+ *   Columna izquierda = Gráfica del entorno
+ *   Columna derecha   = Sistema Solar 3D (repo-planets.vercel.app)
+ * --------------------------------------------------------------------------- */
+.av-env-topgrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+  min-width: 0;
+}
+.av-env-col-left,
+.av-env-col-right {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.av-env-chart-panel,
+.av-env-solar-panel {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Columna izquierda: KPIs + Gráfica SVG del entorno */
+.av-env-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--av-border);
+  background: var(--av-raised);
+}
+.av-env-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 8px;
+  background: var(--av-bg);
+  border: 1px solid var(--av-border);
+  min-width: 0;
+}
+.av-env-kpival {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--av-text);
+  overflow-wrap: anywhere;
+}
+.av-env-chart-wrap {
+  padding: 10px 12px 6px;
+  background: var(--av-bg);
+  border-bottom: 1px solid var(--av-border);
+  overflow-x: auto;
+}
+.av-env-chart-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-width: 480px;
+}
+.av-env-chart-svg [data-env-bar] {
+  transition: opacity 0.16s ease;
+}
+.av-env-chart-svg [data-env-bar]:hover {
+  opacity: 0.92;
+}
+.av-env-chart-ctx {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px 12px;
+  margin-top: auto;
+  background: var(--av-panel);
+  font-size: 12px;
+}
+.av-env-chart-ctx > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding-left: 8px;
+  border-left: 2px solid var(--av-strong);
+}
+
+/* Columna derecha: Sistema Solar 3D interactivo (estética repo-planets.vercel.app) */
+.av-env-solar-mount {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 440px;
+  position: relative;
+}
+.av-env-solar-stage {
+  position: relative;
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 440px;
+  background: radial-gradient(ellipse at 50% 45%, #070d1e 0%, #02040a 70%, #000000 100%);
+  overflow: hidden;
+  user-select: none;
+  border-bottom: 1px solid var(--av-border);
+}
+.av-env-solar-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 440px;
+  cursor: grab;
+  touch-action: none;
+}
+.av-env-solar-canvas:active {
+  cursor: grabbing;
+}
+
+/* HUD superior sobre el visor 3D */
+.av-env-solar-hud {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  pointer-events: none;
+  z-index: 3;
+}
+.av-env-solar-target {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 12px;
+  background: rgba(10, 12, 22, 0.82);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.65);
+  max-width: min(100%, 370px);
+}
+.av-env-solar-target-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.av-env-solar-emblem {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  color: var(--emblem-col, #67e8f9);
+  background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.14), rgba(8, 14, 30, 0.92));
+  border: 1.5px solid var(--emblem-col, #67e8f9);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--emblem-col, #67e8f9) 42%, transparent);
+}
+.av-env-solar-emblem .av-env-ico {
+  width: 26px;
+  height: 26px;
+}
+.av-env-solar-target-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.av-env-solar-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 10px/1.2 "IBM Plex Mono", monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.65);
+}
+.av-env-solar-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #67e8f9;
+  box-shadow: 0 0 8px currentColor;
+  flex: 0 0 auto;
+}
+.av-env-solar-name {
+  font: 700 14px/1.25 "IBM Plex Sans", system-ui, sans-serif;
+  color: #ffffff;
+  letter-spacing: 0.01em;
+}
+.av-env-solar-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  font: 500 11px/1.3 "IBM Plex Mono", monospace;
+  color: rgba(255, 255, 255, 0.72);
+}
+.av-env-solar-actions {
+  pointer-events: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.av-env-solar-actions .av-btn {
+  background: rgba(10, 12, 22, 0.78);
+  backdrop-filter: blur(12px);
+  color: #f0f4ff;
+  border-color: rgba(255, 255, 255, 0.2);
+  font-size: 11px;
+  min-height: 32px;
+  padding: 4px 10px;
+}
+.av-env-solar-actions .av-btn:hover,
+.av-env-solar-actions .av-btn[aria-pressed="true"] {
+  border-color: #67e8f9;
+  color: #ffffff;
+  background: rgba(22, 34, 62, 0.88);
+}
+
+/* Marcadores 3D proyectados sobre el canvas */
+.av-env-solar-markers {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  overflow: hidden;
+}
+.av-env-solar-pin {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(6, 10, 22, 0.76);
+  color: rgba(255, 255, 255, 0.88);
+  font: 600 10px/1.2 "IBM Plex Mono", monospace;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.av-env-solar-pin:hover,
+.av-env-solar-pin.is-active {
+  border-color: var(--pin-color, #67e8f9);
+  background: rgba(12, 20, 42, 0.92);
+  color: #ffffff;
+  box-shadow: 0 0 12px rgba(103, 232, 249, 0.35);
+}
+.av-env-solar-pin-ring {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--pin-color, #67e8f9);
+  box-shadow: 0 0 6px var(--pin-color, #67e8f9);
+}
+.av-env-solar-pin-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  filter: drop-shadow(0 0 5px currentColor);
+}
+.av-env-solar-pin-ico .av-env-ico {
+  width: 15px;
+  height: 15px;
+}
+.av-env-solar-pin.is-active .av-env-solar-pin-ico .av-env-ico {
+  width: 17px;
+  height: 17px;
+}
+.av-env-solar-pill-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+}
+.av-env-solar-pill-ico .av-env-ico {
+  width: 14px;
+  height: 14px;
+}
+.av-env-solar-tipico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+  flex: 0 0 auto;
+}
+.av-env-solar-tipico .av-env-ico {
+  width: 16px;
+  height: 16px;
+}
+
+/* Barra inferior de salto rápido entre entornos en el visor 3D */
+.av-env-solar-dock {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  z-index: 3;
+  pointer-events: none;
+}
+.av-env-solar-dock-btns {
+  pointer-events: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 8px;
+  background: rgba(10, 12, 22, 0.78);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+.av-env-solar-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.78);
+  font: 600 11px/1.2 "IBM Plex Mono", monospace;
+  cursor: pointer;
+}
+.av-env-solar-pill:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+}
+.av-env-solar-pill[aria-pressed="true"] {
+  color: #ffffff;
+  background: rgba(103, 232, 249, 0.16);
+  border-color: rgba(103, 232, 249, 0.55);
+}
+.av-env-solar-pill-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.av-env-solar-hint {
+  margin: 0;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(10, 12, 22, 0.65);
+  color: rgba(255, 255, 255, 0.62);
+  font: 500 10px/1.3 "IBM Plex Mono", monospace;
+}
+
+/* Tarjeta flotante de telemetría (estilo planet-tooltip de repo-planets.vercel.app) */
+.av-env-solar-tip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 4;
+  transition: opacity 0.15s ease;
+}
+.av-env-solar-tipcard {
+  background: rgba(10, 12, 22, 0.84);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  padding: 10px 14px;
+  min-width: 210px;
+  max-width: 265px;
+  color: #ffffff;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.65), 0 0 18px rgba(100, 180, 255, 0.1);
+}
+.av-env-solar-tiphead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+.av-env-solar-tipname {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.av-env-solar-tipdesc {
+  margin: 0 0 8px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.72);
+}
+.av-env-solar-tipfacts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding-top: 7px;
+}
+.av-env-solar-fact {
+  display: flex;
+  flex-direction: column;
+}
+.av-env-solar-fact span {
+  font: 600 9px/1.2 "IBM Plex Mono", monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.48);
+}
+.av-env-solar-fact strong {
+  font: 600 11.5px/1.3 "IBM Plex Mono", monospace;
+  color: rgba(255, 255, 255, 0.92);
+}
+.av-env-solar-fallback {
+  margin: auto;
+  padding: 16px;
+  text-align: center;
+  color: #e6edf3;
+  font-size: 13px;
+}
+
+/* ---------------------------------------------------------------------------
+ * Secciones detalladas minimizadas por defecto (<details class="av-panel av-fold av-env-fold">)
+ * --------------------------------------------------------------------------- */
+.av-env-folds-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 8px 12px;
+  background: var(--av-panel);
+  border: 1px solid var(--av-border);
+}
+.av-env-folds-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.av-env-folds,
+.av-env-main {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.av-env-fold > .av-env-fold-head {
+  height: auto;
+  min-height: 48px;
+  padding: 10px 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+.av-env-fold-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 240px;
+}
+.av-env-fold-meta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.av-env-fold-body {
+  min-width: 0;
+}
+
+/* Distribución clásica: principal + insights */
 .av-env-grid { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
-.av-env-main { flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
 .av-env-side { flex: 1 1 320px; max-width: 420px; min-width: 0; position: sticky; top: 12px; }
 
 /* Nivel relativo: 3 barras + texto */
@@ -124,12 +613,19 @@ tbody tr:last-child .av-env-col-view { box-shadow: inset 2px 0 0 var(--av-text),
 .av-env-foot p { margin: 0; }
 .av-env-disc { font-size: 13px; color: var(--av-text); padding: 8px 12px; border: 1px solid var(--av-border); background: var(--av-panel); }
 
+@media (max-width: 1080px) {
+  .av-env-topgrid { grid-template-columns: 1fr; }
+  .av-env-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 @media (max-width: 980px) {
   .av-env-side { max-width: none; flex-basis: 100%; position: static; }
 }
 @media (max-width: 600px) {
   .av-env-wrap { padding: 8px; gap: 8px; }
   .av-env-opt { flex: 1 1 calc(50% - 6px); }
+  .av-env-kpis { grid-template-columns: 1fr 1fr; }
+  .av-env-chart-ctx { grid-template-columns: 1fr; }
+  .av-env-solar-mount, .av-env-solar-stage, .av-env-solar-canvas { min-height: 360px; }
   .av-env-hzlist { grid-template-columns: 1fr 1fr; padding: 8px; }
   .av-env-cm { grid-template-columns: 1fr; gap: 4px; }
   .av-env-cm dt { padding-top: 6px; }
