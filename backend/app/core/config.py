@@ -55,6 +55,8 @@ class Settings:
     DEMO_ASTRONAUT3_PASSWORD: str = os.getenv(
         "DEMO_ASTRONAUT3_PASSWORD", "AstroCrew!2026"
     )
+    # Cuentas de la misión análoga con datos reales de reposo en cama (HDBR-01..03)
+    DEMO_ANALOG_PASSWORD: str = os.getenv("DEMO_ANALOG_PASSWORD", "AstroCrew!2026")
 
     # SOLO DEMO LOCAL: devuelve el token de recuperación de contraseña en la respuesta HTTP.
     # Permite tomar cualquier cuenta sin autenticar: nunca activarlo en un despliegue accesible.
