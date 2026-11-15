@@ -175,6 +175,21 @@ const DICT = {
     badges: "Insignias",
     earnedOf: "{n} de {total} obtenidas",
     noBadges: "Sin insignias configuradas.",
+    showBadges: "Ver insignias",
+    hideBadges: "Ocultar insignias",
+    groupPending: "{n} pendientes",
+    groupPendingOne: "1 pendiente",
+    groupAllDone: "al día",
+    onlyPending: "Solo pendientes",
+    expandAll: "Desplegar todo",
+    collapseAll: "Plegar todo",
+    noPendingLeft: "No quedan contramedidas pendientes hoy.",
+    pendAlertOne: "1 contramedida pendiente hoy:",
+    pendAlertMany: "{n} contramedidas pendientes hoy:",
+    pendAlertMore: "y {n} más",
+    pendAlertPaused: "{n} pausadas por seguridad (no se pueden registrar hasta revisar la alerta).",
+    pendAlertPausedOne: "1 pausada por seguridad (no se puede registrar hasta revisar la alerta).",
+    pendAlertShow: "Ver pendientes",
     ethicHtml: "<strong>Gamificación ética:</strong> se reconoce la constancia y el aprendizaje, nunca tener constantes «normales»; reportar síntomas o restricciones no penaliza.",
     fullPolicy: "Política completa",
     logging: "Registrando…",
@@ -340,6 +355,21 @@ const DICT = {
     badges: "Badges",
     earnedOf: "{n} of {total} earned",
     noBadges: "No badges configured.",
+    showBadges: "Show badges",
+    hideBadges: "Hide badges",
+    groupPending: "{n} pending",
+    groupPendingOne: "1 pending",
+    groupAllDone: "up to date",
+    onlyPending: "Pending only",
+    expandAll: "Expand all",
+    collapseAll: "Collapse all",
+    noPendingLeft: "No countermeasures left pending today.",
+    pendAlertOne: "1 countermeasure pending today:",
+    pendAlertMany: "{n} countermeasures pending today:",
+    pendAlertMore: "and {n} more",
+    pendAlertPaused: "{n} paused for safety (cannot be logged until the alert is reviewed).",
+    pendAlertPausedOne: "1 paused for safety (cannot be logged until the alert is reviewed).",
+    pendAlertShow: "Show pending",
     ethicHtml: "<strong>Ethical gamification:</strong> consistency and learning are recognized, never having “normal” vitals; reporting symptoms or constraints is never penalized.",
     fullPolicy: "Full policy",
     logging: "Logging…",
@@ -406,7 +436,17 @@ const cmState = {
   announce: false, // anunciar el resultado en la región aria-live tras el próximo pintado
   focusKey: null, // data-cm-key del elemento que recupera el foco tras repintar
   lang: null, // idioma del último resultado (al cambiar de idioma se descarta)
+  groups: new Map(), // categoría → abierta (true) / plegada (false) elegida a mano; si no, se abre si tiene pendientes
+  onlyPending: false, // filtro "Solo pendientes"
+  badgesOpen: false, // lista de insignias desplegada (plegada por defecto para no desbordar la columna)
 };
+
+/* Queda algo por hacer hoy (pendiente, en cola o pausada por seguridad) */
+const isOutstanding = (m) => m.status_today !== ST_DONE && m.status_today !== ST_EXCUSED;
+function groupOpen(k, list) {
+  if (cmState.groups.has(k)) return cmState.groups.get(k);
+  return list.some(({ m }) => isOutstanding(m));
+}
 
 /* ───────────────────────── utilidades ───────────────────────── */
 
@@ -502,7 +542,10 @@ export async function renderCountermeasuresView(container, appState, helpers) {
     cmState.result = "";
     cmState.announce = false;
     cmState.confirm = null;
-    if (cmState.astronautId !== ctx.astronautId) cmState.open.clear();
+    if (cmState.astronautId !== ctx.astronautId) {
+      cmState.open.clear();
+      cmState.groups.clear();
+    }
     cmState.astronautId = ctx.astronautId;
     container.innerHTML = `<div class="av-console av-cm-root"><div class="av-sub" style="padding:24px" role="status">${esc(tr(DICT).loading)}</div></div>`;
   }
@@ -600,14 +643,55 @@ function mainHTML(ctx) {
     const ia = CATEGORY_ORDER.indexOf(a), ib = CATEGORY_ORDER.indexOf(b);
     return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
   });
+  // cada categoría es una sección plegable; por defecto solo se despliegan las que tienen pendientes
   const body = keys.map((k) => {
-    const list = groups.get(k);
-    const nDone = list.filter(({ m }) => m.status_today === ST_DONE || m.status_today === ST_EXCUSED).length;
-    return `<tbody>
-      <tr class="av-cm-group"><th scope="colgroup" colspan="5">${esc(categoryOf(k))} <span class="av-mono av-cm-group-n">${nDone}/${list.length}</span></th></tr>
-      ${list.map(({ m, i }) => rowHTML(ctx, m, i)).join("")}
+    const all = groups.get(k);
+    const list = cmState.onlyPending ? all.filter(({ m }) => isOutstanding(m)) : all;
+    if (!list.length) return "";
+    const nDone = all.filter(({ m }) => !isOutstanding(m)).length;
+    const nOut = all.length - nDone;
+    const open = groupOpen(k, all);
+    const gid = `av-cm-g-${esc(k)}`;
+    const state = nOut === 0 ? T.groupAllDone : nOut === 1 ? T.groupPendingOne : fmt(T.groupPending, { n: nm(nOut) });
+    return `<tbody class="av-cm-gbody${open ? "" : " av-cm-gclosed"}">
+      <tr class="av-cm-group"><th scope="colgroup" colspan="5">
+        <button type="button" class="av-cm-gtoggle" aria-expanded="${open}" aria-controls="${gid}" data-cm-act="group" data-g="${esc(k)}" data-cm-key="group-${esc(k)}">
+          <span class="av-cm-chev av-mono" aria-hidden="true">${open ? "▾" : "▸"}</span>
+          <span>${esc(categoryOf(k))}</span>
+          <span class="av-mono av-cm-group-n">${nDone}/${all.length}</span>
+          <span class="av-cm-gstate${nOut ? " av-cm-gstate-pend" : ""}">${esc(state)}</span>
+        </button>
+      </th></tr>
+    </tbody>
+    <tbody id="${gid}" ${open ? "" : "hidden"}>
+      ${open ? list.map(({ m, i }) => rowHTML(ctx, m, i)).join("") : ""}
     </tbody>`;
   }).join("");
+
+  const anyOpen = keys.some((k) => groupOpen(k, groups.get(k)));
+  const toolbar = ctx.missions.length
+    ? `<div class="av-cm-toolbar" role="group" aria-label="${esc(T.caption)}">
+        <button type="button" class="av-btn av-cm-filter" aria-pressed="${cmState.onlyPending}" data-cm-act="only-pending" data-cm-key="only-pending">${esc(T.onlyPending)}</button>
+        <button type="button" class="av-btn" data-cm-act="${anyOpen ? "collapse-all" : "expand-all"}" data-cm-key="all-groups">${esc(anyOpen ? T.collapseAll : T.expandAll)}</button>
+      </div>`
+    : "";
+
+  // aviso de pendientes: lo que queda por registrar hoy (las pausadas se cuentan aparte)
+  const pend = ctx.missions.filter((m) => m.status_today === ST_PENDING && !isBlocked(m));
+  const nBlocked = ctx.missions.filter(isBlocked).length;
+  const SHOWN = 3;
+  const pendAlert = pend.length || nBlocked
+    ? `<div class="av-cm-pend-alert" role="status">
+        <div class="av-cm-pend-txt">
+          ${pend.length ? `<strong>${esc(pend.length === 1 ? T.pendAlertOne : fmt(T.pendAlertMany, { n: nm(pend.length) }))}</strong>
+          <span>${esc(pend.slice(0, SHOWN).map(titleOf).join(", "))}${pend.length > SHOWN ? ` ${esc(fmt(T.pendAlertMore, { n: nm(pend.length - SHOWN) }))}` : ""}.</span>` : ""}
+          ${nBlocked ? `<span class="av-sub">${esc(nBlocked === 1 ? T.pendAlertPausedOne : fmt(T.pendAlertPaused, { n: nm(nBlocked) }))}</span>` : ""}
+        </div>
+        ${pend.length && !cmState.onlyPending ? `<button type="button" class="av-btn" data-cm-act="only-pending" data-cm-key="pend-show">${esc(T.pendAlertShow)}</button>` : ""}
+      </div>`
+    : "";
+
+  const emptyBody = cmState.onlyPending && ctx.missions.length ? T.noPendingLeft : T.emptyToday;
 
   const nextIdx = nextIndex(ctx);
   const next = nextIdx >= 0 ? ctx.missions[nextIdx] : null;
@@ -641,8 +725,10 @@ function mainHTML(ctx) {
         <div class="av-cm-head-prog"><span class="av-lbl">${esc(T.today)}</span> <span class="av-mono">${done}/${total} · ${esc(fmt(T.pct, { n: nm(pct) }))}</span></div>
       </div>
       ${readOnly}
+      ${pendAlert}
       ${nextStrip}
       <div id="av-cm-live" class="av-cm-live" role="status" aria-live="polite">${liveContent}</div>
+      ${toolbar}
       <div class="av-hscroll">
         <table class="av-table av-cm-table">
           <caption class="av-cm-sr">${esc(T.caption)}</caption>
@@ -653,7 +739,7 @@ function mainHTML(ctx) {
             <th scope="col" style="text-align:right">${esc(T.thReward)}</th>
             <th scope="col">${esc(T.thAction)}</th>
           </tr></thead>
-          ${body || `<tbody><tr><td colspan="5" class="av-sub" style="padding:12px">${esc(T.emptyToday)}</td></tr></tbody>`}
+          ${body || `<tbody><tr><td colspan="5" class="av-sub" style="padding:12px">${esc(emptyBody)}</td></tr></tbody>`}
         </table>
       </div>
       <p class="av-sub av-cm-legend">${T.legendHtml}</p>
@@ -859,10 +945,17 @@ function sideHTML(ctx) {
         </div>
       </li>`).join("");
 
+  // plegada por defecto: con muchas insignias la lista desbordaba la columna lateral
+  const bOpen = cmState.badgesOpen && badges.length > 0;
   const badgesPanel = `
     <section class="av-panel">
       <div class="av-panel-head"><h2 class="av-h2">${esc(T.badges)}</h2><span class="av-sub">${fmt(esc(T.earnedOf), { n: `<span class="av-mono">${nEarned}</span>`, total: `<span class="av-mono">${badges.length}</span>` })}</span></div>
-      <ul class="av-cm-badges">${badgeItems || `<li class="av-sub">${esc(T.noBadges)}</li>`}</ul>
+      ${badges.length
+        ? `<button type="button" class="av-link-row av-cm-btoggle" aria-expanded="${bOpen}" aria-controls="av-cm-badge-list" data-cm-act="badges" data-cm-key="badges">
+            <span class="av-cm-chev av-mono" aria-hidden="true">${bOpen ? "▾" : "▸"}</span><span>${esc(bOpen ? T.hideBadges : T.showBadges)}</span>
+          </button>
+          <ul class="av-cm-badges" id="av-cm-badge-list" ${bOpen ? "" : "hidden"}>${bOpen ? badgeItems : ""}</ul>`
+        : `<ul class="av-cm-badges"><li class="av-sub">${esc(T.noBadges)}</li></ul>`}
     </section>`;
 
   return `<aside class="av-col-c" aria-label="${esc(T.asideAria)}">${progress}${level}${streak}${badgesPanel}${ethicHTML(p.ethical_gamification_policy)}</aside>`;
@@ -895,6 +988,37 @@ async function onClick(ev, ctx) {
     if (sec) ctx.helpers.navigateToSection(sec);
     return;
   }
+  if (act === "badges") {
+    cmState.badgesOpen = !cmState.badgesOpen;
+    cmState.focusKey = "badges";
+    paint(ctx);
+    return;
+  }
+  if (act === "group") {
+    const k = el.getAttribute("data-g");
+    const list = ctx.missions.map((mm, j) => ({ m: mm, i: j })).filter(({ m: mm }) => (mm.category || "OTHER") === k);
+    cmState.groups.set(k, !groupOpen(k, list));
+    cmState.focusKey = `group-${k}`;
+    paint(ctx);
+    return;
+  }
+  if (act === "expand-all" || act === "collapse-all") {
+    const open = act === "expand-all";
+    ctx.missions.forEach((mm) => cmState.groups.set(mm.category || "OTHER", open));
+    cmState.focusKey = "all-groups";
+    paint(ctx);
+    return;
+  }
+  if (act === "only-pending") {
+    cmState.onlyPending = !cmState.onlyPending;
+    // al filtrar, desplegar las categorías con pendientes para que se vean de inmediato
+    if (cmState.onlyPending) {
+      ctx.missions.forEach((mm) => { if (isOutstanding(mm)) cmState.groups.set(mm.category || "OTHER", true); });
+    }
+    cmState.focusKey = "only-pending";
+    paint(ctx);
+    return;
+  }
   if (!m || cmState.busy) return;
 
   if (act === "toggle") {
@@ -908,6 +1032,8 @@ async function onClick(ev, ctx) {
     paint(ctx);
   } else if (act === "open") {
     cmState.open.add(m.code);
+    cmState.groups.set(m.category || "OTHER", true);
+    if (cmState.onlyPending && !isOutstanding(m)) cmState.onlyPending = false;
     cmState.focusKey = `toggle-${i}`;
     paint(ctx);
     const row = ctx.container.querySelector(`[data-cm-key="toggle-${i}"]`);

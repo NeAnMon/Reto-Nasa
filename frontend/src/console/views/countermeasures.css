@@ -29,7 +29,25 @@
   padding: 8px 12px; background: var(--av-bar); color: var(--av-text2);
   border-top: 1px solid var(--av-border); font-size: 12px;
 }
-.av-cm-group-n { margin-left: 8px; color: var(--av-muted); letter-spacing: 0; }
+.av-cm-group-n { color: var(--av-muted); letter-spacing: 0; }
+.av-cm-group th { padding: 0; }
+.av-cm-gtoggle {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 40px; padding: 6px 12px;
+  background: transparent; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.av-cm-gtoggle:hover { background: var(--av-raised); }
+.av-cm-gtoggle:focus-visible, .av-cm-btoggle:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
+.av-cm-gstate { margin-left: auto; font-weight: 500; color: var(--av-muted); text-transform: none; letter-spacing: 0; }
+.av-cm-gstate-pend { color: var(--av-text); font-weight: 600; }
+.av-cm-toolbar { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--av-border); }
+
+/* Aviso de pendientes (recordatorio, no alerta médica: sin amarillo/rojo) */
+.av-cm-pend-alert {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 12px;
+  border-bottom: 1px solid var(--av-border); border-left: 4px solid var(--av-text); background: var(--av-panel);
+}
+.av-cm-pend-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 240px; }
+.av-cm-pend-alert .av-btn { margin-left: auto; }
 .av-cm-row > td:first-child { padding-left: 12px; }
 .av-cm-row > td { padding-top: 4px; padding-bottom: 4px; }
 .av-cm-st { white-space: nowrap; }
@@ -88,7 +106,8 @@
 .av-cm-xp-total { font-weight: 600; }
 .av-cm-levels { border-top: 1px solid var(--av-row); }
 .av-cm-levels .av-step { display: flex; justify-content: space-between; gap: 8px; padding: 6px 10px; font-size: 13px; }
-.av-cm-badges { list-style: none; margin: 0; padding: 0; }
+.av-cm-badges { list-style: none; margin: 0; padding: 0; max-height: 420px; overflow-y: auto; overscroll-behavior: contain; }
+.av-cm-btoggle { width: 100%; gap: 8px; min-height: 44px; padding: 0 12px; }
 .av-cm-badges li { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; align-items: start; padding: 8px 12px; border-top: 1px solid var(--av-row); }
 .av-cm-badges li:first-child { border-top: 0; }
 .av-cm-badges .av-badge { min-width: 32px; }
