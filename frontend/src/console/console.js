@@ -2612,7 +2612,7 @@ function heraChartSVG() {
   return `<svg viewBox="0 0 760 242" width="100%" role="img" aria-label="${esc(fmt(tt().heraChartAria, { n: pts.length }))}">
     ${ticks}
     ${line(HERA_TH.caution, "#F2C94C", esc(tt().thCaution), "6 4")}
-    ${line(HERA_TH.warning, "#FF8A8D", esc(tt().thShelter))}
+    ${line(HERA_TH.warning, "#E8541C", esc(tt().thShelter))}
     ${line(HERA_TH.emergency, "#FF8A8D", esc(tt().thEmergency), "2 3")}
     <polyline points="${pts.map((p) => `${xv(p.t.getTime()).toFixed(1)},${yv(p.v).toFixed(1)}`).join(" ")}" fill="none" stroke="#E6EAF0" stroke-width="1.6" stroke-linejoin="round"></polyline>
     <text x="${X0}" y="236" font-family="IBM Plex Mono, monospace" font-size="11" fill="#8B95A3">${gmt(pts[0].t, false)}</text>
