@@ -1,7 +1,6 @@
 import json
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict
 from sqlalchemy.orm import Session
 
 from backend.app.core.config import settings
@@ -47,7 +46,6 @@ from backend.app.models.models import (
     EnvironmentalMeasurement,
     EnvironmentProfile,
     FollowUpAction,
-    FamilyContact,
     GamificationEvent,
     GamificationProfile,
     HealthBaseline,
@@ -72,6 +70,7 @@ from backend.app.models.models import (
     SupportRequest,
     User,
     UserBadge,
+    UserSession,
     WellnessInstrument,
     WellnessRecommendation,
 )
@@ -911,7 +910,7 @@ def seed_database(db: Session, force_reseed_sim: bool = False) -> None:
     if not settings.SEED_DEMO_DATA:
         # BD ya inicializada: mantiene al día los catálogos del módulo de aislamiento, sin cuentas demo
         if db.query(Role).count() > 0:
-            seed_isolation_module(db, include_demo_accounts=False)
+            seed_isolation_module(db)
         return
 
     existing_roles = db.query(Role).count()
@@ -1557,7 +1556,7 @@ def seed_database(db: Session, force_reseed_sim: bool = False) -> None:
         _populate_synthetic_demo_records(db, m1, m2, user_objs, now)
         db.commit()
 
-    # Módulo de aislamiento y confinamiento (catálogos, rol FAMILY_MEMBER, familiares demo)
+    # Módulo de aislamiento y confinamiento (catálogos)
     seed_isolation_module(db)
 
 
@@ -2440,16 +2439,6 @@ def reset_simulated_demo_data(db: Session) -> Dict[str, int]:
         sim_msg_ids = [m.id for m in db.query(Message).filter(Message.conversation_id.in_(sim_conv_ids)).all()]
         if sim_msg_ids:
             db.query(MessageReadReceipt).filter(MessageReadReceipt.message_id.in_(sim_msg_ids)).delete(synchronize_session=False)
-            # Borra también del disco los archivos de adjuntos reales (nombre aleatorio bajo UPLOAD_DIR)
-            for (skey,) in (
-                db.query(MessageAttachment.storage_key)
-                .filter(MessageAttachment.message_id.in_(sim_msg_ids), MessageAttachment.storage_key.isnot(None))
-                .all()
-            ):
-                try:
-                    (Path(settings.UPLOAD_DIR) / Path(skey).name).unlink(missing_ok=True)
-                except OSError:
-                    pass
             db.query(MessageAttachment).filter(MessageAttachment.message_id.in_(sim_msg_ids)).delete(synchronize_session=False)
         db.query(Message).filter(Message.conversation_id.in_(sim_conv_ids)).delete(synchronize_session=False)
         db.query(ConversationParticipant).filter(ConversationParticipant.conversation_id.in_(sim_conv_ids)).delete(synchronize_session=False)
@@ -2563,8 +2552,8 @@ LEISURE_ACTIVITIES_DATA = [
      ["Abre tu diario privado", "Escribe tres cosas concretas", "Relee la entrada de ayer"],
      "SOLO", NASA_HRP_SOURCE),
     ("LETTER_HOME", "Carta a casa", "WRITING", 20,
-     "Escribir una carta o mensaje largo a la familia, para enviarlo por el canal Conexión con Tierra.",
-     ["Piensa en una anécdota del día", "Escribe como si hablaras en persona", "Adjunta una foto si quieres"],
+     "Escribir una carta o mensaje largo a la familia para enviarlo en la próxima ventana de comunicaciones.",
+     ["Piensa en una anécdota del día", "Escribe como si hablaras en persona", "Guárdala para enviarla cuando haya enlace"],
      "SOLO", NASA_HRP_SOURCE),
     ("STRETCH_BREAK", "Estiramientos suaves", "MOVEMENT", 10,
      "Pausa de estiramientos suaves autorizados para soltar tensión (no sustituye al ejercicio prescrito).",
@@ -2596,125 +2585,55 @@ ISOLATION_XP_MISSIONS_DATA = [
      "La cohesión de la tripulación es un factor protector frente al aislamiento (NASA HRP)."),
 ]
 
-FAMILY_ROLE_DESC = (
-    "Familiar autorizado (Conexión con Tierra)",
-    "Solo puede usar su conversación privada con el astronauta vinculado y sus adjuntos. Sin acceso a salud, alertas ni misiones.",
-)
+
+# Rol de una versión previa con canal familiar (retirado; ver docs/CONTRATO_AISLAMIENTO.md §4)
+LEGACY_RETIRED_ROLE_CODE = "FAMILY_MEMBER"
 
 
 def apply_lightweight_migrations(db: Session) -> None:
     """
-    Migración ligera e idempotente para BD existentes (create_all no altera tablas ya creadas):
-    - conversations.channel (MISSION por defecto).
-    - message_attachments: message_id pasa a admitir nulos (adjuntos huérfanos) y se añaden
-      uploader_id, storage_key, kind y duration_seconds. En SQLite se reconstruye la tabla
-      copiando los datos existentes (SQLite no permite cambiar NOT NULL con ALTER TABLE).
-    - message_attachments en SQLite: si el id no es AUTOINCREMENT, misma reconstrucción (conserva
-      filas e ids, FKs e índices) para que los ids borrados no se reutilicen.
+    Compatibilidad idempotente con BD creadas o migradas por una versión previa que incluía un canal
+    familiar (retirado). En una BD que nunca lo tuvo no hace nada. En una que sí lo tuvo:
+    - conversations.channel: el modelo ya no la usa. Esa versión la creaba con DEFAULT 'MISSION', así que
+      las inserciones siguen funcionando; si aun así fuera NOT NULL sin DEFAULT, se elimina la columna
+      (y su índice) para que las inserciones no fallen. Las conversaciones de ese canal se archivan
+      (status ARCHIVED) antes, sin borrar mensajes.
+    - Usuarios con el rol retirado: pasan a INACTIVE y se revocan sus sesiones (no se borran cuentas),
+      para que no queden cuentas activas con un rol sin permisos definidos.
+    - message_attachments (columnas extra anulables) y family_contacts se dejan como están: no afectan
+      a las inserciones del modelo actual.
     """
     from sqlalchemy import inspect, text
 
     bind = db.get_bind()
     insp = inspect(bind)
     tables = set(insp.get_table_names())
-    dialect = bind.dialect.name
 
     if "conversations" in tables:
-        cols = {c["name"] for c in insp.get_columns("conversations")}
-        if "channel" not in cols:
-            db.execute(text("ALTER TABLE conversations ADD COLUMN channel VARCHAR(20) NOT NULL DEFAULT 'MISSION'"))
-            db.execute(text("CREATE INDEX IF NOT EXISTS ix_conversations_channel ON conversations (channel)"))
+        channel_col = next((c for c in insp.get_columns("conversations") if c["name"] == "channel"), None)
+        if channel_col is not None:
+            db.execute(
+                text("UPDATE conversations SET status = 'ARCHIVED' WHERE channel = 'FAMILY' AND status != 'ARCHIVED'")
+            )
+            if not channel_col.get("nullable", True) and channel_col.get("default") is None:
+                db.execute(text("DROP INDEX IF EXISTS ix_conversations_channel"))
+                db.execute(text("ALTER TABLE conversations DROP COLUMN channel"))
             db.commit()
 
-    if "message_attachments" in tables:
-        cols = {c["name"]: c for c in insp.get_columns("message_attachments")}
-        new_cols = {"uploader_id", "storage_key", "kind", "duration_seconds"}
-        needs_nullable = not cols.get("message_id", {}).get("nullable", True)
-        missing = new_cols - set(cols)
-        needs_autoincrement = False
-        if dialect == "sqlite":
-            # Sin AUTOINCREMENT, SQLite reutiliza el id más alto borrado (p. ej. un huérfano purgado)
-            table_sql = db.execute(
-                text("SELECT sql FROM sqlite_master WHERE type='table' AND name='message_attachments'")
-            ).scalar() or ""
-            needs_autoincrement = "AUTOINCREMENT" not in table_sql.upper()
-        if needs_nullable or missing or needs_autoincrement:
-            if dialect == "sqlite":
-                old_cols = [c for c in cols if c in MessageAttachment.__table__.columns]
-                col_list = ", ".join(old_cols)
-                # Índices explícitos actuales (los del modelo se recrean con la tabla; el resto se restaura)
-                idx_rows = db.execute(
-                    text(
-                        "SELECT name, sql FROM sqlite_master WHERE type='index' "
-                        "AND tbl_name='message_attachments' AND sql IS NOT NULL"
-                    )
-                ).fetchall()
-                db.execute(text("ALTER TABLE message_attachments RENAME TO _message_attachments_old"))
-                for idx_name, _ in idx_rows:
-                    db.execute(text('DROP INDEX IF EXISTS "%s"' % idx_name.replace('"', "")))
-                db.commit()
-                # Tabla nueva según el modelo: id AUTOINCREMENT, FKs a messages/users e índices del modelo
-                MessageAttachment.__table__.create(bind=db.get_bind())
-                # Ids explícitos: se conservan y sqlite_sequence arranca en el máximo existente
-                db.execute(
-                    text(
-                        "INSERT INTO message_attachments (%s) SELECT %s FROM _message_attachments_old"
-                        % (col_list, col_list)
-                    )
-                )
-                db.execute(text("DROP TABLE _message_attachments_old"))
-                existing_idx = {
-                    name
-                    for (name,) in db.execute(
-                        text("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='message_attachments'")
-                    ).fetchall()
-                }
-                for idx_name, idx_sql in idx_rows:
-                    if idx_name not in existing_idx:
-                        db.execute(text(idx_sql))
-                db.commit()
-            else:
-                if needs_nullable:
-                    db.execute(text("ALTER TABLE message_attachments ALTER COLUMN message_id DROP NOT NULL"))
-                for col_name, ddl in (
-                    ("uploader_id", "INTEGER"),
-                    ("storage_key", "VARCHAR(64)"),
-                    ("kind", "VARCHAR(10)"),
-                    ("duration_seconds", "FLOAT"),
-                ):
-                    if col_name in missing:
-                        db.execute(text("ALTER TABLE message_attachments ADD COLUMN %s %s" % (col_name, ddl)))
-                db.commit()
+    legacy_role = db.query(Role).filter(Role.code == LEGACY_RETIRED_ROLE_CODE).first()
+    if legacy_role:
+        legacy_users = db.query(User).filter(User.role_id == legacy_role.id, User.status == "ACTIVE").all()
+        for u in legacy_users:
+            u.status = "INACTIVE"
+            db.query(UserSession).filter(UserSession.user_id == u.id, UserSession.is_revoked.is_(False)).update(
+                {UserSession.is_revoked: True}, synchronize_session=False
+            )
+        if legacy_users:
+            db.commit()
 
 
-def seed_isolation_module(db: Session, include_demo_accounts: Optional[bool] = None) -> None:
-    """
-    Catálogos, rol FAMILY_MEMBER y familiares demo. Idempotente: se ejecuta en cada arranque.
-    Las cuentas demo de familiares solo se crean si SEED_DEMO_DATA=true (o include_demo_accounts=True).
-    """
-    if include_demo_accounts is None:
-        include_demo_accounts = settings.SEED_DEMO_DATA
-    # Rol y permiso del canal familiar
-    perm = db.query(Permission).filter(Permission.code == "USE_FAMILY_CHANNEL").first()
-    if not perm:
-        perm = Permission(
-            code="USE_FAMILY_CHANNEL",
-            description="Usar el canal privado Conexión con Tierra con el astronauta vinculado",
-        )
-        db.add(perm)
-        db.flush()
-    fam_role = db.query(Role).filter(Role.code == "FAMILY_MEMBER").first()
-    if not fam_role:
-        fam_role = Role(code="FAMILY_MEMBER", name=FAMILY_ROLE_DESC[0], description=FAMILY_ROLE_DESC[1])
-        db.add(fam_role)
-        db.flush()
-    if not (
-        db.query(RolePermission)
-        .filter(RolePermission.role_id == fam_role.id, RolePermission.permission_id == perm.id)
-        .first()
-    ):
-        db.add(RolePermission(role_id=fam_role.id, permission_id=perm.id))
-
+def seed_isolation_module(db: Session) -> None:
+    """Catálogos del módulo de aislamiento (tiempo libre, plantillas de tripulación, XP). Idempotente."""
     # Catálogo de tiempo libre
     for code, title, cat, minutes, desc, how_to, mode, (src_title, src_url) in LEISURE_ACTIVITIES_DATA:
         if not db.query(LeisureActivity).filter(LeisureActivity.code == code).first():
@@ -2757,47 +2676,4 @@ def seed_isolation_module(db: Session, include_demo_accounts: Optional[bool] = N
                     is_active=False,
                 )
             )
-    db.flush()
-
-    # Familiares demo del astronauta 1 (Elena): solo con SEED_DEMO_DATA (contraseñas públicas)
-    elena = (
-        db.query(User).filter(User.email == settings.DEMO_ASTRONAUT1_EMAIL).first()
-        if include_demo_accounts
-        else None
-    )
-    if elena:
-        for crew_code, email, name, pwd, relation in (
-            ("FAM-201A", settings.DEMO_FAMILY1_EMAIL, "Ana Rostova", settings.DEMO_FAMILY1_PASSWORD, "Pareja"),
-            ("FAM-201B", settings.DEMO_FAMILY2_EMAIL, "Sofía Rostova", settings.DEMO_FAMILY2_PASSWORD, "Hija"),
-        ):
-            fam_user = db.query(User).filter(User.email == email).first()
-            if not fam_user:
-                if db.query(User).filter(User.crew_code == crew_code).first():
-                    continue
-                fam_user = User(
-                    crew_code=crew_code,
-                    email=email,
-                    full_name=name,
-                    password_hash=hash_password(pwd),
-                    role_id=fam_role.id,
-                    status="ACTIVE",
-                    preferred_theme="space-dark",
-                    share_wellness_signals_with_leader=False,
-                    share_detailed_wellness_with_medical=False,
-                )
-                db.add(fam_user)
-                db.flush()
-            if fam_user.role_id != fam_role.id:
-                continue  # nunca convertir en familiar una cuenta existente con otro rol
-            exists_link = (
-                db.query(FamilyContact)
-                .filter(FamilyContact.astronaut_id == elena.id, FamilyContact.user_id == fam_user.id)
-                .first()
-            )
-            if not exists_link:
-                db.add(
-                    FamilyContact(
-                        astronaut_id=elena.id, user_id=fam_user.id, relationship_label=relation, is_active=True
-                    )
-                )
     db.commit()

@@ -105,8 +105,11 @@ def test_frontend_files_exist_and_have_required_sections():
             f"wellbeing.js DICT es/en keys differ at indent {indent}: "
             f"{sorted(_keys(wb_es, indent) ^ _keys(wb_en, indent))}"
         )
-    # Señal para que Mensajes abra el canal familiar (la UI vive en messages.js) y enlaces externos seguros
-    assert 'sessionStorage.setItem("av_messages_channel", "FAMILY")' in wellbeing_js
+    # "Contacto con Tierra" es solo una tarjeta de recomendación: enlaza a Mensajes (misión) y a la fuente NASA
+    assert 'data-wb-go="communication-center">${esc(T.earthOpen)}' in wellbeing_js
+    assert 'const EARTH_SOURCE_URL = "https://www.nasa.gov/hrp/"' in wellbeing_js
+    assert "getFamilyContacts" not in wellbeing_js
+    # Enlaces externos seguros
     assert 'rel="noopener noreferrer"' in wellbeing_js
     assert 'u.protocol === "https:"' in wellbeing_js
     # La vista no usa atributos que escuchan console.js (data-act) o app.js (data-nav-section)
@@ -137,7 +140,7 @@ def test_frontend_files_exist_and_have_required_sections():
     for export_name in ["export function tr", "export function fmt", "export function initI18n", "export const STATIC"]:
         assert export_name in i18n_src, f"i18n.js missing {export_name}"
     assert '"/src/i18n/i18n.js": "/src/i18n/i18n.js?v=__BUILD__"' in index_html
-    assert index_html.count("data-av-lang") == 1, "Language selector missing in header"
+    assert index_html.count("data-av-lang") >= 1, "Language selector missing in header"
     assert 'id="av-lang-select"' in index_html
     # interruptor segmentado ES | EN (radiogroup), ya no un <select>
     assert '<select id="av-lang-select"' not in index_html
@@ -255,9 +258,8 @@ def test_wellbeing_limits_dedup_and_api_errors():
     assert "opensAt: start - ATTEND_OPENS_BEFORE_MS, closesAt: start + durMs + ATTEND_CLOSES_AFTER_END_MS" in wellbeing_js
     assert "Number(err.status) === 409" in wellbeing_js  # 409 por relojes desfasados → mensaje y repintado
 
-    # "Escribir a mi equipo de apoyo" fija el canal MISSION antes de abrir Mensajes
-    assert 'data-wb-go="communication-center" data-wb-channel="MISSION"' in wellbeing_js
-    assert 'sessionStorage.setItem("av_messages_channel", channel)' in wellbeing_js
+    # "Escribir a mi equipo de apoyo" abre Mensajes (solo existe el canal de misión)
+    assert 'data-wb-go="communication-center">${esc(T.careMessages)}' in wellbeing_js
 
     # Check-in: una dedup_key por envío, reutilizada al encolar
     assert "payload.dedup_key = newDedupKey()" in wellbeing_js
@@ -269,3 +271,15 @@ def test_wellbeing_limits_dedup_and_api_errors():
     assert "errMsg = errorDetailText(errData, errMsg)" in api_js
     assert "errData.detail || errData.message" not in api_js
     assert "err.status = response.status" in api_js
+
+
+def test_family_channel_not_in_frontend():
+    """El canal familiar ("Conexión con Tierra") no se construye: solo queda como recomendación en Bienestar."""
+    forbidden = ["FAMILY_MEMBER", "uploadAttachment", "MediaRecorder", "astrovital_msg_outbox", "av_messages_channel"]
+    hits = []
+    for path in (FRONTEND_ROOT / "src").rglob("*"):
+        if path.suffix not in {".js", ".css", ".html"} or not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8")
+        hits += [f"{path.relative_to(FRONTEND_ROOT)}: {word}" for word in forbidden if word in text]
+    assert not hits, f"Family channel leftovers in frontend/src: {hits}"

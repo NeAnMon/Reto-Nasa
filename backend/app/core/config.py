@@ -48,19 +48,6 @@ class Settings:
         "DEMO_ASTRONAUT3_PASSWORD", "AstroCrew!2026"
     )
 
-    DEMO_FAMILY1_EMAIL: str = os.getenv("DEMO_FAMILY1_EMAIL", "ana.rostova@astrovital.demo")
-    DEMO_FAMILY1_PASSWORD: str = os.getenv("DEMO_FAMILY1_PASSWORD", "AstroFamily!2026")
-    DEMO_FAMILY2_EMAIL: str = os.getenv("DEMO_FAMILY2_EMAIL", "sofia.rostova@astrovital.demo")
-    DEMO_FAMILY2_PASSWORD: str = os.getenv("DEMO_FAMILY2_PASSWORD", "AstroFamily!2026")
-
-    # Adjuntos (fotos y notas de voz del canal familiar). Se guardan con nombre aleatorio; ignorado por git.
-    UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", str(BASE_DIR / "uploads"))
-    MAX_ATTACHMENT_BYTES: int = int(os.getenv("MAX_ATTACHMENT_BYTES", str(5 * 1024 * 1024)))
-    MAX_PENDING_ATTACHMENTS_PER_USER: int = int(os.getenv("MAX_PENDING_ATTACHMENTS_PER_USER", "20"))
-    # Adjuntos subidos y nunca enviados ("huérfanos"): se purgan (fila + archivo) pasado este plazo.
-    # 7 días por defecto, para no invalidar mensajes que esperan en la cola sin conexión.
-    ORPHAN_ATTACHMENT_TTL_HOURS: int = int(os.getenv("ORPHAN_ATTACHMENT_TTL_HOURS", "168"))
-
     # SOLO DEMO LOCAL: devuelve el token de recuperación de contraseña en la respuesta HTTP.
     # Permite tomar cualquier cuenta sin autenticar: nunca activarlo en un despliegue accesible.
     DEMO_EXPOSE_RECOVERY_TOKEN: bool = (
@@ -91,7 +78,7 @@ def insecure_config_warnings(cfg: "Settings") -> list:
         )
     if cfg.SEED_DEMO_DATA:
         warnings.append(
-            "SEED_DEMO_DATA=true: existen cuentas demo con contraseñas públicas (incluidos familiares). "
+            "SEED_DEMO_DATA=true: existen cuentas demo con contraseñas públicas. "
             "Desactívelo y cambie las contraseñas DEMO_* antes de producción."
         )
     return warnings
