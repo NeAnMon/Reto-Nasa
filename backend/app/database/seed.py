@@ -102,6 +102,10 @@ LEGACY_MISSION_CODE = "ARTEMIS-IV-DEMO"
 LEGACY_BADGE_REASON = "Primer registro fisiológico validado en misión Artemis IV."
 LEGACY_DEMO_EMAIL_DOMAIN = "@astrovital.demo"
 DEMO_EMAIL_DOMAIN = "@semsa.demo"
+# Tripulación genérica de la misión principal: (código, correo, nombre por defecto editable)
+GENERIC_CREW = [
+    (f"AST-40{i}", f"astronauta{i}{DEMO_EMAIL_DOMAIN}", f"Astronauta {i}") for i in range(1, 7)
+]
 
 
 def utcnow() -> datetime:
@@ -866,6 +870,7 @@ def seed_database(db: Session, force_reseed_sim: bool = False) -> None:
         # las líneas base simuladas de relleno, sin borrar datos (idempotente)
         apply_alert_calibration(db)
         seed_analog_bed_rest(db)
+        ensure_generic_crew(db)
         return
 
     now = utcnow()
@@ -1309,6 +1314,20 @@ def seed_database(db: Session, force_reseed_sim: bool = False) -> None:
             ("Helios-3", "Ingeniero de Sistemas en Tránsito Profundo", False, '["Misión independiente Ares-Pathfinder"]'),
         ),
     ]
+    # Tripulación genérica de la misión principal: nombres por defecto que el líder o la
+    # administración pueden cambiar desde la consola (el seed no los pisa: solo crea si faltan).
+    for ccode, email, fname in GENERIC_CREW:
+        n = ccode[-1]
+        users_seed.append(
+            (
+                ccode,
+                email,
+                fname,
+                settings.DEMO_ASTRONAUT1_PASSWORD,
+                "ASTRONAUT",
+                (f"Tripulante-{n}", "Especialista de Misión", True, '["Sin restricciones operativas activas"]'),
+            )
+        )
 
     user_objs = {}
     for ccode, email, fname, pwd, rcode, astro_meta in users_seed:
@@ -1435,6 +1454,7 @@ def seed_database(db: Session, force_reseed_sim: bool = False) -> None:
         (m1.id, user_objs["AST-202"].id, "ASTRONAUT"),
         (m2.id, user_objs["AST-303"].id, "ASTRONAUT"),
     ]
+    assignments_cfg += [(m1.id, user_objs[ccode].id, "ASTRONAUT") for ccode, _email, _name in GENERIC_CREW]
     for mid, uid, arole in assignments_cfg:
         if (
             not db.query(MissionAssignment)
@@ -1463,6 +1483,159 @@ def seed_database(db: Session, force_reseed_sim: bool = False) -> None:
 
     # Misión análoga con signos vitales reales de NASA (reposo en cama, UTMB)
     seed_analog_bed_rest(db)
+
+
+DEMO_BASELINES_CFG = [
+    ("HEART_RATE", 64.0, None),
+    ("BLOOD_PRESSURE", 114.0, 72.0),
+    ("BODY_TEMP", 36.6, None),
+    ("SPO2", 98.5, None),
+    ("RESP_RATE", 13.5, None),
+    ("BLOOD_GLUCOSE", 88.0, None),
+    ("SLEEP_DURATION", 7.8, 8.5),
+    ("HYDRATION", 2600.0, None),
+    ("PHYSICAL_ACTIVITY", 75.0, 300.0),
+    ("PERCEIVED_FATIGUE", 2.0, None),
+    ("MOOD_WELLNESS", 8.5, None),
+    ("RADIATION_EXPOSURE", 0.05, None),
+]
+
+
+def _ensure_demo_baselines(db: Session, astronauts) -> None:
+    """Línea base simulada de cada astronauta demo (solo crea las que falten)."""
+    for astro in astronauts:
+        for icode, bval, bsec in DEMO_BASELINES_CFG:
+            if (
+                not db.query(HealthBaseline)
+                .filter(HealthBaseline.astronaut_id == astro.id, HealthBaseline.indicator_code == icode)
+                .first()
+            ):
+                db.add(
+                    HealthBaseline(
+                        astronaut_id=astro.id,
+                        indicator_code=icode,
+                        baseline_value=bval,
+                        baseline_secondary_value=bsec,
+                        std_dev=demo_std_dev(icode),
+                        established_phase="TRAINING",
+                        is_simulated=True,
+                    )
+                )
+
+
+def _demo_measurement_adder(db: Session):
+    """Devuelve la función que inserta una medición demo evaluada con el motor de reglas."""
+    defn_map = {d.code: d for d in db.query(HealthIndicatorDefinition).all()}
+
+    def add_demo_measurement(astronaut_id, mission_id, icode, val, sec_val, ts, ph, env, notes, with_alert):
+        defn = defn_map[icode]
+        value = float(val)
+        secondary = float(sec_val) if sec_val is not None else None
+        evaluation = evaluate_measurement(
+            db, defn, astronaut_id, mission_id, value, secondary, ts, "DEMO_SIMULATION"
+        )
+        m = HealthMeasurement(
+            astronaut_id=astronaut_id,
+            mission_id=mission_id,
+            indicator_code=icode,
+            value=value,
+            secondary_value=secondary,
+            unit=defn.unit,
+            measured_at=ts,
+            received_at=ts + timedelta(minutes=2),
+            phase_code=ph,
+            environment_code=env,
+            source_code="DEMO_SIMULATION",
+            data_quality="SYNTHETIC_DEMO",
+            calculated_state=evaluation.state,
+            rule_version_id=evaluation.version.id if evaluation.version else None,
+            is_simulated=True,
+            notes=notes,
+        )
+        db.add(m)
+        db.flush()
+        if with_alert:
+            upsert_alert_for_measurement(db, m, defn, evaluation, created_at=ts)
+        return m
+
+    return add_demo_measurement
+
+
+def _add_generic_crew_measurements(m1: Mission, crew, now: datetime, add_demo_measurement) -> None:
+    """Tripulación genérica: tres lecturas nominales (anteayer, ayer y hoy) cerca de la línea base,
+    con un pequeño desfase por persona para que cada una muestre sus propias cifras."""
+    codes = [c for c, _email, _name in GENERIC_CREW]
+    for astro in crew:
+        idx = codes.index(astro.crew_code) if astro.crew_code in codes else 0
+        for d_ago in (2, 1, 0):
+            k = idx + 2 - d_ago  # desfase determinista entre personas y entre días
+            samples = [
+                ("HEART_RATE", 62.0 + idx + (2 - d_ago), None),
+                ("BLOOD_PRESSURE", 112.0 + idx, 71.0 + (idx % 3)),
+                ("BODY_TEMP", round(36.5 + 0.1 * (idx % 3), 1), None),
+                ("SPO2", 98.0 + (idx % 2), None),
+                ("RESP_RATE", 13.0 + (idx % 3), None),
+                ("SLEEP_DURATION", round(7.4 + 0.1 * (k % 5), 1), 8.0),
+                ("HYDRATION", 2500.0 + 40.0 * (k % 4), None),
+                ("PHYSICAL_ACTIVITY", 70.0 + 2.0 * (idx % 4), 320.0),
+                ("PERCEIVED_FATIGUE", round(2.0 + 0.2 * (idx % 3), 1), None),
+                ("MOOD_WELLNESS", round(8.2 + 0.1 * (idx % 4), 1), None),
+                ("RADIATION_EXPOSURE", 0.05, None),
+            ]
+            for icode, val, sec_v in samples:
+                add_demo_measurement(
+                    astro.id, m1.id, icode, val, sec_v, now - timedelta(days=d_ago, hours=1),
+                    "SURFACE", "LUNAR_SURFACE",
+                    "[SIMULADO] Registro nominal de la tripulación genérica.", with_alert=(d_ago == 0),
+                )
+
+
+def ensure_generic_crew(db: Session) -> int:
+    """BD ya desplegada: crea las cuentas de la tripulación genérica que falten (Astronauta 1..6),
+    asignadas a la misión principal, con su línea base y lecturas nominales. Idempotente: no toca
+    las que ya existen, así que un nombre editado desde la consola se conserva."""
+    role = db.query(Role).filter(Role.code == "ASTRONAUT").first()
+    m1 = db.query(Mission).filter(Mission.code == TELECREATION_MISSION_CODE).first()
+    if not role or not m1:
+        return 0
+    created = []
+    for ccode, email, fname in GENERIC_CREW:
+        if db.query(User).filter((User.email == email) | (User.crew_code == ccode)).first():
+            continue
+        u = User(
+            crew_code=ccode,
+            email=email,
+            full_name=fname,
+            password_hash=hash_password(settings.DEMO_ASTRONAUT1_PASSWORD),
+            role_id=role.id,
+            status="ACTIVE",
+            preferred_theme="space-dark",
+            share_wellness_signals_with_leader=True,
+            share_detailed_wellness_with_medical=False,
+        )
+        db.add(u)
+        db.flush()
+        db.add(
+            AstronautProfile(
+                user_id=u.id,
+                callsign=f"Tripulante-{ccode[-1]}",
+                specialty="Especialista de Misión",
+                eva_certified=True,
+                authorized_restrictions_json='["Sin restricciones operativas activas"]',
+                quiet_hours_window="22:00-06:00 UTC",
+                notes="Perfil ficticio de demostración (SIMULADO).",
+            )
+        )
+        db.add(GamificationProfile(user_id=u.id))
+        db.add(MissionAssignment(mission_id=m1.id, user_id=u.id, assignment_role="ASTRONAUT", is_active=True))
+        created.append(u)
+    if not created:
+        return 0
+    _ensure_demo_baselines(db, created)
+    db.flush()
+    _add_generic_crew_measurements(m1, created, utcnow(), _demo_measurement_adder(db))
+    db.commit()
+    return len(created)
 
 
 def _populate_synthetic_demo_records(
@@ -1531,74 +1704,14 @@ def _populate_synthetic_demo_records(
 
     # Baselines for astronauts. La media es la de cada persona ficticia; la DE sale del dataset
     # (calibration.demo_std_dev): 0.0 = el dataset no permite derivarla y solo aplica la capa absoluta.
-    baselines_cfg = [
-        ("HEART_RATE", 64.0, None),
-        ("BLOOD_PRESSURE", 114.0, 72.0),
-        ("BODY_TEMP", 36.6, None),
-        ("SPO2", 98.5, None),
-        ("RESP_RATE", 13.5, None),
-        ("BLOOD_GLUCOSE", 88.0, None),
-        ("SLEEP_DURATION", 7.8, 8.5),
-        ("HYDRATION", 2600.0, None),
-        ("PHYSICAL_ACTIVITY", 75.0, 300.0),
-        ("PERCEIVED_FATIGUE", 2.0, None),
-        ("MOOD_WELLNESS", 8.5, None),
-        ("RADIATION_EXPOSURE", 0.05, None),
-    ]
-    for astro in (elena, marcus, kenji):
-        for icode, bval, bsec in baselines_cfg:
-            if (
-                not db.query(HealthBaseline)
-                .filter(HealthBaseline.astronaut_id == astro.id, HealthBaseline.indicator_code == icode)
-                .first()
-            ):
-                db.add(
-                    HealthBaseline(
-                        astronaut_id=astro.id,
-                        indicator_code=icode,
-                        baseline_value=bval,
-                        baseline_secondary_value=bsec,
-                        std_dev=demo_std_dev(icode),
-                        established_phase="TRAINING",
-                        is_simulated=True,
-                    )
-                )
+    # (bases antiguas o de prueba pueden no tener aún la tripulación genérica)
+    generic_crew = [user_objs[c] for c, _email, _name in GENERIC_CREW if c in user_objs]
+    _ensure_demo_baselines(db, (elena, marcus, kenji, *generic_crew))
     db.flush()
 
     # Las mediciones demo se evalúan con el mismo motor que las de la API (estado, motivos y alerta):
     # ya no hay estados ni alertas escritos a mano en el seed.
-    defn_map = {d.code: d for d in db.query(HealthIndicatorDefinition).all()}
-
-    def add_demo_measurement(astronaut_id, mission_id, icode, val, sec_val, ts, ph, env, notes, with_alert):
-        defn = defn_map[icode]
-        value = float(val)
-        secondary = float(sec_val) if sec_val is not None else None
-        evaluation = evaluate_measurement(
-            db, defn, astronaut_id, mission_id, value, secondary, ts, "DEMO_SIMULATION"
-        )
-        m = HealthMeasurement(
-            astronaut_id=astronaut_id,
-            mission_id=mission_id,
-            indicator_code=icode,
-            value=value,
-            secondary_value=secondary,
-            unit=defn.unit,
-            measured_at=ts,
-            received_at=ts + timedelta(minutes=2),
-            phase_code=ph,
-            environment_code=env,
-            source_code="DEMO_SIMULATION",
-            data_quality="SYNTHETIC_DEMO",
-            calculated_state=evaluation.state,
-            rule_version_id=evaluation.version.id if evaluation.version else None,
-            is_simulated=True,
-            notes=notes,
-        )
-        db.add(m)
-        db.flush()
-        if with_alert:
-            upsert_alert_for_measurement(db, m, defn, evaluation, created_at=ts)
-        return m
+    add_demo_measurement = _demo_measurement_adder(db)
 
     # Longitudinal time series for Elena (14 days across TRAINING -> LAUNCH -> TRANSIT -> SURFACE -> EVA)
     elena_timeline = [
@@ -1682,6 +1795,9 @@ def _populate_synthetic_demo_records(
             kenji.id, m2.id, icode, val, None, now - timedelta(hours=3), "TRANSIT", "MARS_TRANSIT",
             "[SIMULADO] Telemetría de tránsito profundo Ares Pathfinder.", with_alert=True,
         )
+
+    # Tripulación genérica (Astronauta 1..6)
+    _add_generic_crew_measurements(m1, generic_crew, now, add_demo_measurement)
 
     # Environmental Telemetry for Mission 1
     env_Telemetry = [

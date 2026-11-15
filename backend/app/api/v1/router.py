@@ -589,14 +589,25 @@ def update_user_profile(
     db: Session = Depends(get_db),
 ):
     if actor.role.code != "ADMINISTRATOR" and actor.id != user_id:
-        raise HTTPException(status_code=403, detail="Solo puede editar su propio perfil o ser Administrador.")
+        # Un líder de misión puede cambiar SOLO el nombre visible de los astronautas de sus misiones
+        # (selector de tripulante de la consola); el resto del perfil sigue siendo de cada persona.
+        only_name = payload.model_dump(exclude_unset=True, exclude_none=True).keys() <= {"full_name"}
+        if not (
+            actor.role.code == "MISSION_LEADER"
+            and only_name
+            and user_id in get_authorized_astronaut_ids(db, actor)
+        ):
+            raise HTTPException(status_code=403, detail="Solo puede editar su propio perfil o ser Administrador.")
 
     target = db.query(User).filter(User.id == user_id).first()
     if not target:
         raise HTTPException(status_code=404, detail="Usuario no encontrado.")
 
     if payload.full_name is not None:
-        target.full_name = payload.full_name.strip()
+        new_name = " ".join(payload.full_name.split())
+        if not new_name or len(new_name) > 150:
+            raise HTTPException(status_code=422, detail="El nombre debe tener entre 1 y 150 caracteres.")
+        target.full_name = new_name
     if payload.preferred_theme is not None:
         target.preferred_theme = payload.preferred_theme
     if payload.share_wellness_signals_with_leader is not None:

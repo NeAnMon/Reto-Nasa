@@ -136,15 +136,10 @@ export async function renderCrewView(container, appState, helpers) {
   container.querySelectorAll("[data-cr-inspect]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       btn.disabled = true;
-      appState.selectedAstronautId = Number(btn.getAttribute("data-cr-inspect"));
-      const crewSelect = document.getElementById("topbar-crew-select");
-      if (crewSelect) crewSelect.value = String(appState.selectedAstronautId);
-      try {
-        await helpers.refreshGlobalHeaderAndSummary?.();
-      } catch {
-        // el Resumen vuelve a pedir los datos
-      }
-      await helpers.navigateToSection?.("mission-control");
+      // selectAstronaut (app.js): astronauta + misión + encabezado (incluido el selector "Tripulante"
+      // de la barra de estado) y abre su Resumen; si falla, avisa y se queda en esta sección
+      const ok = await helpers.selectAstronaut?.(Number(btn.getAttribute("data-cr-inspect")), { section: "mission-control" });
+      if (!ok && btn.isConnected) btn.disabled = false;
     });
   });
 }
