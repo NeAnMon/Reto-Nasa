@@ -998,3 +998,57 @@ def test_leisure_and_crew_reminders_reach_alerts_summary_and_wellbeing_tabs():
     assert wellbeing_js.count("syncReminderTabs();") == 3  # tras "Lo hice", responder/asistir/cancelar y proponer
     wb_es, wb_en = _dict_blocks(wellbeing_js)
     assert "reminderBadge" in _keys(wb_es, 4) and "reminderBadge" in _keys(wb_en, 4)
+
+
+def test_environments_module_redistributed_with_chart_solar_3d_and_minimized_folds():
+    """El módulo de Entorno muestra una rejilla superior de 2 columnas (izquierda: gráfica del entorno;
+    derecha: Sistema Solar 3D integrado desde repo-planets.vercel.app que enfoca el entorno seleccionado)
+    y todas las secciones detalladas minimizadas por defecto (<details class="av-panel av-fold av-env-fold">)."""
+    index_html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+    views_dir = FRONTEND_ROOT / "src" / "console" / "views"
+    env_js = (views_dir / "environments.js").read_text(encoding="utf-8")
+    solar_js = (views_dir / "environments-solar.js").read_text(encoding="utf-8")
+    env_css = (views_dir / "environments.css").read_text(encoding="utf-8")
+
+    # 1. Importmap y módulo 3D del sistema solar sin dependencias externas
+    assert '"/src/console/views/environments-solar.js": "/src/console/views/environments-solar.js?v=__BUILD__"' in index_html
+    assert "export function mountSolarSystem" in solar_js
+    assert 'from "./environments-solar.js"' in env_js
+
+    # 2. Distribución en 2 columnas: izquierda gráfica, derecha sistema solar 3D
+    assert 'class="av-env-topgrid"' in env_js
+    assert 'class="av-env-col-left" data-env-zone="chart"' in env_js
+    assert 'class="av-env-col-right"' in env_js
+    assert "renderChart(ctx);" in env_js and "mountSolarSystem(solarHost," in env_js
+    for cls in (".av-env-topgrid", ".av-env-col-left", ".av-env-col-right", ".av-env-chart-panel",
+                ".av-env-solar-panel", ".av-env-solar-stage", ".av-env-solar-canvas", ".av-env-fold"):
+        assert cls in env_css, f"environments.css needs {cls}"
+
+    # 3. Todas las secciones detalladas quedan minimizadas por defecto (folds cerrados)
+    assert 'folds: { hazards: false, systems: false, cm: false, insights: false, compare: false }' in env_js
+    for key in ("hazards", "systems", "cm", "insights", "compare"):
+        assert f'foldSectionHTML("{key}"' in env_js or f'foldSectionHTML(\n      "{key}"' in env_js or f'foldSectionHTML(\n    "{key}"' in env_js, f"Missing collapsible section {key}"
+    assert 'data-env-act="expand-all"' in env_js and 'data-env-act="collapse-all"' in env_js
+
+    # 4. Al cambiar el entorno seleccionado se actualiza la cámara del Sistema Solar 3D
+    #    y los entornos de Rover / Estación Espacial / Nave tienen icono SVG y geometría 3D propia
+    assert "ui.solar?.setEnvironment(viewEnv());" in env_js
+    assert "export const ENV_ICONS" in solar_js and "export function getEnvIconSVG" in solar_js
+    assert "getEnvIconSVG(" in env_js
+    for fn_name in ("createSpaceStationGeometry", "createRoverGeometry", "createSpacecraftGeometry"):
+        assert f"function {fn_name}(gl)" in solar_js, f"Missing 3D geometry {fn_name}"
+    for env_key in ("spacecraft", "station", "rover", "base", "moon"):
+        assert f'envKey: "{env_key}"' in solar_js
+        assert f"{env_key}: `<svg" in solar_js, f"Missing SVG icon for {env_key}"
+
+    # 5. Diccionario ES/EN simétrico y sin atributos reservados de console.js
+    assert env_js.count("const DICT = {") == 1 and "tr(DICT)" in env_js
+    es_block, en_block = _dict_blocks(env_js)
+    for indent in (4, 6):
+        assert _keys(es_block, indent) == _keys(en_block, indent), (
+            f"environments.js DICT es/en keys differ at indent {indent}: "
+            f"{sorted(_keys(es_block, indent) ^ _keys(en_block, indent))}"
+        )
+    body = env_js.split("*/", 1)[1]
+    assert "data-act=" not in body and "data-nav=" not in body
+
