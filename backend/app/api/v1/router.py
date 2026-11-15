@@ -2646,7 +2646,7 @@ def get_phase_comparison(
     for r in rows:
         by_phase.setdefault(r.phase_code, []).append(r.value)
 
-    phase_order = ["TRAINING", "LAUNCH", "ORBIT", "TRANSIT", "SURFACE", "EVA", "RETURN", "RECOVERY"]
+    phase_order = ["TRAINING", "LAUNCH", "ORBIT", "TRANSIT", "SURFACE", "EVA", "RETURN", "RECOVERY", "BED_REST"]
     summary = []
     for ph in phase_order:
         vals = by_phase.get(ph, [])
