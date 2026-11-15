@@ -942,6 +942,18 @@ export const EXACT = {
     "Communications Privacy: The administrator cannot silently access private 1-to-1 conversations without authorization and an explicit justification recorded in the audit log.",
   "Privacidad Emocional Reforzada: El administrador puede gestionar solicitudes y ver el estado operativo de cumplimiento, pero no puede inspeccionar respuestas detalladas sin consentimiento del astronauta y justificación explícita de auditoría.":
     "Enhanced Emotional Privacy: The administrator can manage requests and view the operational completion status, but cannot inspect detailed answers without the astronaut's consent and an explicit audit justification.",
+  // ── backend: retirada automática de la alerta temprana del pronóstico (rules/prediction_alerts.py, #30) ──
+  "Retirada automáticamente: el pronóstico actualizado ya no prevé que el valor esperado cruce un umbral del motor de alertas.":
+    "Automatically withdrawn: the updated forecast no longer expects the value to cross an alert-engine threshold.",
+  "Retirada automáticamente: el pronóstico se basa en datos desfasados (último registro de hace más de 7 días o fecha de cruce ya pasada). Registra el indicador para obtener un pronóstico actual.":
+    "Automatically withdrawn: the forecast is based on outdated data (last record more than 7 days old or crossing date already past). Log the indicator to get a current forecast.",
+  "Retirada automáticamente: una medición real de este indicador abrió una alerta del motor de reglas, que sustituye a este aviso temprano.":
+    "Automatically withdrawn: a real measurement of this indicator opened a rules-engine alert, which replaces this early warning.",
+  // ── backend: aviso de privacidad de la serie emocional de la Bitácora (logbook_router.py, #30) ──
+  "El astronauta no comparte sus señales de bienestar con el líder de misión: la serie no se muestra.":
+    "The astronaut does not share their wellbeing signals with the mission leader: the series is not shown.",
+  "Solo el estado operativo de seguimiento que asigna el motor; las respuestas y dimensiones individuales permanecen privadas.":
+    "Only the operational follow-up state assigned by the engine; individual answers and dimensions remain private.",
 };
 
 /* =========================================================================

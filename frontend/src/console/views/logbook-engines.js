@@ -62,6 +62,7 @@ const DICT = {
       error: "no se pudieron cargar los datos ({msg}).",
       onlySelf: "el pronóstico solo lo puede consultar el propio tripulante (permiso del motor de predicción).",
       noMission: "no hay misión seleccionada.",
+      private: "el tripulante no comparte sus señales de bienestar con el líder de misión.",
     },
     metricAria: "Métrica",
     engines: {
@@ -160,6 +161,7 @@ const DICT = {
       error: "the data could not be loaded ({msg}).",
       onlySelf: "the forecast can only be requested by the crew member themself (prediction engine permission).",
       noMission: "no mission selected.",
+      private: "the crew member does not share their wellbeing signals with the mission leader.",
     },
     metricAria: "Metric",
     engines: {
@@ -360,6 +362,7 @@ const LOADERS = {
   },
   async emotional(ctx) {
     const res = await apiService.getLogbookEmotionalStates(ctx.aid, ctx.mid);
+    if (res && res.shared_with_viewer === false) return { status: "private" };
     const pts = (res && res.points) || [];
     return pts.length ? { status: "ok", raw: res } : { status: "empty" };
   },
