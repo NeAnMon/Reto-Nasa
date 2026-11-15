@@ -1,12 +1,15 @@
 
 """
-SEMSA - Physiological Prediction API Router.
+SEMSA - Physiological Prediction Router.
 
-Provides authenticated endpoints for exploratory physiological
-forecasting using OLS regression, MAE validation and individual
-baseline comparison.
+Authenticated API for physiological forecasting using:
+- Ordinary Least Squares (OLS)
+- Mean Absolute Error (MAE)
+- Individual physiological baselines
+- Z-score analysis
+- Mission phase and environment segmentation
 
-Predictions are statistical estimates, not clinical diagnoses.
+Predictions are exploratory and non-diagnostic.
 """
 
 from dataclasses import asdict
@@ -23,9 +26,14 @@ from sqlalchemy.orm import Session
 
 from backend.app.database.session import get_db
 from backend.app.models.models import User
+from backend.app.schemas.schemas import PredictionResponse
 from backend.app.security.auth import get_current_user
 from backend.app.services.prediction_service import predict_indicator
 
+
+# ============================================================
+# ROUTER CONFIGURATION
+# ============================================================
 
 router = APIRouter(
     prefix="/predictions",
@@ -33,39 +41,40 @@ router = APIRouter(
 )
 
 
+# ============================================================
+# PHYSIOLOGICAL PREDICTION ENDPOINT
+# ============================================================
+
 @router.get(
     "/indicators/{indicator_code}",
+    response_model=PredictionResponse,
     status_code=status.HTTP_200_OK,
     summary="Generate physiological prediction",
     description=(
-        "Generates an exploratory physiological forecast for "
-        "an authenticated astronaut assigned to a mission. "
-        "Uses OLS regression, MAE validation and individual "
-        "baseline Z-score analysis. "
-        "Results must not be interpreted as clinical diagnoses."
+        "Generate an exploratory physiological forecast "
+        "for an authenticated astronaut assigned to a mission. "
+        "The prediction uses historical measurements, OLS "
+        "regression, MAE validation and individual baseline "
+        "Z-score analysis. Results are not clinical diagnoses."
     ),
     responses={
-        200: {
-            "description": (
-                "Prediction processed successfully. "
-                "The response may indicate insufficient data "
-                "or an unreliable statistical model."
-            )
-        },
         401: {
             "description": "Authentication required."
         },
         403: {
-            "description": "Astronaut is not assigned to the mission."
+            "description": (
+                "User is not an astronaut or does not have "
+                "an active assignment to the requested mission."
+            )
         },
         404: {
-            "description": "Unknown physiological indicator."
+            "description": "Physiological indicator not found."
         },
         422: {
             "description": "Invalid prediction parameters."
         },
         503: {
-            "description": "Prediction capacity limit exceeded."
+            "description": "Prediction processing capacity exceeded."
         },
     },
 )
@@ -86,43 +95,45 @@ def get_indicator_prediction(
         default=7,
         ge=1,
         le=14,
-        description="Forecast horizon between 1 and 14 days.",
+        description="Prediction horizon between 1 and 14 days.",
     ),
     include_simulated: bool = Query(
         default=False,
         description=(
-            "Include simulated physiological measurements. "
+            "Include simulated measurements in the prediction. "
             "Disabled by default."
         ),
     ),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-):
+) -> PredictionResponse:
     """
-    Generate a physiological forecast for the authenticated astronaut.
+    Generate a physiological prediction for the authenticated astronaut.
 
     Security:
-        - Authentication is mandatory.
-        - Astronaut identity comes from the authenticated session.
-        - The service verifies active mission assignment.
-        - Other astronauts' data cannot be requested through parameters.
+        - Requires an authenticated user.
+        - Restricts access to the ASTRONAUT role.
+        - Derives astronaut_id from the authenticated user.
+        - Validates active mission assignment through the service.
+        - Does not accept arbitrary astronaut IDs.
 
     Statistical processing:
-        - Validated measurement filtering.
+        - Measurement quality filtering.
         - Daily median aggregation.
-        - Latest contiguous phase/environment segment.
-        - OLS linear regression.
-        - MAE comparison against a naive model.
-        - Individual baseline Z-score calculation.
-        - Out-of-range forecast detection.
+        - Phase and environment segmentation.
+        - OLS regression.
+        - MAE model validation.
+        - Individual baseline comparison.
+        - Z-score classification.
+        - Forecast horizon of 1-14 days.
 
     Returns:
-        Serialized PredictionResult.
+        PredictionResponse with forecast and statistical metadata.
     """
 
-    # ----------------------------------------------------------
+    # ========================================================
     # 1. AUTHORIZATION
-    # ----------------------------------------------------------
+    # ========================================================
 
     if (
         current_user.role is None
@@ -131,16 +142,16 @@ def get_indicator_prediction(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=(
-                "Physiological predictions are available "
-                "only to authenticated astronauts."
+                "Only authenticated astronauts can "
+                "request physiological predictions."
             ),
         )
 
     astronaut_id = current_user.id
 
-    # ----------------------------------------------------------
-    # 2. PREDICTION SERVICE
-    # ----------------------------------------------------------
+    # ========================================================
+    # 2. PREDICTION EXECUTION
+    # ========================================================
 
     try:
         prediction = predict_indicator(
@@ -153,16 +164,16 @@ def get_indicator_prediction(
         )
 
     except ValueError as exc:
-        # The service raises ValueError for invalid horizons and
-        # when its measurement-volume safety limit is exceeded.
-        # FastAPI already validates the HTTP horizon parameter.
+        # Do not expose raw internal exception messages.
+        # The service may reject excessive data volume.
+
         if "Too many eligible measurements" in str(exc):
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail=(
-                    "Prediction cannot be generated because "
-                    "the measurement volume exceeds the "
-                    "current processing limit."
+                    "The prediction could not be generated "
+                    "because the measurement volume exceeds "
+                    "the current processing limit."
                 ),
             ) from exc
 
@@ -171,16 +182,16 @@ def get_indicator_prediction(
             detail="Invalid prediction parameters or data.",
         ) from exc
 
-    # ----------------------------------------------------------
-    # 3. RESULT STATUS HANDLING
-    # ----------------------------------------------------------
+    # ========================================================
+    # 3. SERVICE STATUS VALIDATION
+    # ========================================================
 
     if prediction.status == "not_assigned":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=(
-                "You do not have an active astronaut "
-                "assignment for this mission."
+                "The authenticated astronaut does not have "
+                "an active assignment to this mission."
             ),
         )
 
@@ -190,13 +201,23 @@ def get_indicator_prediction(
             detail="Physiological indicator not found.",
         )
 
-    # ----------------------------------------------------------
-    # 4. RESPONSE
-    # ----------------------------------------------------------
+    # ========================================================
+    # 4. RESPONSE SERIALIZATION
+    # ========================================================
 
-    # These are valid service outcomes:
-    # - ok
-    # - insufficient_data
-    # - model_not_reliable
+    # Valid prediction outcomes include:
+    #
+    # ok:
+    #     A reliable forecast was generated.
+    #
+    # insufficient_data:
+    #     There are not enough eligible measurement days.
+    #
+    # model_not_reliable:
+    #     OLS did not outperform the naive benchmark.
+    #
+    # These are expected statistical outcomes, not HTTP errors.
 
-    return asdict(prediction)
+    return PredictionResponse.model_validate(
+        asdict(prediction)
+    )
