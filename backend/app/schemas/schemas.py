@@ -556,4 +556,6 @@ class PredictionResponse(BaseModel):
     empirical_validation: Optional[PredictionEmpiricalValidation] = None
     threshold_projection: Optional[ThresholdProjection] = None
     recommendation: Optional[PredictionRecommendation] = None
+    # Alerta temprana creada o actualizada por este pronóstico (issue #30); None si no cruza ningún umbral
+    early_warning_alert_id: Optional[int] = None
 

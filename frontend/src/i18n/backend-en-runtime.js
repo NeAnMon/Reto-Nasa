@@ -647,6 +647,55 @@ export const EXACT = {
   "Sin videollamadas: con el retardo de la comunicación una conversación en directo resulta frustrante. Repite el check-in de Bienestar en 24 h; si las señales continúan, coméntalo con tu especialista de apoyo en el próximo contacto con Tierra.":
     "No video calls: with the communication delay, a live conversation becomes frustrating. Repeat the Wellbeing check-in in 24 h; if the signs continue, talk it over with your support specialist at the next contact with Earth.",
 
+  /* ---------- rules/prediction_alerts.py: alerta temprana del pronóstico (issue #30) ---------- */
+  "El último valor registrado sigue en rango normal.": "The last recorded value is still within the normal range.",
+  "Es una proyección exploratoria de la tendencia, no una medición ni un diagnóstico.":
+    "It is an exploratory projection of the trend, not a measurement or a diagnosis.",
+  "1. Tu último registro está en rango, pero la tendencia apunta fuera de él: sigue desde hoy la pauta preventiva de abajo y registra este indicador a diario para confirmarla.":
+    "1. Your last reading is in range, but the trend points outside it: follow the preventive guidance below from today and record this indicator daily to confirm it.",
+
+  /* ---------- rules/environment_alerts.py: entorno y radiación ambiental de la misión (issue #30) ---------- */
+  "NASA-STD-3001 Vol. 2 (atmósfera del hábitat); cortes de demostración del equipo, sin validación clínica":
+    "NASA-STD-3001 Vol. 2 (habitat atmosphere); team demonstration cut-offs, without clinical validation",
+  "límites SMAC de la NASA para CO₂ y NASA-STD-3001 Vol. 2; cortes de demostración del equipo":
+    "NASA SMAC limits for CO₂ and NASA-STD-3001 Vol. 2; team demonstration cut-offs",
+  "cortes de dosis diaria de la regla calibrada RADIATION_EXPOSURE del motor de alertas":
+    "daily dose cut-offs of the calibrated RADIATION_EXPOSURE rule of the alert engine",
+  "El entorno es compartido: la alerta se genera para cada astronauta asignado a la misión y no incluye datos personales.":
+    "The environment is shared: the alert is generated for every astronaut assigned to the mission and includes no personal data.",
+  "1. Comprueba el flujo de ventilación de tu módulo y evita el ejercicio intenso hasta que el CO₂ baje; si notas dolor de cabeza o somnolencia, avísalo.":
+    "1. Check the ventilation flow in your module and avoid intense exercise until the CO₂ drops; if you notice a headache or drowsiness, report it.",
+  "Revisa con el equipo de soporte vital el depurador de CO₂ y la circulación de aire de los módulos ocupados. Avisa al médico de vuelo si aparecen dolor de cabeza, mareo o falta de concentración. Fuente: límites SMAC de la NASA para CO₂ y NASA-STD-3001 Vol. 2.":
+    "Review the CO₂ scrubber and the air circulation of the occupied modules with the life support team. Tell the flight surgeon if headache, dizziness or poor concentration appear. Source: NASA SMAC limits for CO₂ and NASA-STD-3001 Vol. 2.",
+  "1. Reduce el esfuerzo físico y comprueba tu SpO₂; si baja o notas falta de aire, avisa de inmediato.":
+    "1. Reduce physical effort and check your SpO₂; if it drops or you feel short of breath, report it immediately.",
+  "Revisa con el equipo de soporte vital el aporte de oxígeno del hábitat y repite la medición ambiental. Avisa al médico de vuelo si la SpO₂ de algún tripulante baja de su rango habitual. Fuente: NASA-STD-3001 Vol. 2.":
+    "Review the habitat oxygen supply with the life support team and repeat the environmental measurement. Tell the flight surgeon if any crew member's SpO₂ falls below their usual range. Source: NASA-STD-3001 Vol. 2.",
+  "1. Evita fuentes de ignición y comprueba con soporte vital el ajuste del aporte de oxígeno.":
+    "1. Avoid ignition sources and check the oxygen supply setting with life support.",
+  "Revisa el control de presión parcial de oxígeno del hábitat y repite la medición ambiental. Avisa al médico de vuelo si alguien nota irritación en el pecho o tos. Fuente: NASA-STD-3001 Vol. 2.":
+    "Review the habitat oxygen partial pressure control and repeat the environmental measurement. Tell the flight surgeon if anyone notices chest irritation or a cough. Source: NASA-STD-3001 Vol. 2.",
+  "1. Hidrátate, reduce el esfuerzo y usa ropa ligera mientras se ajusta el control térmico.":
+    "1. Hydrate, reduce effort and wear light clothing while the thermal control is adjusted.",
+  "Revisa con soporte vital el control térmico del módulo y planifica el ejercicio en las horas más frescas. Avisa al médico de vuelo si aparecen mareo o cansancio inusual. Fuente: NASA-STD-3001 Vol. 2.":
+    "Review the module thermal control with life support and schedule exercise in the coolest hours. Tell the flight surgeon if dizziness or unusual tiredness appear. Source: NASA-STD-3001 Vol. 2.",
+  "1. Abrígate con capas y mantente activo de forma suave mientras se ajusta el control térmico.":
+    "1. Wear warm layers and keep gently active while the thermal control is adjusted.",
+  "Revisa con soporte vital el control térmico del módulo y vigila el confort durante el descanso. Avisa al médico de vuelo si aparecen temblores o entumecimiento. Fuente: NASA-STD-3001 Vol. 2.":
+    "Review the module thermal control with life support and watch comfort during rest. Tell the flight surgeon if shivering or numbness appear. Source: NASA-STD-3001 Vol. 2.",
+  "1. Comprueba la ventilación del módulo y retira toallas o ropa húmeda de las zonas cerradas.":
+    "1. Check the module ventilation and remove towels or damp clothing from enclosed areas.",
+  "Revisa con soporte vital el control de humedad y la condensación en superficies frías para evitar moho. Avisa al médico de vuelo si aparecen molestias respiratorias. Fuente: NASA-STD-3001 Vol. 2.":
+    "Review the humidity control and condensation on cold surfaces with life support to prevent mould. Tell the flight surgeon if breathing discomfort appears. Source: NASA-STD-3001 Vol. 2.",
+  "1. Bebe agua con regularidad y usa lubricante ocular o nasal si notas sequedad.":
+    "1. Drink water regularly and use eye or nasal lubricant if you notice dryness.",
+  "Revisa con soporte vital el control de humedad del hábitat. Avisa al médico de vuelo si la sequedad causa sangrado nasal o irritación ocular. Fuente: NASA-STD-3001 Vol. 2.":
+    "Review the habitat humidity control with life support. Tell the flight surgeon if dryness causes nosebleeds or eye irritation. Source: NASA-STD-3001 Vol. 2.",
+  "1. Limita el tiempo fuera de las zonas más blindadas del hábitat y revisa tu dosímetro personal.":
+    "1. Limit time outside the most shielded areas of the habitat and check your personal dosimeter.",
+  "Sigue los avisos de meteorología espacial, planifica las actividades extravehiculares fuera de los picos y registra tu dosis personal a diario. Avisa al médico de vuelo si tu dosis personal supera los cortes del motor de alertas. Fuente: regla calibrada RADIATION_EXPOSURE (NASA HRP).":
+    "Follow the space weather advisories, schedule extravehicular activities outside the peaks and record your personal dose daily. Tell the flight surgeon if your personal dose exceeds the alert engine cut-offs. Source: calibrated RADIATION_EXPOSURE rule (NASA HRP).",
+
   /* ---------- services/prediction_service.py: método y validación del pronóstico ---------- */
   "Nivel robusto: mediana ponderada exponencialmente de las medianas diarias del segmento actual (los días recientes pesan más). La tendencia se informa siempre, pero solo se extrapola si es estadísticamente significativa y reduce el error dentro de la propia serie; en caso contrario el pronóstico es plano. Cada día lleva bandas de predicción al 80 % y al 95 %.":
     "Robust level: exponentially weighted median of the daily medians of the current segment (recent days weigh more). The trend is always reported, but it is only extrapolated when it is statistically significant and reduces the error within the series itself; otherwise the forecast is flat. Each day carries 80% and 95% prediction bands.",
@@ -899,6 +948,24 @@ export const EXACT = {
    PATTERNS  (anclados; los más específicos primero)
    ========================================================================= */
 export const PATTERNS = [
+  /* ---------- rules/prediction_alerts.py + rules/environment_alerts.py (issue #30) ---------- */
+  // "[ALERTA TEMPRANA] Pronóstico de Frecuencia Cardíaca: nivel MONITOR en 5 día(s)"
+  [/^\[ALERTA TEMPRANA\] Pronóstico de (.+): nivel ([A-Z_]+) en (\d+) día\(s\)$/,
+    (m, bt) => `[EARLY WARNING] ${bt(m[1])} forecast: ${m[2]} level in ${m[3]} day(s)`],
+  // "Pronóstico: el valor esperado (102 bpm) alcanzaría el nivel MONITOR ... ; regla RULE_X v2.0. <notas>"
+  [/^Pronóstico: el valor esperado \(([-+]?[\d.,]+) (.*?)\) alcanzaría el nivel ([A-Z_]+) del motor de alertas en (\d+) día\(s\) \((\S+)\)(?:; umbral ([-+]?[\d.,]+) (.*?))?; regla (\S+) v(\S+?)\. (.+)$/,
+    (m, bt) =>
+      `Forecast: the expected value (${m[1]} ${u(m[2])}) would reach the ${m[3]} level of the alert engine in ${m[4]} day(s) (${m[5]})` +
+      `${m[6] ? `; threshold ${m[6]} ${u(m[7])}` : ""}; rule ${m[8]} v${m[9]}. ${sentences(m[10], bt)}`],
+  // "[WARNING] Entorno de la misión · Concentración de CO₂: 4.8 mmHg"
+  [/^\[([A-Z_]+)\] Entorno de la misión · (.+?): ([-+]?[\d.,]+)(?: (.+))?$/,
+    (m, bt) => `[${m[1]}] Mission environment · ${bt(m[2])}: ${m[3]}${m[4] ? " " + u(m[4]) : ""}`],
+  // "Alerta ambiental de la misión (CO2_LEVEL): valor 4.8 mmHg por encima del rango normal [0 - 2.5]; nivel WARNING (<fuente>). <nota>"
+  [/^Alerta ambiental de la misión \((\S+)\): valor ([-+]?[\d.,]+) (.*?) (por encima|por debajo) del rango normal \[([-+]?[\d.,]+) - ([-+]?[\d.,]+)\]; nivel ([A-Z_]+) \((.+?)\)\. (.+)$/,
+    (m, bt) =>
+      `Mission environment alert (${m[1]}): value ${m[2]} ${u(m[3])} ${m[4] === "por encima" ? "above" : "below"} the normal range ` +
+      `[${m[5]} - ${m[6]}]; ${m[7]} level (${bt(m[8])}). ${sentences(m[9], bt)}`],
+
   /* ---------- rules/engine.py: títulos de alerta ---------- */
   // Emotional engine: "[STATE] Seguimiento de Cuestionario Emocional (#12)"
   [/^\[([A-Z_]+)\] Seguimiento de Cuestionario Emocional \(#(\d+)\)$/,

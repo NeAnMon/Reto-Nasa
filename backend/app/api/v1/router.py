@@ -51,6 +51,15 @@ from backend.app.rules.engine import (
     upsert_alert_for_measurement,
 )
 from backend.app.rules.early_warnings import EARLY_RULE_PREFIX, is_early_rule
+from backend.app.rules.alert_sources import (
+    SOURCE_ENGINES,
+    alert_source_engine,
+    is_early_warning_alert,
+    source_engine_clause,
+)
+from backend.app.rules.environment_alerts import evaluate_and_alert_environment
+from backend.app.rules.prediction_alerts import upsert_prediction_alert
+from backend.app.services.prediction_service import predict_indicator
 from backend.app.schemas.schemas import (
     AlertAckRequest,
     AlertEscalateRequest,
@@ -1491,6 +1500,10 @@ def create_health_measurement(
     db.commit()
     db.refresh(m)
 
+    # Alerta temprana del pronóstico (issue #30): la lectura sigue en rango, pero la tendencia cruzaría
+    # un umbral del motor calibrado en los próximos días (rules/prediction_alerts.py)
+    early_warning = _refresh_prediction_alert(db, m) if state == "NORMAL" else None
+
     # If valid measurement, also credit DAILY_HEALTH_CHECK or PULSE_CHECK if astronaut
     gamification_bonus = None
     if state != "INVALID" and user.role.code == "ASTRONAUT":
@@ -1545,7 +1558,39 @@ def create_health_measurement(
             if alert_created
             else None
         ),
+        "early_warning_alert": early_warning,
         "gamification_update": gamification_bonus,
+    }
+
+
+def _refresh_prediction_alert(db: Session, m: HealthMeasurement) -> Optional[Dict[str, object]]:
+    """Pronostica el indicador tras una lectura normal y crea/actualiza su alerta temprana.
+
+    Un fallo del pronóstico nunca impide registrar la medición (ya está guardada): se descarta y sigue.
+    """
+    try:
+        result = predict_indicator(
+            db=db, astronaut_id=m.astronaut_id, mission_id=m.mission_id, indicator_code=m.indicator_code,
+            horizon_days=7, include_simulated=bool(m.is_simulated),
+        )
+        alert, is_new = upsert_prediction_alert(
+            db, m.astronaut_id, m.mission_id, result, is_simulated=bool(m.is_simulated)
+        )
+        if alert is None:
+            return None
+        db.commit()
+    except Exception:
+        db.rollback()
+        return None
+    return {
+        "id": alert.id,
+        "rule_code": alert.rule_code,
+        "source_engine": alert_source_engine(alert.rule_code),
+        "priority": alert.priority,
+        "title": alert.title,
+        "immediate_action": alert.immediate_action,
+        "followup_recommendation": alert.followup_recommendation,
+        "is_new": is_new,
     }
 
 
@@ -1791,9 +1836,28 @@ def create_environmental_measurement(
         is_simulated=payload.is_simulated,
     )
     db.add(em)
+    db.flush()
+    # Alertas del entorno / radiación ambiental para la tripulación (issue #30, rules/environment_alerts.py)
+    env_alerts = evaluate_and_alert_environment(db, em)
     db.commit()
     db.refresh(em)
-    return {"id": em.id, "parameter_code": em.parameter_code}
+    return {
+        "id": em.id,
+        "parameter_code": em.parameter_code,
+        "calculated_state": em.calculated_state,
+        "alerts_generated": [
+            {
+                "id": a.id,
+                "astronaut_id": a.astronaut_id,
+                "rule_code": a.rule_code,
+                "source_engine": alert_source_engine(a.rule_code),
+                "priority": a.priority,
+                "operational_state": a.operational_state,
+                "title": a.title,
+            }
+            for a in env_alerts
+        ],
+    }
 
 
 @router.get("/environment/sources")
@@ -1831,6 +1895,9 @@ def _serialize_alert(db: Session, a: Alert) -> Dict[str, object]:
         "mission_id": a.mission_id,
         "indicator_code": a.indicator_code,
         "rule_code": a.rule_code,
+        # Motor que generó la alerta (prefijo de rule_code, ver rules/alert_sources.py) y si es temprana
+        "source_engine": alert_source_engine(a.rule_code),
+        "is_early_warning": is_early_warning_alert(a.rule_code),
         "rule_version_label": a.rule_version_label,
         "value_recorded": a.value_recorded,
         "unit": a.unit,
@@ -1877,9 +1944,17 @@ def list_alerts(
     mission_id: Optional[int] = None,
     status_filter: Optional[str] = None,
     priority: Optional[str] = None,
+    source_engine: Optional[str] = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    if source_engine is not None:
+        source_engine = source_engine.strip().upper()
+        if source_engine not in SOURCE_ENGINES:
+            raise HTTPException(
+                status_code=422,
+                detail=f"source_engine no válido. Valores: {', '.join(SOURCE_ENGINES)}.",
+            )
     allowed_ids = get_authorized_astronaut_ids(db, user)
     if astronaut_id is not None:
         verify_astronaut_access(db, user, astronaut_id, action_name="LIST_ALERTS")
@@ -1897,6 +1972,8 @@ def list_alerts(
         query = query.filter(Alert.status == status_filter)
     if priority:
         query = query.filter(Alert.priority == priority)
+    if source_engine:
+        query = query.filter(source_engine_clause(Alert.rule_code, source_engine))
 
     # Alertas tempranas de bienestar: el líder no las ve si el astronauta no comparte sus señales
     hidden_ids = _early_alert_hidden_astronauts(db, user, filter_ids)
