@@ -1265,7 +1265,7 @@ function buildAlerts(d, data) {
   }
   const hl = HERA_LEVELS.indexOf(hera.level);
   if (hl >= 1) {
-    list.push({ id: "hera", cls: classFromRank(Math.min(hl, 3)), acked: hera.ackedLevel === hera.level, msg: fmt(T.heraAlert, { lvl: HERA_TEXT[hera.level].short }), detail: `${num(heraCurrent().v, 1)} µGy/min`, t: heraCurrent().t, local: true, hera: true });
+    list.push({ id: "hera", cls: classFromRank(Math.min(hl, 3)), acked: hera.ackedLevel === hera.level, msg: fmt(T.heraAlert, { lvl: HERA_TEXT[hera.level].short }), detail: `${num(heraCurrent().v, 1)} µGy/min`, t: heraCurrent().t, local: true, hera: true, heraLevel: hera.level });
   }
   list.sort((a, b) => RANK[b.cls] - RANK[a.cls] || (a.t && b.t ? a.t - b.t : 0));
   return list;
@@ -1636,9 +1636,11 @@ function alarmBarHTML(alerts) {
     return `<div class="av-alarm av-alarm-quiet" role="status"><span>${esc(T.alarmQuiet)}</span><span>${esc(T.inAlarm)} <span class="av-mono">${inAlarm}</span></span></div>`;
   }
   const canProc = top.indicator || top.hera;
+  // HERA en refugio (WARNING): naranja rojizo; el rojo queda para la emergencia
+  const shelter = top.hera && top.heraLevel === "WARNING";
   return `
-  <div class="av-alarm av-alarm-${top.cls}" role="alert">
-    <span class="av-badge" style="background:currentColor" title="${esc(STATE_WORD[top.cls])}"><span style="color:${top.cls === "W" ? "#D13438" : "#F2C94C"}">${top.cls}</span></span>
+  <div class="av-alarm av-alarm-${top.cls}${shelter ? " av-alarm-shelter" : ""}" role="alert">
+    <span class="av-badge" style="background:currentColor" title="${esc(STATE_WORD[top.cls])}"><span style="color:${shelter ? "#E8541C" : top.cls === "W" ? "#D13438" : "#F2C94C"}">${top.cls}</span></span>
     <strong style="letter-spacing:.04em;text-transform:uppercase">${esc(top.msg)}</strong>
     <span class="av-mono">${esc(top.detail)}</span>
     <span class="av-mono">${top.t ? gmt(top.t, false) : ""}</span>

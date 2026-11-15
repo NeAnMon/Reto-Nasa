@@ -102,6 +102,7 @@ body[data-theme="daylight-clean"] .av-console {
 .av-alarm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 8px 16px; }
 .av-alarm-C { background: var(--av-y); color: #0e1116; }
 .av-alarm-W { background: var(--av-r); color: #fff; }
+.av-alarm-W.av-alarm-shelter { background: #e8541c; color: #fff; }
 .av-alarm-quiet { background: var(--av-bar); color: var(--av-text2); border-bottom: 1px solid var(--av-border); }
 .av-alarm .av-btn { border-color: currentColor; background: transparent; color: inherit; }
 
