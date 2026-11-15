@@ -75,6 +75,7 @@ from backend.app.models.models import (
     WellnessRecommendation,
 )
 from backend.app.security.auth import hash_password
+from backend.app.database.seed_analog import seed_analog_bed_rest
 from backend.app.services.cognitive_engine import COGNITIVE_DOMAINS_CATALOG
 
 
@@ -917,6 +918,7 @@ def seed_database(db: Session, force_reseed_sim: bool = False) -> None:
     existing_cog_domains = db.query(CognitiveDomain).count()
     if existing_roles > 0 and existing_cog_domains > 0 and not force_reseed_sim:
         seed_isolation_module(db)
+        seed_analog_bed_rest(db)
         return
 
     now = utcnow()
@@ -1558,6 +1560,9 @@ def seed_database(db: Session, force_reseed_sim: bool = False) -> None:
 
     # Módulo de aislamiento y confinamiento (catálogos)
     seed_isolation_module(db)
+
+    # Misión análoga con signos vitales reales de NASA (reposo en cama, UTMB)
+    seed_analog_bed_rest(db)
 
 
 def _populate_synthetic_demo_records(

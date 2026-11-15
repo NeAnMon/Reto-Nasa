@@ -1,0 +1,4 @@
+astronauta_id,sujeto,n_dias_base,pulso_lpm_media,pulso_lpm_de,pas_mmhg_media,pas_mmhg_de,pad_mmhg_media,pad_mmhg_de,temp_c_media,temp_c_de,resp_rpm_media,resp_rpm_de
+UTMB-03,3985,13,65.69,6.0,126.69,11.65,74.08,7.57,36.51,0.3,16.46,1.5
+UTMB-17,6607,14,63.0,6.0,120.14,8.0,68.29,6.0,36.21,0.3,17.86,1.66
+UTMB-29,8881,12,54.75,6.0,117.17,8.0,62.17,6.0,36.61,0.3,17.33,1.5
