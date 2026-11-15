@@ -860,7 +860,8 @@ export function renderLogbookEngines(el, opts) {
     st.predCode = null;
   }
   st.data = {};
-  st.seq = {};
+  // st.seq no se reinicia: el contador por motor es monótono para que una respuesta en vuelo de una
+  // apertura anterior nunca coincida con la de la apertura actual (auditoría #30).
   st.el = el;
   st.ctx = ctx;
   bindOnce(el);
