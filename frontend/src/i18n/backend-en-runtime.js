@@ -29,6 +29,9 @@ const u = (s) => {
   return Object.prototype.hasOwnProperty.call(UNITS, k) ? UNITS[k] : k;
 };
 
+// Etiqueta del componente evaluado en los motivos del motor (valor principal o diastólica).
+const lbl = (s) => (s === "Valor" ? "Value" : "Diastolic pressure");
+
 // Traduce un bloque de varias frases (p. ej. motivos de evaluación unidos por espacios).
 const sentences = (s, bt) =>
   String(s)
@@ -89,6 +92,121 @@ export const EXACT = {
     "Note: This alert is a preventive operational signal and does not constitute a medical diagnosis.",
   "SEMSA DEMO Reference Protocol (Ilustrativo / No Clínico)":
     "SEMSA DEMO Reference Protocol (Illustrative / Non-Clinical)",
+  "Valor no numérico: la medición no se puede evaluar.": "Non-numeric value: the measurement cannot be evaluated.",
+
+  /* ---------- rules/recommendations.py: recomendación de cada alerta (indicador × dirección × nivel) ---------- */
+  "1. Baja la intensidad por hoy y deja tiempo de recuperación antes de la próxima sesión.":
+    "1. Lower the intensity for today and allow recovery time before your next session.",
+  "1. Bebe agua ahora y reparte el resto de tu pauta diaria en tomas regulares.":
+    "1. Drink water now and spread the rest of your daily target over regular intakes.",
+  "1. Comprueba el termómetro, abrígate y repite la medición para descartar un error de lectura.":
+    "1. Check the thermometer, keep warm and repeat the measurement to rule out a reading error.",
+  "1. Comprueba la lectura del dosímetro y consulta si hay aviso de evento solar; si lo hay, ve al refugio.":
+    "1. Check the dosimeter reading and find out whether there is a solar event warning; if there is, go to the shelter.",
+  "1. Descansa unos minutos, mide tu SpO₂ y vuelve a contar las respiraciones durante 60 segundos.":
+    "1. Rest for a few minutes, measure your SpO₂ and count your breaths again for 60 seconds.",
+  "1. Dos fuentes dieron valores distintos en pocos minutos: repite la medición con el sensor mejor colocado.":
+    "1. Two sources gave different values within a few minutes: repeat the measurement with the better-placed sensor.",
+  "1. El valor está fuera de tu rango habitual: repite la medición y revisa si tienes síntomas.":
+    "1. The value is outside your usual range: repeat the measurement and check whether you have symptoms.",
+  "1. Haz una pausa de recuperación y evita las tareas críticas hasta que te sientas mejor.":
+    "1. Take a recovery break and avoid critical tasks until you feel better.",
+  "1. Programa hoy una sesión de ejercicio autorizado, aunque sea corta, si no tienes una restricción médica u operativa.":
+    "1. Schedule an authorized exercise session today, even a short one, unless you have a medical or operational restriction.",
+  "1. Protege tu horario de sueño de hoy y evita las tareas críticas hasta haber descansado.":
+    "1. Protect your sleep schedule today and avoid critical tasks until you have rested.",
+  "1. Registra tus síntomas, bebe agua y repite la medición en 15 minutos, sin líquidos calientes ni ejercicio antes.":
+    "1. Log your symptoms, drink water and repeat the measurement in 15 minutes, with no hot drinks or exercise beforehand.",
+  "1. Repite la medición con el analizador y anota la hora de tu última comida.":
+    "1. Repeat the measurement with the analyzer and note the time of your last meal.",
+  "1. Repite la medición con el analizador y anota qué comiste y cuándo.":
+    "1. Repeat the measurement with the analyzer and note what you ate and when.",
+  "1. Repite la medición en reposo para confirmar el valor alto.":
+    "1. Repeat the measurement at rest to confirm the high value.",
+  "1. Repite la medición en reposo para confirmar el valor bajo.":
+    "1. Repeat the measurement at rest to confirm the low value.",
+  "1. Repite la medición en reposo y anota si notas mareo o fatiga: un pulso bajo es habitual en personas entrenadas.":
+    "1. Repeat the measurement at rest and note any dizziness or fatigue: a low pulse is common in trained people.",
+  "1. Repite la medición tras 5 minutos de reposo, sentado y con el brazalete a la altura del corazón.":
+    "1. Repeat the measurement after 5 minutes of rest, seated and with the cuff at heart level.",
+  "1. Revisa el registro por si hay un error de suma y reparte la ingesta a lo largo del día.":
+    "1. Check the log for an adding error and spread your intake across the day.",
+  "1. Revisa la colocación del sensor, mantén la mano quieta y templada y repite la medición.":
+    "1. Check the sensor placement, keep your hand still and warm, and repeat the measurement.",
+  "1. Revisa tu dosis acumulada con el equipo de radiación antes de planificar nuevas exposiciones.":
+    "1. Review your cumulative dose with the radiation team before planning new exposures.",
+  "1. Siéntate o recuéstate, bebe agua y repite la medición en unos minutos.":
+    "1. Sit or lie down, drink water and repeat the measurement in a few minutes.",
+  "1. Siéntate, respira con calma y vuelve a medir el pulso tras 5 minutos de reposo.":
+    "1. Sit down, breathe calmly and measure your pulse again after 5 minutes of rest.",
+  "1. Tu presión arterial está fuera de tu rango habitual: repite la medición en reposo y revisa si tienes síntomas.":
+    "1. Your blood pressure is outside your usual range: repeat the measurement at rest and check whether you have symptoms.",
+  "1. Tu pulso está fuera de tu rango habitual: repite la medición en reposo y revisa si tienes síntomas.":
+    "1. Your pulse is outside your usual range: repeat the measurement at rest and check whether you have symptoms.",
+  "1. Tu temperatura está fuera de tu rango habitual: repite la medición y revisa si tienes síntomas.":
+    "1. Your temperature is outside your usual range: repeat the measurement and check whether you have symptoms.",
+  "1. Tómate un momento para ti y cuéntale cómo te sientes a alguien de confianza de la tripulación o del equipo de apoyo.":
+    "1. Take a moment for yourself and tell someone you trust in the crew or the support team how you feel.",
+  "Para mejorar en los próximos días: acuéstate y levántate a la misma hora, usa la iluminación que simula el ciclo día-noche, evita la cafeína antes de dormir y reserva un tiempo de relajación al final del día. Avisa al médico de vuelo si la media de 7 noches baja de 5,5 horas o si la falta de sueño afecta a tus tareas. Fuente: dataset del proyecto (astronaut-health-dataset, alertas.py), regla sueno_corto (media de 7 noches; Barger 2014, cifra verificada) y contramedidas NASA HRP para el sueño inadecuado y los horarios irregulares.":
+    "To improve over the next few days: go to bed and get up at the same time, use the lighting that simulates the day-night cycle, avoid caffeine before sleeping and set aside some time to wind down at the end of the day. Tell the flight surgeon if the 7-night average drops below 5.5 hours or if lack of sleep affects your tasks. Source: project dataset (astronaut-health-dataset, alertas.py), rule sueno_corto (7-night average; Barger 2014, verified figure) and NASA HRP countermeasures for inadequate sleep and irregular schedules.",
+  "Para mejorar en los próximos días: aumenta la hidratación, levántate despacio y mantén el ejercicio pautado; antes de volver a un entorno con gravedad, sigue la pauta de hidratación abundante y usa las prendas de compresión. Avisa al médico de vuelo si hay mareo o desmayo. Fuente: dataset del proyecto (astronaut-health-dataset, alertas.py), regla pa_baja (criterio clínico general, no verificado) y contramedidas NASA HRP para las adaptaciones cardiovasculares (hidratación y prendas de compresión).":
+    "To improve over the next few days: drink more fluids, stand up slowly and keep to your prescribed exercise; before returning to a gravity environment, follow the fluid-loading plan and wear the compression garments. Tell the flight surgeon if you feel dizzy or faint. Source: project dataset (astronaut-health-dataset, alertas.py), rule pa_baja (general clinical criterion, not verified) and NASA HRP countermeasures for cardiovascular adaptations (hydration and compression garments).",
+  "Para mejorar en los próximos días: completa el check-in emocional, lleva un diario, reserva tiempo para una actividad que disfrutes y mantén el contacto con tus seres queridos. Habla con el equipo de apoyo psicológico si el ánimo bajo se mantiene varios días; si tienes pensamientos de hacerte daño, habla ya con el médico de vuelo o con el psicólogo. Fuente: dataset del proyecto (astronaut-health-dataset, alertas.py), regla animo_bajo (diseño del equipo sobre datos simulados; umbrales absolutos sin respaldo en el dataset) y contramedidas NASA HRP para las condiciones conductuales.":
+    "To improve over the next few days: complete the emotional check-in, keep a journal, set aside time for an activity you enjoy and stay in touch with your loved ones. Talk to the psychological support team if the low mood lasts several days; if you have thoughts of harming yourself, talk to the flight surgeon or the psychologist right away. Source: project dataset (astronaut-health-dataset, alertas.py), rule animo_bajo (team design on simulated data; absolute thresholds not backed by the dataset) and NASA HRP countermeasures for behavioral conditions.",
+  "Para mejorar en los próximos días: descansa, mantén la hidratación y mide la temperatura a la misma hora y con el mismo termómetro para confirmar la tendencia. Avisa al médico de vuelo si el desvío se mantiene en dos controles seguidos o si aparecen escalofríos, tos o sarpullido. Fuente: dataset del proyecto (astronaut-health-dataset, alertas.py), desvío frente a la línea base personal (diseño del equipo) y NASA HRP, respuestas alteradas del sistema inmunológico.":
+    "To improve over the next few days: rest, stay hydrated and measure your temperature at the same time and with the same thermometer to confirm the trend. Tell the flight surgeon if the deviation persists over two consecutive checks or if chills, cough or a rash appear. Source: project dataset (astronaut-health-dataset, alertas.py), deviation from the personal baseline (team design) and NASA HRP, altered immune system responses.",
+  "Para mejorar en los próximos días: descansa, mantén la hidratación y vuelve a medir la temperatura cada pocas horas; anota si hay escalofríos, tos o sarpullido. Avisa al médico de vuelo si la temperatura llega a 38,0 °C o si los síntomas empeoran. Fuente: dataset del proyecto (astronaut-health-dataset, alertas.py), regla fiebre (criterio clínico general, no verificado) y NASA HRP, respuestas alteradas del sistema inmunológico.":
+    "To improve over the next few days: rest, stay hydrated and measure your temperature again every few hours; note any chills, cough or rash. Tell the flight surgeon if your temperature reaches 38.0 °C or if the symptoms get worse. Source: project dataset (astronaut-health-dataset, alertas.py), rule fiebre (general clinical criterion, not verified) and NASA HRP, altered immune system responses.",
+  "Para mejorar en los próximos días: evita el esfuerzo hasta que se normalice, revisa el CO₂ de la cabina y repite el control en reposo. Avisa al médico de vuelo si sigue por encima de 20 rpm en reposo, y de inmediato si llega a 24 rpm o notas falta de aire. Fuente: dataset del proyecto (astronaut-health-dataset, alertas.py), regla resp_alta (criterio clínico general, no verificado).":
+    "To improve over the next few days: avoid exertion until it returns to normal, check the cabin CO₂ and repeat the check at rest. Tell the flight surgeon if it stays above 20 rpm at rest, and immediately if it reaches 24 rpm or you feel short of breath. Source: project dataset (astronaut-health-dataset, alertas.py), rule resp_alta (general clinical criterion, not verified).",
+  "Para mejorar en los próximos días: limita el tiempo en las zonas menos blindadas, pospón la actividad extravehicular no esencial y revisa tu dosis acumulada con el equipo de radiación. Avisa al médico de vuelo si la dosis diaria sigue alta en la próxima lectura. Fuente: cortes de dosis diaria sin respaldo en el dataset (referencia: 0,2 a 0,5 mSv al día en la ISS, Shavers 2023); acción de la regla radiacion_acumulada del dataset del proyecto (astronaut-health-dataset, alertas.py) y NASA HRP, cánceres inducidos por radiación.":
+    "To improve over the next few days: limit your time in the least shielded areas, postpone non-essential extravehicular activity and review your cumulative dose with the radiation team. Tell the flight surgeon if the daily dose is still high at the next reading. Source: daily dose cut-offs not backed by the dataset (reference: 0.2 to 0.5 mSv per day on the ISS, Shavers 2023); action from rule radiacion_acumulada of the project dataset (astronaut-health-dataset, alertas.py) and NASA HRP, radiation-induced cancers.",
+  "Para mejorar en los próximos días: mantente abrigado, revisa la temperatura de la cabina y repite el control con otro termómetro si es posible. Avisa al médico de vuelo si la temperatura sigue por debajo de 35 °C al repetir la medición. Fuente: dataset del proyecto (astronaut-health-dataset, alertas.py), regla hipotermia (criterio clínico general, no verificado).":
+    "To improve over the next few days: keep warm, check the cabin temperature and repeat the check with another thermometer if possible. Tell the flight surgeon if your temperature is still below 35 °C when you repeat the measurement. Source: project dataset (astronaut-health-dataset, alertas.py), rule hipotermia (general clinical criterion, not verified).",
+  "Para mejorar en los próximos días: mantén el ejercicio pautado, elige las opciones bajas en sodio del menú, cuida el descanso y mide la presión a la misma hora. Avisa al médico de vuelo si sigue en 140/90 mmHg o más al repetir la medición, y de inmediato si llega a 180/120 mmHg o aparece dolor en el pecho. Fuente: dataset del proyecto (astronaut-health-dataset, alertas.py), reglas pa_alta y pad_alta (guía AHA/ACC 2017, no verificada) y contramedidas NASA HRP (ejercicio regular, dieta saludable y reducción del sodio).":
+    "To improve over the next few days: keep to your prescribed exercise, choose the low-sodium options on the menu, look after your rest and measure your blood pressure at the same time of day. Tell the flight surgeon if it stays at 140/90 mmHg or higher when you repeat the measurement, and immediately if it reaches 180/120 mmHg or chest pain appears. Source: project dataset (astronaut-health-dataset, alertas.py), rules pa_alta and pad_alta (AHA/ACC 2017 guideline, not verified) and NASA HRP countermeasures (regular exercise, healthy diet and sodium reduction).",
+  "Para mejorar en los próximos días: mantén la hidratación y el ejercicio pautado, cuida el sueño y registra el pulso en reposo a la misma hora. Avisa al médico de vuelo si sigue en 100 lpm o más al repetir la medición, y de inmediato si llega a 120 lpm o aparece dolor en el pecho. Fuente: dataset del proyecto (astronaut-health-dataset, alertas.py), regla pulso_alto (criterio clínico general, no verificado) y contramedidas NASA HRP para las adaptaciones cardiovasculares (ejercicio regular).":
+    "To improve over the next few days: stay hydrated and keep to your prescribed exercise, look after your sleep and log your resting pulse at the same time of day. Tell the flight surgeon if it stays at 100 bpm or higher when you repeat the measurement, and immediately if it reaches 120 bpm or chest pain appears. Source: project dataset (astronaut-health-dataset, alertas.py), rule pulso_alto (general clinical criterion, not verified) and NASA HRP countermeasures for cardiovascular adaptations (regular exercise).",
+  "Para mejorar en los próximos días: no te saltes comidas, sigue el menú pautado y mantén el ejercicio: la inactividad prolongada reduce la captación de glucosa del músculo. Avisa al médico de vuelo si el valor sigue por debajo de 70 mg/dL al repetir la medición o si notas debilidad o mareo. Fuente: rango de referencia de la glucosa i-STAT en el laboratorio de UTMB (dataset del proyecto; sin regla de alerta propia en el dataset) y NASA HRP, alimentación y nutrición.":
+    "To improve over the next few days: do not skip meals, follow the prescribed menu and keep exercising: prolonged inactivity reduces muscle glucose uptake. Tell the flight surgeon if the value is still below 70 mg/dL when you repeat the measurement or if you feel weak or dizzy. Source: i-STAT glucose reference range from the UTMB laboratory (project dataset; the dataset has no alert rule of its own) and NASA HRP, food and nutrition.",
+  "Para mejorar en los próximos días: prioriza las zonas mejor blindadas, limita las actividades extravehiculares y ve al refugio ante cualquier aviso de evento solar. Avisa al médico de vuelo: tu dosis acumulada registrada ya supera la mitad del límite de carrera de 600 mSv. Fuente: dataset del proyecto (astronaut-health-dataset, alertas.py), regla radiacion_acumulada (límite de carrera de 600 mSv de NASA HRP, cifra verificada; cortes decididos por el equipo).":
+    "To improve over the next few days: favor the best-shielded areas, limit extravehicular activities and go to the shelter at any solar event warning. Tell the flight surgeon: your recorded cumulative dose is already more than half of the 600 mSv career limit. Source: project dataset (astronaut-health-dataset, alertas.py), rule radiacion_acumulada (NASA HRP 600 mSv career limit, verified figure; cut-offs decided by the team).",
+  "Para mejorar en los próximos días: programa recordatorios de hidratación, lleva la cuenta de las bolsas de bebida y bebe más los días de ejercicio o de actividad extravehicular. Avisa al médico de vuelo si no alcanzas tu pauta dos días seguidos o si notas dolor en el costado o sangre en la orina. Fuente: umbral sin respaldo en el dataset (no trae series de hidratación); recomendación basada en NASA HRP (riesgo renal e hidratación como contramedida cardiovascular).":
+    "To improve over the next few days: set hydration reminders, keep count of your drink bags and drink more on exercise or extravehicular activity days. Tell the flight surgeon if you miss your target two days in a row or if you notice flank pain or blood in your urine. Source: threshold not backed by the dataset (it has no hydration series); recommendation based on NASA HRP (renal risk, and hydration as a cardiovascular countermeasure).",
+  "Para mejorar en los próximos días: protege tu horario de sueño, reparte la carga de trabajo, reserva tiempo de relajación y autocuidado y mantén el ejercicio pautado. Avisa al médico de vuelo si la fatiga alta se mantiene dos días seguidos o afecta a tu seguridad en las tareas. Fuente: umbral sin respaldo en el dataset (no trae series de fatiga); recomendación basada en NASA HRP (sueño inadecuado y horarios irregulares).":
+    "To improve over the next few days: protect your sleep schedule, spread out your workload, set aside time for relaxation and self-care and keep to your prescribed exercise. Tell the flight surgeon if high fatigue lasts two days in a row or affects your safety during tasks. Source: threshold not backed by the dataset (it has no fatigue series); recommendation based on NASA HRP (inadequate sleep and irregular schedules).",
+  "Para mejorar en los próximos días: recupera de forma progresiva la pauta de ejercicio de resistencia y aeróbico (en la ISS, 1,5 horas al día, 6 a 7 días por semana) y repártela en bloques si la agenda no da para más. Avisa al médico de vuelo si llevas varios días sin poder entrenar o si el motivo es dolor o una lesión. Fuente: umbral sin respaldo en el dataset (no trae series de ejercicio); recomendación basada en NASA HRP (reducción de la aptitud cardiorrespiratoria y musculoesquelética).":
+    "To improve over the next few days: gradually return to the resistance and aerobic exercise plan (on the ISS, 1.5 hours a day, 6 to 7 days a week) and split it into blocks if the schedule allows no more. Tell the flight surgeon if you have been unable to train for several days or if the reason is pain or an injury. Source: threshold not backed by the dataset (it has no exercise series); recommendation based on NASA HRP (reduced cardiorespiratory and musculoskeletal fitness).",
+  "Para mejorar en los próximos días: respira despacio y profundo, revisa el CO₂ y la ventilación de la cabina y evita el esfuerzo hasta repetir el control. Avisa al médico de vuelo si sigue por debajo de 95 % al repetir la medición, y de inmediato si baja de 92 % o notas falta de aire. Fuente: dataset del proyecto (astronaut-health-dataset, alertas.py), regla spo2_baja (criterio clínico general, no verificado; la SpO₂ del dataset es simulada) y NASA HRP, riesgo de hipoxia.":
+    "To improve over the next few days: breathe slowly and deeply, check the cabin CO₂ and ventilation and avoid exertion until you repeat the check. Tell the flight surgeon if it stays below 95 % when you repeat the measurement, and immediately if it drops below 92 % or you feel short of breath. Source: project dataset (astronaut-health-dataset, alertas.py), rule spo2_baja (general clinical criterion, not verified; SpO₂ in the dataset is simulated) and NASA HRP, risk of hypoxia.",
+  "Para mejorar en los próximos días: revisa el descanso, la hidratación y la actividad de las últimas 24 horas y repite el control a la misma hora. Avisa al médico de vuelo si el desvío se mantiene en dos controles seguidos. Fuente: dataset del proyecto (astronaut-health-dataset, alertas.py), desvío frente a la línea base personal (diseño del equipo).":
+    "To improve over the next few days: review your rest, hydration and activity over the last 24 hours and repeat the check at the same time of day. Tell the flight surgeon if the deviation persists over two consecutive checks. Source: project dataset (astronaut-health-dataset, alertas.py), deviation from the personal baseline (team design).",
+  "Para mejorar en los próximos días: revisa el descanso, la hidratación y la actividad de las últimas 24 horas y repite el control a la misma hora. Avisa al médico de vuelo si el valor sigue fuera de rango al repetir la medición. Fuente: recomendación general de SEMSA (sin regla específica en el dataset).":
+    "To improve over the next few days: review your rest, hydration and activity over the last 24 hours and repeat the check at the same time of day. Tell the flight surgeon if the value is still out of range when you repeat the measurement. Source: general SEMSA recommendation (no specific rule in the dataset).",
+  "Para mejorar en los próximos días: revisa el sueño, la hidratación y la carga de ejercicio de las últimas 24 horas y mide el pulso en reposo a la misma hora para confirmar la tendencia. Avisa al médico de vuelo si el desvío se mantiene en dos controles seguidos o si aparecen palpitaciones, mareo o dolor en el pecho. Fuente: dataset del proyecto (astronaut-health-dataset, alertas.py), desvío frente a la línea base personal (diseño del equipo) y NASA HRP, adaptaciones cardiovasculares.":
+    "To improve over the next few days: review your sleep, hydration and exercise load over the last 24 hours and measure your resting pulse at the same time of day to confirm the trend. Tell the flight surgeon if the deviation persists over two consecutive checks or if palpitations, dizziness or chest pain appear. Source: project dataset (astronaut-health-dataset, alertas.py), deviation from the personal baseline (team design) and NASA HRP, cardiovascular adaptations.",
+  "Para mejorar en los próximos días: revisa la hidratación, el descanso y el sodio de las últimas 24 horas y mide la presión a la misma hora para confirmar la tendencia. Avisa al médico de vuelo si el desvío se mantiene en dos controles seguidos o si hay mareo, desmayo o dolor en el pecho. Fuente: dataset del proyecto (astronaut-health-dataset, alertas.py), desvío frente a la línea base personal (diseño del equipo) y NASA HRP, adaptaciones cardiovasculares.":
+    "To improve over the next few days: review your hydration, rest and sodium intake over the last 24 hours and measure your blood pressure at the same time of day to confirm the trend. Tell the flight surgeon if the deviation persists over two consecutive checks or if you feel dizzy, faint or have chest pain. Source: project dataset (astronaut-health-dataset, alertas.py), deviation from the personal baseline (team design) and NASA HRP, cardiovascular adaptations.",
+  "Para mejorar en los próximos días: sigue con tu plan de ejercicio y controla el pulso en reposo a diario para confirmar si es tu valor habitual. Avisa al médico de vuelo si hay mareo, fatiga o desmayo, y de inmediato si el pulso baja a 40 lpm o menos. Fuente: dataset del proyecto (astronaut-health-dataset, alertas.py), regla pulso_bajo (criterio clínico general, no verificado).":
+    "To improve over the next few days: carry on with your exercise plan and check your resting pulse daily to confirm whether this is your usual value. Tell the flight surgeon if you feel dizzy, fatigued or faint, and immediately if your pulse drops to 40 bpm or lower. Source: project dataset (astronaut-health-dataset, alertas.py), rule pulso_bajo (general clinical criterion, not verified).",
+  "Para mejorar en los próximos días: sigue el menú pautado, reparte las comidas y mantén el ejercicio: la inactividad prolongada reduce la captación de glucosa del músculo. Avisa al médico de vuelo si el valor sigue por encima de 105 mg/dL en ayunas al repetir la medición. Fuente: rango de referencia de la glucosa i-STAT en el laboratorio de UTMB (dataset del proyecto; sin regla de alerta propia en el dataset) y NASA HRP, alimentación y nutrición.":
+    "To improve over the next few days: follow the prescribed menu, space out your meals and keep exercising: prolonged inactivity reduces muscle glucose uptake. Tell the flight surgeon if the fasting value is still above 105 mg/dL when you repeat the measurement. Source: i-STAT glucose reference range from the UTMB laboratory (project dataset; the dataset has no alert rule of its own) and NASA HRP, food and nutrition.",
+  "Para mejorar en los próximos días: usa siempre el mismo sensor y la misma postura para este indicador y revisa la colocación antes de medir. Avisa al médico de vuelo si las dos fuentes siguen sin coincidir. Fuente: control de calidad de datos de SEMSA (sin regla en el dataset).":
+    "To improve over the next few days: always use the same sensor and the same posture for this indicator and check the placement before measuring. Tell the flight surgeon if the two sources still disagree. Source: SEMSA data quality check (no rule in the dataset).",
+  "Para mejorar en los próximos días: vuelve a la pauta prescrita, alterna días de carga y de recuperación y cuida la hidratación y el sueño. Avisa al médico de vuelo si hay dolor, una lesión o un cansancio que no cede. Fuente: umbral sin respaldo en el dataset (no trae series de ejercicio); recomendación basada en NASA HRP (reducción de la aptitud cardiorrespiratoria y musculoesquelética).":
+    "To improve over the next few days: return to the prescribed plan, alternate load and recovery days and look after your hydration and sleep. Tell the flight surgeon if there is pain, an injury or tiredness that does not ease. Source: threshold not backed by the dataset (it has no exercise series); recommendation based on NASA HRP (reduced cardiorespiratory and musculoskeletal fitness).",
+  "Para mejorar en los próximos días: vuelve a tu pauta diaria y anota la ingesta toma a toma. Avisa al médico de vuelo si la ingesta sigue por encima de tu pauta varios días o si notas malestar. Fuente: umbral sin respaldo en el dataset (no trae series de hidratación).":
+    "To improve over the next few days: return to your daily target and log your intake drink by drink. Tell the flight surgeon if your intake stays above your target for several days or if you feel unwell. Source: threshold not backed by the dataset (it has no hydration series).",
+  "2. Nivel de observación: no necesitas interrumpir tus tareas; vuelve a medir en tu próximo control.":
+    "2. Observation level: you do not need to interrupt your tasks; measure again at your next check.",
+  "2. Nivel de seguimiento: repite la medición en los próximos 10 minutos y deja constancia en el Centro de Alertas.":
+    "2. Follow-up level: repeat the measurement within the next 10 minutes and record it in the Alert Center.",
+  "2. Nivel crítico: suspende la actividad exigente y contacta ahora con el médico de vuelo.":
+    "2. Critical level: stop strenuous activity and contact the flight surgeon now.",
+  "Revisa esta alerta en el Centro de Alertas y repite el registro que la originó cuando puedas.":
+    "Review this alert in the Alert Center and repeat the record that triggered it when you can.",
+  "Si la situación se mantiene en tu próximo control, coméntala con el médico de vuelo o con tu equipo de apoyo.":
+    "If the situation persists at your next check, raise it with the flight surgeon or your support team.",
 
   /* ---------- services/ai_assistant.py ---------- */
   "Aviso Operativo: SEMSA proporciona orientación educativa y preventiva basada en reglas configuradas (DEMO). No realiza diagnósticos médicos autónomos, no sustituye al personal sanitario de vuelo y no modifica protocolos clínicos.":
@@ -817,6 +935,42 @@ export const PATTERNS = [
     (m) => `Within the configured operational limits [${m[1]} - ${m[2]} ${u(m[3])}].`],
   [/^Medición con antigüedad superior a ([-+]?[\d.,]+) h \(([-+]?[\d.,]+) h\)\.$/,
     (m) => `Measurement older than ${m[1]} h (${m[2]} h).`],
+
+  /* ---------- rules/evaluation.py + rules/engine.py: motor calibrado con el dataset (2.0-DATASET) ---------- */
+  // Acción inmediata de una alerta: "1. <paso del indicador> 2. Nivel ...: <paso del nivel>" (rules/recommendations.py)
+  [/^(1\. .+?) (2\. Nivel (?:de observación|de seguimiento|crítico): .+)$/,
+    (m, bt) => `${bt(m[1])}\n${bt(m[2])}`],
+  // Umbral absoluto de la diastólica (mismo texto que el del valor principal)
+  [/^Presión diastólica ([-+]?[\d.,]+) (.*?) supera el umbral crítico del protocolo (\S+) \(([^)]+)\) \[([-+]?[\d.,]+) - ([-+]?[\d.,]+)\]\.$/,
+    (m) => `Diastolic pressure ${m[1]} ${u(m[2])} exceeds the critical threshold of protocol ${m[3]} (${m[4]}) [${m[5]} - ${m[6]}].`],
+  [/^Presión diastólica ([-+]?[\d.,]+) (.*?) requiere seguimiento según protocolo (\S+) \(([^)]+)\) \[([-+]?[\d.,]+) - ([-+]?[\d.,]+)\]\.$/,
+    (m) => `Diastolic pressure ${m[1]} ${u(m[2])} requires follow-up per protocol ${m[3]} (${m[4]}) [${m[5]} - ${m[6]}].`],
+  // Capa personal: z frente a la línea base de la persona
+  [/^(Valor|Presión diastólica) ([-+]?[\d.,]+) (.*?): sin línea base personal válida, se aplica solo el umbral absoluto\.$/,
+    (m) => `${lbl(m[1])} ${m[2]} ${u(m[3])}: no valid personal baseline, only the absolute threshold applies.`],
+  [/^(Valor|Presión diastólica) ([-+]?[\d.,]+) (.*?): además se aleja de la línea base personal \(z = ([-+]?[\d.,]+); línea base ([-+]?[\d.,]+) ± ([\d.,]+) (.*?)\)\.$/,
+    (m) => `${lbl(m[1])} ${m[2]} ${u(m[3])}: it is also far from the personal baseline (z = ${m[4]}; baseline ${m[5]} ± ${m[6]} ${u(m[7])}).`],
+  [/^(Valor|Presión diastólica) ([-+]?[\d.,]+) (.*?): es habitual para esta persona \(z = ([-+]?[\d.,]+); línea base ([-+]?[\d.,]+) ± ([\d.,]+) (.*?)\) y queda en observación\.$/,
+    (m) => `${lbl(m[1])} ${m[2]} ${u(m[3])}: usual for this person (z = ${m[4]}; baseline ${m[5]} ± ${m[6]} ${u(m[7])}), kept under observation.`],
+  [/^(Valor|Presión diastólica) ([-+]?[\d.,]+) (.*?): desvío fuerte frente a la línea base personal \(([-+]?[\d.,]+) ± ([\d.,]+) (.*?); z = ([-+]?[\d.,]+); umbral \|z\| ≥ ([\d.,]+)\)\.$/,
+    (m) => `${lbl(m[1])} ${m[2]} ${u(m[3])}: strong deviation from the personal baseline (${m[4]} ± ${m[5]} ${u(m[6])}; z = ${m[7]}; threshold |z| ≥ ${m[8]}).`],
+  [/^(Valor|Presión diastólica) ([-+]?[\d.,]+) (.*?): desvío frente a la línea base personal confirmado en dos lecturas seguidas \(([-+]?[\d.,]+) ± ([\d.,]+) (.*?); z = ([-+]?[\d.,]+); umbral \|z\| ≥ ([\d.,]+)\)\.$/,
+    (m) => `${lbl(m[1])} ${m[2]} ${u(m[3])}: deviation from the personal baseline confirmed in two consecutive readings (${m[4]} ± ${m[5]} ${u(m[6])}; z = ${m[7]}; threshold |z| ≥ ${m[8]}).`],
+  [/^(Valor|Presión diastólica) ([-+]?[\d.,]+) (.*?): desvío aislado frente a la línea base personal \(z = ([-+]?[\d.,]+)\); queda pendiente de confirmar con la próxima lectura\.$/,
+    (m) => `${lbl(m[1])} ${m[2]} ${u(m[3])}: isolated deviation from the personal baseline (z = ${m[4]}); pending confirmation with the next reading.`],
+  // Sueño: regla sobre la media de 7 noches
+  [/^Se evalúa la media de las últimas (\d+) noches \(([-+]?[\d.,]+) (.*?)\); la última noche fue de ([-+]?[\d.,]+) (.*?)\.$/,
+    (m) => `The average of the last ${m[1]} nights is evaluated (${m[2]} ${u(m[3])}); the last night was ${m[4]} ${u(m[5])}.`],
+  [/^Noche aislada de ([-+]?[\d.,]+) (.*?), por debajo de ([-+]?[\d.,]+) (.*?): la regla usa la media de (\d+) noches y aún hay menos de (\d+) registros, así que queda en observación\.$/,
+    (m) => `Single night of ${m[1]} ${u(m[2])}, below ${m[3]} ${u(m[4])}: the rule uses the ${m[5]}-night average and there are still fewer than ${m[6]} records, so it is kept under observation.`],
+  [/^Aún hay menos de (\d+) noches registradas en los últimos (\d+) días: la media de sueño se evaluará cuando haya más registros\.$/,
+    (m) => `There are still fewer than ${m[1]} nights logged in the last ${m[2]} days: the sleep average will be evaluated once there are more records.`],
+  // Radiación: dosis acumulada frente al límite de carrera
+  [/^Dosis acumulada registrada de ([-+]?[\d.,]+) mSv: ([-+]?[\d.,]+) % del límite de carrera de ([\d.,]+) mSv \(umbral ([\d.,]+) %\)\.$/,
+    (m) => `Recorded cumulative dose of ${m[1]} mSv: ${m[2]} % of the ${m[3]} mSv career limit (threshold ${m[4]} %).`],
+  // Alerta abierta que se actualiza con una lectura menos grave
+  [/^Última lectura en nivel ([A-Z]+); la alerta se mantiene en ([A-Z]+) hasta que se resuelva\.$/,
+    (m) => `Latest reading at ${m[1]} level; the alert stays at ${m[2]} until it is resolved.`],
 
   /* ---------- services/ai_assistant.py ---------- */
   [/^En los últimos (\d+) registros válidos, el indicador se observa (.+?) \(rango observado: ([-+]?[\d.,]+)–([-+]?[\d.,]+) (.+?), media: ([-+]?[\d.,]+) (.+?)\)\.(?: (.*))?$/,
