@@ -1914,18 +1914,18 @@ const ZONE_TEXT = {
   es: {
     HEAD_BRAIN: { zone: "NEURO", metricLbl: "Sueño", desc: "Sueño y fatiga percibida: base del rendimiento cognitivo en misión." },
     HEART_CARDIO: { zone: "CARDIO", metricLbl: "Pulso", desc: "Pulso y presión arterial ante el desplazamiento de fluidos en microgravedad." },
-    MUSCLES: { zone: "ACTIV.", metricLbl: "Actividad", desc: "Actividad física y fatiga: contramedida contra la atrofia muscular." },
+    MUSCLES: { zone: "ACTIV.", metricLbl: "Activ.", desc: "Actividad física y fatiga: contramedida contra la atrofia muscular." },
     DIGESTIVE_NUTRITION: { zone: "METAB.", metricLbl: "Hidrat.", desc: "Hidratación y glucosa; el agua protege el riñón del calcio que libera el hueso." },
     SKIN_THERMO: { zone: "PIEL", metricLbl: "Temp.", desc: "Temperatura corporal e hidratación de la piel." },
-    BONES_SKELETAL: { zone: "ÓSEO", metricLbl: "Carga 7 d", desc: "Sin medición directa de densidad ósea: se vigilan la carga de ejercicio y la hidratación." },
+    BONES_SKELETAL: { zone: "ÓSEO", metricLbl: "Carga", desc: "Sin medición directa de densidad ósea: se vigilan la carga de ejercicio y la hidratación." },
   },
   en: {
     HEAD_BRAIN: { zone: "NEURO", metricLbl: "Sleep", desc: "Sleep and perceived fatigue: the basis of cognitive performance in flight." },
     HEART_CARDIO: { zone: "CARDIO", metricLbl: "Pulse", desc: "Pulse and blood pressure under the fluid shift of microgravity." },
-    MUSCLES: { zone: "ACTIV.", metricLbl: "Activity", desc: "Physical activity and fatigue: countermeasure against muscle atrophy." },
+    MUSCLES: { zone: "ACTIV.", metricLbl: "Activ.", desc: "Physical activity and fatigue: countermeasure against muscle atrophy." },
     DIGESTIVE_NUTRITION: { zone: "METAB.", metricLbl: "Hydr.", desc: "Hydration and glucose; water protects the kidneys from the calcium released by bone." },
     SKIN_THERMO: { zone: "SKIN", metricLbl: "Temp.", desc: "Body temperature and skin hydration." },
-    BONES_SKELETAL: { zone: "BONE", metricLbl: "Load 7 d", desc: "No direct bone density measurement: exercise load and hydration are tracked instead." },
+    BONES_SKELETAL: { zone: "BONE", metricLbl: "Load", desc: "No direct bone density measurement: exercise load and hydration are tracked instead." },
   },
 };
 const BODY_ZONES = [
@@ -1978,7 +1978,7 @@ function weekHasData(d, data) {
 /* Valor de la métrica lateral de una zona (null = sin datos; nunca se inventa) */
 function zoneMetric(z, d, data) {
   if (z.metric === "WEEK_EXERCISE") {
-    return weekHasData(d, data) ? { value: num(d.weekMin), unit: "min", l: d.weekLetter } : { value: null, unit: "", l: "M" };
+    return weekHasData(d, data) ? { value: num(d.weekMin), unit: "min/7 d", l: d.weekLetter } : { value: null, unit: "", l: "M" };
   }
   const c = d.card(z.metric);
   return hasValue(c) ? { value: cardValue(c), unit: bt(c.unit || ""), l: LETTER[c.state] || "M" } : { value: null, unit: "", l: "M" };
