@@ -180,3 +180,66 @@ La API de **SEMSA** sigue principios RESTful bajo el prefijo versionado `/api/v1
 | `POST` | `/api/v1/crew-activities/{id}/respond` | Participante | `JOINED` / `DECLINED` (solo actividades `SCHEDULED`). |
 | `POST` | `/api/v1/crew-activities/{id}/attend` | Participante con `JOINED` | Marca asistencia (solo de `scheduled_for − 15 min` a fin + 24 h; si no, 409); con quórum pasa a `COMPLETED`. XP solo con ≥ 2 asistentes, una vez por persona y actividad y como máximo una vez al día. Atómico ante peticiones simultáneas; autocura actividades con quórum que quedaron `SCHEDULED`. |
 | `POST` | `/api/v1/crew-activities/{id}/cancel` | Creador / líder asignado / administración | Cancela una actividad programada. |
+
+
+
+---
+
+## 13. Pronóstico de indicadores fisiológicos (`/api/v1/predictions`)
+
+| Método | Ruta | Rol Requerido | Descripción |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/v1/predictions/indicators/{indicator_code}?mission_id=&horizon_days=7&include_simulated=false` | `ASTRONAUT` con asignación activa a la misión (para sí mismo; `astronaut_id` se deduce de la sesión) | Pronostica la **tendencia** del indicador a 1–14 días con bandas de predicción, la proyecta contra los rangos de la regla clínica vigente y devuelve una recomendación preventiva. Es una estimación estadística: **no predice enfermedades ni es un diagnóstico**, y no crea alertas. |
+
+Errores: `401` sin sesión, `403` si el rol no es `ASTRONAUT` o no hay asignación activa, `404` indicador desconocido, `422` parámetros no válidos (`horizon_days` fuera de 1–14, `mission_id` ≤ 0), `503` si el volumen de mediciones supera el límite de proceso. Los estados estadísticos (`insufficient_data`, `model_not_reliable`) responden `200`.
+
+### Método (`method.code = "robust_level_v1"`)
+
+1. **Datos**: medianas diarias (día UTC) del último segmento de misma fase y entorno dentro de una ventana de 90 días; se excluyen mediciones no válidas, de entrenamiento y de línea base previa. Mínimo 10 días.
+2. **Pronóstico puntual**: nivel robusto = mediana ponderada exponencialmente (peso ×0,93 por día de antigüedad; vida media ≈ 9,6 días). El pronóstico es plano.
+3. **Tendencia**: recta OLS de los últimos 45 días con prueba t corregida por autocorrelación de orden 1 (α = 0,01). Se informa siempre en `trend`; solo se extrapola (`trend.extrapolated = true`, `method.model_used = "trend"`) si es significativa **y** en la validación dentro de la propia serie su error es ≤ 0,5 × el del nivel y menor que el de repetir el último valor.
+4. **Compuerta de fiabilidad**: validación de origen móvil dentro de la serie (pasos de 1–7 días). `status = "ok"` solo si el método se equivoca menos que repetir el último valor; si no, `model_not_reliable` y `forecast = []`.
+5. **Bandas de predicción** al 80 % y 95 %: dispersión propia de la serie a cada lado del nivel (pueden ser asimétricas), cuantil t e inflación empírica que crece con el horizonte.
+6. **Proyección contra umbrales**: con los mismos criterios que el motor de reglas (`rules/engine.py`): rangos `normal` / `monitor` / `warning` de la versión vigente y, si hay línea base personal y la regla define `baseline_delta_threshold`, `MONITOR` cuando el valor se aleja de la línea base ese umbral o más. Para `BLOOD_PRESSURE` solo se proyecta el valor principal (sistólica); el motor evalúa además la diastólica al registrar una medición.
+
+**Calibración** (`backend/tests/test_prediction_calibration.py`, backtest de origen móvil sobre vitales reales de NASA UTMB — reposo en cama con la cabeza inclinada, un **análogo terrestre** de la microgravedad, no datos de vuelo espacial; 29 sujetos, 93 592 pronósticos; hiperparámetros afinados en una mitad de los sujetos y confirmados en la otra):
+
+- Error (MAE) frente a la media de 7 días: −2 % pulso, −4 % presión sistólica, −7 % temperatura, −10 % frecuencia respiratoria; frente a repetir el último valor: −21 % a −25 %; frente a la recta OLS de la primera versión: −12 % a −18 %. La ganancia sobre la media móvil es modesta (marginal en el pulso).
+- Extrapolar la pendiente, incluso cuando es significativa, **empeoraba** el error en los cuatro indicadores; por eso en estos datos el pronóstico es siempre de nivel (la rama de tendencia no se activa nunca) y queda reservada para derivas que dominan claramente al ruido.
+- Cobertura real de las bandas, por indicador: 78–83 % (nominal 80 %) y 94–96 % (nominal 95 %).
+- Prueba de tendencia sobre ruido blanco: 0,6–0,8 % de falsos positivos (nominal 1 %); con ruido autocorrelacionado AR(1) 0,5 sube a 2–5 %.
+- Compuerta: acepta el 93 % de los pronósticos. Los rechazados tienen más error en pulso (+8 %), temperatura (+21 %) y frecuencia respiratoria (+23 %), no en presión sistólica (solo el 1 % de rechazos); en error relativo a la dispersión de cada serie, 0,83 frente a 0,92. La discriminación es modesta porque con estas series el nivel casi siempre mejora al último valor. En series sintéticas pasa el ruido blanco alrededor de un nivel estable (85 % con 10 días, ≥ 99 % desde 20) y rechaza el 98 % de los paseos aleatorios de 90 días.
+- Las bandas de la rama de tendencia usan el intervalo de predicción de la regresión con la misma inflación; no se pudieron contrastar con datos reales porque esa rama no se activa en UTMB.
+- Solo pulso (`HEART_RATE`), presión sistólica (`BLOOD_PRESSURE`), temperatura (`BODY_TEMP`) y frecuencia respiratoria (`RESP_RATE`) están contrastados con datos reales; para los demás indicadores el método se aplica igual pero `empirical_validation.validated_with_real_data = false`.
+
+### Respuesta
+
+Campos de la primera versión (se conservan nombre y tipo):
+
+| Campo | Significado |
+| :--- | :--- |
+| `status` | `ok`, `insufficient_data` o `model_not_reliable` (`not_assigned` → 403 y `unknown_indicator` → 404 no llegan al cuerpo). |
+| `indicator_code`, `unit`, `phase_code`, `environment_code`, `n_days` | Indicador, unidad, segmento analizado y días con dato. |
+| `beta0`, `beta1` | Recta de tendencia observada (`valor = beta0 + beta1·t`). `beta1` = pendiente por día si es significativa y `0` si no lo es. Solo generan el pronóstico cuando `trend.extrapolated` es `true`; con pronóstico plano y sin tendencia significativa `beta0` es el nivel. |
+| `mae_ols`, `mae_naive` | MAE del método y de repetir el último valor en la validación dentro de la serie (el nombre `mae_ols` se conserva por compatibilidad). |
+| `forecast[]` | Un elemento por día: `date`, `t`, `value`, `out_of_valid_range`, `z_score`, `z_band`, `direction` (respecto a la línea base: `above` / `below` / `at_baseline`). |
+| `z_score`, `z_band`, `direction` | Los del último día pronosticado. `null` si la línea base no permite calcular un Z válido. |
+| `baseline_status` | `missing`, `invalid_baseline`, `invalid_std_dev`, `available_unverified` o **`placeholder_std_dev`** (nuevo valor: la desviación es un relleno —el valor por defecto 5.0, o la misma desviación en tres o más indicadores de unidades distintas— y no se publica Z). |
+| `baseline_is_simulated`, `disclaimer` | Origen de la línea base y descargo (estimación estadística, no diagnóstico). |
+
+Campos añadidos (todos opcionales):
+
+| Campo | Significado |
+| :--- | :--- |
+| `forecast[].lower_80`, `upper_80`, `lower_95`, `upper_95` | Bandas de predicción del día; se ensanchan con el horizonte. |
+| `forecast[].baseline_delta` | `value` − valor de la línea base, en unidades del indicador. |
+| `forecast[].projected_state` | Estado (`NORMAL`, `MONITOR`, `WARNING`, `CRITICAL`) en que caería el valor esperado según la regla vigente. |
+| `forecast[].worst_state_80`, `worst_state_95` | Peor estado que alcanza cada banda. |
+| `forecast[].interval_touches_threshold` | `true` si la banda del 95 % llega a un estado peor que el del valor esperado. |
+| `baseline_value` | Valor de la línea base personal, si es válido. |
+| `method` | `code`, `description` (texto en español), `model_used` (`level` / `trend`), `level_alpha`, `level_half_life_days`, `trend_window_days`, `trend_alpha`, `interval_levels`, `min_days`. |
+| `trend` | `direction` (`rising` / `falling` / `stable` / `undetermined`), `slope_per_day`, `slope_std_error`, `t_statistic`, `critical_value`, `significant`, `alpha`, `lag1_autocorrelation`, `effective_n`, `window_days`, `n_points`, `extrapolated`. |
+| `reliability` | `criterion`, `reliable`, `skill_vs_naive` (1 − MAE método / MAE último valor), `mae_model`, `mae_naive`, `mae_level`, `mae_trend`, `n_comparisons`, `max_step_days`. |
+| `empirical_validation` | `validated_with_real_data`, `dataset`, `is_spaceflight_data` (siempre `false`), `note`. |
+| `threshold_projection` | Solo con `status = ok` y regla vigente: `rule_code`, `rule_version`, `protocol_source`, `ranges` (`normal`, `monitor`, `warning`), `current_state` (del último valor observado), `first_expected_crossing` (primer día en que el valor esperado sale del rango normal) y `first_possible_crossing` (primer día, anterior al esperado, en que la banda del 80 % sale del rango normal); cada cruce trae `date`, `days_ahead`, `state`, `direction` (`above` / `below` / `both`), `threshold` y `basis`. |
+| `recommendation` | `basis` (`currently_out_of_range`, `expected_crossing`, `possible_crossing` o `none`), `state`, `direction`, `threshold`, `date`, `days_ahead` y `text`: las instrucciones de seguimiento de la versión de regla vigente, sin modificar (`source = "clinical_rule_followup_instructions"`). |
