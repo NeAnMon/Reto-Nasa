@@ -2649,7 +2649,7 @@ function radLiveInner(d) {
 }
 
 /* Secciones plegables que dependen de la lectura HERA (refugio y riesgos): se
-   repintan en vivo junto con la gráfica, pero dentro de la cuadrícula de secciones. */
+   repintan en vivo junto con la gráfica, pero dentro de la columna lateral de secciones. */
 function radLiveFolds(d) {
   const lvl = hera.level;
   const lvlLetter = HERA_LETTER[lvl];
