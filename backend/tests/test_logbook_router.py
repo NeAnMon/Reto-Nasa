@@ -11,7 +11,7 @@ from backend.app.core.config import settings
 from backend.app.database.seed import seed_database
 from backend.app.database.session import Base, get_db
 from backend.app.main import app
-from backend.app.models.models import HealthMeasurement
+from backend.app.models.models import HealthMeasurement, Mission, MissionAssignment, User
 from backend.app.rules.calibration import RADIATION_CAREER_LIMIT_MSV
 from backend.app.rules.engine import _cumulative_dose
 
@@ -170,3 +170,100 @@ def test_logbook_series_permissions(client, users):
             resp = client.get(f"{path}?astronaut_id={eid}", headers=viewer["headers"])
             assert resp.status_code == 200, resp.text
             assert resp.json()["astronaut_id"] == eid
+
+
+def _set_share(user_id, value):
+    db = LbSession()
+    try:
+        db.query(User).filter(User.id == user_id).one().share_wellness_signals_with_leader = value
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_emotional_states_respect_wellness_sharing_with_leader(client, users):
+    elena, leader, admin = users["elena"], users["leader"], users["admin"]
+    eid = elena["user"]["id"]
+    path = f"/api/v1/logbook/emotional-states?astronaut_id={eid}"
+    shared = client.get(path, headers=leader["headers"]).json()
+    assert shared["points"] and shared["shared_with_viewer"] is True
+    _set_share(eid, False)
+    try:
+        hidden = client.get(path, headers=leader["headers"])
+        assert hidden.status_code == 200, hidden.text
+        assert hidden.json()["points"] == [] and hidden.json()["shared_with_viewer"] is False
+        # La preferencia solo afecta al líder: el propio astronauta y administración siguen viendo la serie
+        for viewer in (elena, admin):
+            body = client.get(path, headers=viewer["headers"]).json()
+            assert body["points"] and body["shared_with_viewer"] is True
+        # La dosis de radiación no es una señal de bienestar: el líder la sigue viendo
+        rad = client.get(f"/api/v1/logbook/radiation-dose?astronaut_id={eid}", headers=leader["headers"])
+        assert rad.status_code == 200 and rad.json()["points"]
+    finally:
+        _set_share(eid, True)
+
+
+def test_logbook_series_validate_mission_scope(client, users):
+    elena, leader, admin = users["elena"], users["leader"], users["admin"]
+    eid = elena["user"]["id"]
+    db = LbSession()
+    try:
+        own_mission = (
+            db.query(MissionAssignment.mission_id)
+            .filter(MissionAssignment.user_id == eid, MissionAssignment.is_active.is_(True))
+            .first()[0]
+        )
+        # Misión en la que Elena no está asignada y que el líder no supervisa
+        other = db.query(Mission).filter(Mission.code == "LOGBOOK-SCOPE").first()
+        if other is None:
+            other = Mission(code="LOGBOOK-SCOPE", name="Otra misión", description="test",
+                            vehicle_or_habitat="test", current_phase="SURFACE")
+            db.add(other)
+            db.commit()
+        other_id = other.id
+        kenji = db.query(User).filter(User.email == settings.DEMO_ASTRONAUT3_EMAIL).one()
+        db.add(MissionAssignment(user_id=kenji.id, mission_id=other_id, assignment_role="ASTRONAUT", is_active=True))
+        db.commit()
+        kenji_id = kenji.id
+    finally:
+        db.close()
+    for path in ("/api/v1/logbook/radiation-dose", "/api/v1/logbook/emotional-states"):
+        ok = client.get(f"{path}?astronaut_id={eid}&mission_id={own_mission}", headers=leader["headers"])
+        assert ok.status_code == 200, ok.text
+        # Astronauta no asignado a la misión pedida → 403 (también para administración)
+        for viewer in (elena, leader, admin):
+            resp = client.get(f"{path}?astronaut_id={eid}&mission_id={other_id}", headers=viewer["headers"])
+            assert resp.status_code == 403, (path, resp.text)
+        # Misión inexistente → 404
+        assert client.get(f"{path}?astronaut_id={eid}&mission_id=999999", headers=admin["headers"]).status_code == 404
+        # Administración ve a Kenji en esa misión; el líder no la supervisa (ni a Kenji) → 403
+        assert client.get(f"{path}?astronaut_id={kenji_id}&mission_id={other_id}",
+                          headers=admin["headers"]).status_code == 200
+        assert client.get(f"{path}?astronaut_id={kenji_id}&mission_id={other_id}",
+                          headers=leader["headers"]).status_code == 403
+
+
+def test_leader_only_reads_missions_he_supervises(client, users):
+    """Elena también está asignada a una misión que el líder no supervisa: el líder no la consulta ahí."""
+    elena, leader, admin = users["elena"], users["leader"], users["admin"]
+    eid = elena["user"]["id"]
+    db = LbSession()
+    try:
+        side = db.query(Mission).filter(Mission.code == "LOGBOOK-SIDE").first()
+        if side is None:
+            side = Mission(code="LOGBOOK-SIDE", name="Misión paralela", description="test",
+                           vehicle_or_habitat="test", current_phase="SURFACE")
+            db.add(side)
+            db.commit()
+            db.add(MissionAssignment(user_id=eid, mission_id=side.id, assignment_role="ASTRONAUT", is_active=False))
+            db.commit()
+        side_id = side.id
+    finally:
+        db.close()
+    for path in ("/api/v1/logbook/radiation-dose", "/api/v1/logbook/emotional-states"):
+        url = f"{path}?astronaut_id={eid}&mission_id={side_id}"
+        assert client.get(url, headers=leader["headers"]).status_code == 403
+        for viewer in (elena, admin):
+            resp = client.get(url, headers=viewer["headers"])
+            assert resp.status_code == 200, resp.text
+            assert resp.json()["mission_id"] == side_id

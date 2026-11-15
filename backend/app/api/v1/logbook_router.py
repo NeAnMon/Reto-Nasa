@@ -15,7 +15,11 @@ expone ningún endpoint:
   GET /analytics/expansion-overview, con la misma comprobación de acceso).
 
 Permisos: los mismos que los endpoints de origen (verify_astronaut_access: el astronauta
-solo ve lo suyo, el líder solo a su tripulación asignada, administración a todos).
+solo ve lo suyo, el líder solo a su tripulación asignada, administración a todos). Además, el
+astronauta tiene que estar asignado a la misión pedida y un líder solo consulta misiones que
+supervisa (asignación activa). Privacidad: si el astronauta no comparte sus señales de bienestar
+con su líder (`share_wellness_signals_with_leader = false`), el líder recibe la serie emocional
+vacía (`shared_with_viewer = false`), igual que en GET /alerts y en los check-ins.
 """
 
 from datetime import datetime
@@ -79,9 +83,30 @@ def _resolve_target(db: Session, actor: User, astronaut_id: Optional[int], missi
             .filter(MissionAssignment.user_id == target.id, MissionAssignment.is_active.is_(True))
             .first()
         )
-        mission = assign.mission if assign else db.query(Mission).first()
+        mission = assign.mission if assign else None
     if not mission:
         raise HTTPException(status_code=404, detail="Misión no encontrada.")
+    # El astronauta tiene que estar (o haber estado) asignado a esa misión...
+    target_assigned = (
+        db.query(MissionAssignment.id)
+        .filter(MissionAssignment.user_id == target.id, MissionAssignment.mission_id == mission.id)
+        .first()
+    )
+    if target_assigned is None:
+        raise HTTPException(status_code=403, detail="El astronauta no está asignado a esa misión.")
+    # ...y un líder solo ve las misiones que supervisa (asignación activa); administración, todas
+    if actor.role and actor.role.code == "MISSION_LEADER":
+        supervises = (
+            db.query(MissionAssignment.id)
+            .filter(
+                MissionAssignment.user_id == actor.id,
+                MissionAssignment.mission_id == mission.id,
+                MissionAssignment.is_active.is_(True),
+            )
+            .first()
+        )
+        if supervises is None:
+            raise HTTPException(status_code=403, detail="Solo puede consultar las misiones que supervisa.")
     return target, mission
 
 
@@ -173,6 +198,20 @@ def get_emotional_states(
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     target, mission = _resolve_target(db, user, astronaut_id, mission_id)
+    # Mismo criterio de privacidad que el resto del backend (GET /alerts, check-ins): si el astronauta
+    # desactivó compartir sus señales de bienestar con su líder, el líder no recibe la serie.
+    shared = not (user.role and user.role.code == "MISSION_LEADER" and not target.share_wellness_signals_with_leader)
+    if not shared:
+        return {
+            "astronaut_id": target.id,
+            "mission_id": mission.id,
+            "states": list(EMOTIONAL_FINAL_STATES),
+            "points": [],
+            "shared_with_viewer": False,
+            "privacy_notice": (
+                "El astronauta no comparte sus señales de bienestar con el líder de misión: la serie no se muestra."
+            ),
+        }
     rows = (
         db.query(EmotionalAssessment, EmotionalAssessmentResult)
         .join(EmotionalAssessmentResult, EmotionalAssessmentResult.assessment_id == EmotionalAssessment.id)
@@ -199,6 +238,7 @@ def get_emotional_states(
             }
             for ea, res in rows
         ],
+        "shared_with_viewer": True,
         "privacy_notice": (
             "Solo el estado operativo de seguimiento que asigna el motor; las respuestas y dimensiones "
             "individuales permanecen privadas."
