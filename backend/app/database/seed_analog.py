@@ -1,4 +1,4 @@
-"""Misión análoga en tierra con signos vitales reales de NASA (reposo en cama, UTMB).
+"""SEMSA · Seed · Misión análoga en tierra con signos vitales reales de NASA (reposo en cama, UTMB).
 
 Origen: estudio de reposo en cama inclinada 6° con la cabeza abajo (head-down bed rest) de
 la University of Texas Medical Branch, publicado por el NASA Life Sciences Portal (NLSP).
@@ -62,9 +62,9 @@ MEASUREMENT_HOUR_UTC = 8
 # - UTMB-03: `ok` en los 4 indicadores.
 # - UTMB-29: pulso `ok` (~+0,27 lpm/día) y presión arterial `model_not_reliable`.
 SUBJECTS: Dict[str, Dict[str, str]] = {
-    "UTMB-17": {"crew_code": "HDBR-01", "email": "hdbr01@astrovital.demo", "callsign": "Analog-1"},
-    "UTMB-03": {"crew_code": "HDBR-02", "email": "hdbr02@astrovital.demo", "callsign": "Analog-2"},
-    "UTMB-29": {"crew_code": "HDBR-03", "email": "hdbr03@astrovital.demo", "callsign": "Analog-3"},
+    "UTMB-17": {"crew_code": "HDBR-01", "email": "hdbr01@semsa.demo", "callsign": "Analog-1"},
+    "UTMB-03": {"crew_code": "HDBR-02", "email": "hdbr02@semsa.demo", "callsign": "Analog-2"},
+    "UTMB-29": {"crew_code": "HDBR-03", "email": "hdbr03@semsa.demo", "callsign": "Analog-3"},
 }
 
 # indicador -> (columna valor, columna secundaria)

@@ -1,4 +1,4 @@
-"""Misión análoga con signos vitales reales de NASA (reposo en cama, UTMB).
+"""SEMSA · Pruebas · Misión análoga con signos vitales reales de NASA (reposo en cama, UTMB).
 
 Verifica que el seed deja datos con los que el servicio de predicción genera pronósticos
 con el valor por defecto de la API (`include_simulated=False`).
@@ -166,7 +166,7 @@ def test_analog_astronaut_can_log_in_and_read_own_data(session_factory):
     try:
         with TestClient(app) as client:
             resp = client.post("/api/v1/auth/login", json={
-                "email": "hdbr01@astrovital.demo", "password": settings.DEMO_ANALOG_PASSWORD,
+                "email": "hdbr01@semsa.demo", "password": settings.DEMO_ANALOG_PASSWORD,
             })
             assert resp.status_code == 200, resp.text
             headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
