@@ -1,5 +1,5 @@
 /*
- * AstroVital · Consola de salud · Vista "Alertas" (resumen C&W)
+ * SEMSA · Consola de salud · Vista "Alertas" (resumen C&W)
  *
  * Resumen de alertas críticas y de precaución según ISS SSP 50313 §11 y NASA-STD-3001 Vol. 2:
  *  - columnas Estado (ALARM/NORM), Clase (W crítico, C precaución, A vigilar; ver alert-classes.js), ACK (X),

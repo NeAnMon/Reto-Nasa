@@ -77,6 +77,16 @@ from backend.app.models.models import (
 from backend.app.security.auth import hash_password
 from backend.app.services.cognitive_engine import COGNITIVE_DOMAINS_CATALOG
 
+# Misión principal de la demo (issue #14; antes "ARTEMIS-IV-DEMO" / "Artemis IV — Lunar South Pole Outpost (DEMO)")
+TELECREATION_MISSION_CODE = "TELECREATION-UTS"
+TELECREATION_MISSION_NAME = "TeleCreation UTS"
+TELECREATION_BADGE_REASON = "Primer registro fisiológico validado en misión TeleCreation UTS."
+# Valores de versiones previas (antes del renombrado AstroVital -> SEMSA), solo para migrar BD existentes
+LEGACY_MISSION_CODE = "ARTEMIS-IV-DEMO"
+LEGACY_BADGE_REASON = "Primer registro fisiológico validado en misión Artemis IV."
+LEGACY_DEMO_EMAIL_DOMAIN = "@astrovital.demo"
+DEMO_EMAIL_DOMAIN = "@semsa.demo"
+
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -247,7 +257,7 @@ ENVIRONMENT_PROFILES_DATA = [
         "No confirmado",
         0.0,
         "UNCONFIRMED",
-        "No existe telemetría verificada ni confirmación manual autorizada. AstroVital no asume ubicación por GPS local.",
+        "No existe telemetría verificada ni confirmación manual autorizada. SEMSA no asume ubicación por GPS local.",
         "Incertidumbre contextual: interprete las mediciones con precaución y confirme el entorno manualmente.",
         "Solicitar confirmación de entorno por parte de la tripulación o control de misión.",
     ),
@@ -1094,7 +1104,7 @@ def seed_database(db: Session, force_reseed_sim: bool = False) -> None:
             version = ClinicalRuleVersion(
                 rule_id=rule.id,
                 version_number="1.0-DEMO",
-                protocol_source="AstroVital DEMO Reference Protocol (Ilustrativo / No Clínico)",
+                protocol_source="SEMSA DEMO Reference Protocol (Ilustrativo / No Clínico)",
                 approved_by="Comité de Demostración de Medicina Espacial (Ficticio)",
                 approval_date=now - timedelta(days=30),
                 review_due_date=now + timedelta(days=180),
@@ -1453,11 +1463,11 @@ def seed_database(db: Session, force_reseed_sim: bool = False) -> None:
     db.flush()
 
     # 7. Missions & Assignments
-    m1 = db.query(Mission).filter(Mission.code == "ARTEMIS-IV-DEMO").first()
+    m1 = db.query(Mission).filter(Mission.code == TELECREATION_MISSION_CODE).first()
     if not m1:
         m1 = Mission(
-            code="ARTEMIS-IV-DEMO",
-            name="Artemis IV — Lunar South Pole Outpost (DEMO)",
+            code=TELECREATION_MISSION_CODE,
+            name=TELECREATION_MISSION_NAME,
             description="Misión ficticia de 30 días combinando tránsito cislunar, órbita Gateway y operaciones en el Polo Sur Lunar.",
             vehicle_or_habitat="Hábitat Presurizado Lunar 'Selene-Base' & Módulo Gateway",
             start_date=now - timedelta(days=14),
@@ -1993,7 +2003,7 @@ def _populate_synthetic_demo_records(
         )
 
     for bcode, reason in [
-        ("FIRST_HEALTH_CHECK", "Primer registro fisiológico validado en misión Artemis IV."),
+        ("FIRST_HEALTH_CHECK", TELECREATION_BADGE_REASON),
         ("CONSISTENCY_STREAK", "Racha de 5 días de participación constante."),
         ("SLEEP_ROUTINE_COMPLETED", "Registro de rutina de descanso completado."),
         ("LEARNING_EXPLORER", "Exploración de cápsulas educativas en Body Explorer."),
@@ -2478,7 +2488,7 @@ def reset_simulated_demo_data(db: Session) -> Dict[str, int]:
     db.query(DataQualityEvent).delete(synchronize_session=False)
     db.commit()
 
-    m1 = db.query(Mission).filter(Mission.code == "ARTEMIS-IV-DEMO").first()
+    m1 = db.query(Mission).filter(Mission.code == TELECREATION_MISSION_CODE).first()
     m2 = db.query(Mission).filter(Mission.code == "ARES-PATHFINDER-DEMO").first()
     user_objs = {u.crew_code: u for u in db.query(User).all()}
     if m1 and m2 and "AST-201" in user_objs:
@@ -2622,6 +2632,8 @@ def apply_lightweight_migrations(db: Session) -> None:
                 db.execute(text("ALTER TABLE conversations DROP COLUMN channel"))
             db.commit()
 
+    _migrate_branding(db)
+
     legacy_role = db.query(Role).filter(Role.code == LEGACY_RETIRED_ROLE_CODE).first()
     if legacy_role:
         legacy_users = db.query(User).filter(User.role_id == legacy_role.id, User.status == "ACTIVE").all()
@@ -2632,6 +2644,51 @@ def apply_lightweight_migrations(db: Session) -> None:
             )
         if legacy_users:
             db.commit()
+
+
+def _migrate_branding(db: Session) -> None:
+    """
+    Renombrado AstroVital -> SEMSA (issue #14), idempotente, para BD sembradas por versiones previas:
+    - Misión demo ARTEMIS-IV-DEMO -> TELECREATION-UTS / "TeleCreation UTS" (mismo id: se conservan fases,
+      asignaciones y registros). Si la nueva ya existiera, la antigua no se toca.
+    - Cuentas demo @astrovital.demo -> @semsa.demo (mismas contraseñas), salvo que el correo nuevo ya exista.
+    - Motivo de la insignia FIRST_HEALTH_CHECK sembrado con el nombre antiguo de la misión.
+    - Textos sembrados/simulados que citaban la marca anterior (entornos, protocolo DEMO, notas del simulador).
+    """
+    changed = False
+    legacy_mission = db.query(Mission).filter(Mission.code == LEGACY_MISSION_CODE).first()
+    if legacy_mission and not db.query(Mission).filter(Mission.code == TELECREATION_MISSION_CODE).first():
+        legacy_mission.code = TELECREATION_MISSION_CODE
+        legacy_mission.name = TELECREATION_MISSION_NAME
+        changed = True
+
+    for u in db.query(User).filter(User.email.like(f"%{LEGACY_DEMO_EMAIL_DOMAIN}")).all():
+        new_email = u.email[: -len(LEGACY_DEMO_EMAIL_DOMAIN)] + DEMO_EMAIL_DOMAIN
+        if not db.query(User).filter(User.email == new_email).first():
+            u.email = new_email
+            changed = True
+
+    badges = (
+        db.query(UserBadge)
+        .filter(UserBadge.awarded_reason == LEGACY_BADGE_REASON)
+        .update({UserBadge.awarded_reason: TELECREATION_BADGE_REASON}, synchronize_session=False)
+    )
+
+    # Textos sembrados con el nombre anterior (los usa también la traducción al inglés del frontend)
+    from sqlalchemy import text
+
+    replaced = 0
+    for table, column in (
+        ("environment_profiles", "description"),
+        ("clinical_rule_versions", "protocol_source"),
+        ("health_measurements", "notes"),
+    ):
+        replaced += db.execute(
+            text(f"UPDATE {table} SET {column} = REPLACE({column}, 'AstroVital', 'SEMSA') WHERE {column} LIKE '%AstroVital%'")
+        ).rowcount or 0
+
+    if changed or badges or replaced:
+        db.commit()
 
 
 def seed_isolation_module(db: Session) -> None:

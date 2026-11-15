@@ -1,5 +1,5 @@
 /*
- * AstroVital · Bitácora · Tendencias por indicador (antes: columna "Tendencia" del Resumen)
+ * SEMSA · Bitácora · Tendencias por indicador (antes: columna "Tendencia" del Resumen)
  *
  * - Lista de indicadores (botones con aria-pressed) con su valor actual, estado y una
  *   mini-tendencia: sale de indicator_cards[].history_points del resumen

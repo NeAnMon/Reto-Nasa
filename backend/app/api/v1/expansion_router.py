@@ -1084,7 +1084,7 @@ def list_cognitive_domains(
     tests_by_dom = {t.domain_code: t for t in tests}
     return {
         "scientific_integrity_notice": (
-            "Las actividades cognitivas de AstroVital registran métricas específicas por dominio "
+            "Las actividades cognitivas de SEMSA registran métricas específicas por dominio "
             "(aciertos, errores, omisiones y tiempo de respuesta) comparadas únicamente con la línea base "
             "personal del mismo dominio, dificultad y versión. No calculan un puntaje global único de "
             "capacidad mental ni diagnostican deterioro cognitivo."
@@ -1616,7 +1616,7 @@ def get_cognitive_analytics(
         "astronaut_id": target_id,
         "single_global_score_prohibited": True,
         "methodology_disclaimer": (
-            "AstroVital presenta métricas longitudinales separadas por dominio cognitivo. "
+            "SEMSA presenta métricas longitudinales separadas por dominio cognitivo. "
             "No combina dominios distintos en un 'puntaje de inteligencia' o 'capacidad mental total' "
             "y advierte explícitamente el efecto de práctica por repetición."
         ),

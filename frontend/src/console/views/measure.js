@@ -1,5 +1,5 @@
 /*
- * AstroVital · Consola · Vista "Registrar medición" (v2, simplificada)
+ * SEMSA · Consola · Vista "Registrar medición" (v2, simplificada)
  *
  * Pensada para que un tripulante registre un dato en pocos segundos, con guantes:
  *  1. Elige un indicador (primero los pendientes).
@@ -20,6 +20,10 @@ import { escapeHtml, badge, LETTER, STATE_WORD } from "../console.js";
 const isAlarm = (l) => l === "W" || l === "C";
 import { tr, fmt, fmtNum, getLang } from "../../i18n/i18n.js";
 import { loadMeasureData, saveMeasurement, evaluate, validate, resetDemoData, DATA_MODE } from "../data/measure-data.js";
+// Cuestionario de bienestar psicológico: una tarjeta más de esta vista (antes, vista propia en Bienestar)
+import {
+  Q_CODE, loadQuestionnaire, questionnaireGroupHTML, questionnaireEntryHTML, bindQuestionnaire, resetQuestionnaireUi,
+} from "./measure-questionnaire.js";
 
 const esc = escapeHtml;
 
@@ -159,7 +163,8 @@ const DICT = {
 const ui = {
   astronautId: undefined,
   data: null, // { indicators, latest: Map, astronaut, mode }
-  code: null, // indicador abierto
+  q: null, // cuestionario de bienestar: { instrument, assessments, error }
+  code: null, // indicador abierto (o Q_CODE: el cuestionario)
   result: null, // { code, m } tras guardar
   skipped: new Set(),
   busy: false,
@@ -267,18 +272,28 @@ function errorText(code, ind) {
 
 /* ───────────────────────── entrada pública ───────────────────────── */
 
+/* Abre una tarjeta concreta al entrar en la vista (p. ej. la ruta antigua "wellness-center" → cuestionario) */
+export function openMeasureItem(code) {
+  ui.code = code;
+  ui.result = null;
+  if (code === Q_CODE) resetQuestionnaireUi();
+}
+export { Q_CODE as WELLNESS_QUESTIONNAIRE };
+
 export async function renderMeasureView(container, appState, helpers) {
   ensureStyles();
   if (ui.astronautId !== appState.selectedAstronautId) {
+    const keepQ = ui.code === Q_CODE; // abierto desde la ruta antigua antes del primer render
     ui.astronautId = appState.selectedAstronautId;
-    ui.code = null;
+    ui.code = keepQ ? Q_CODE : null;
     ui.result = null;
     ui.skipped = new Set();
+    resetQuestionnaireUi();
   }
   ui.busy = false;
   container.innerHTML = `<div class="av-console" data-av-measure-loading><div class="av-sub" style="padding:24px" role="status">${esc(tr(DICT).loading)}</div></div>`;
   try {
-    ui.data = await loadMeasureData(appState);
+    [ui.data, ui.q] = await Promise.all([loadMeasureData(appState), loadQuestionnaire(appState)]);
   } catch (e) {
     if (!container.querySelector("[data-av-measure-loading]")) return;
     container.innerHTML = `<div class="av-console"><div class="av-panel" style="margin:12px;padding:16px" role="alert">${esc(fmt(tr(DICT).loadFail, { msg: e.message }))}</div></div>`;
@@ -295,15 +310,20 @@ function paint(container, appState, helpers) {
   const rows = buildRows();
   // En escritorio el panel de registro siempre está abierto: si no hay nada elegido
   // se abre el primer pendiente (o el primero de la lista) para no dejar espacio vacío.
-  if (!rows.some((r) => r.ind.code === ui.code) && isWide()) ui.code = rows[0]?.ind.code || null;
-  const sel = rows.find((r) => r.ind.code === ui.code) || null;
-  if (!sel) ui.code = null;
+  const qOpen = ui.code === Q_CODE && !!ui.q;
+  if (!qOpen && !rows.some((r) => r.ind.code === ui.code) && isWide()) ui.code = rows[0]?.ind.code || null;
+  const sel = qOpen ? null : rows.find((r) => r.ind.code === ui.code) || null;
+  if (!sel && !qOpen) ui.code = null;
+  const nextDue = rows.find((r) => r.due);
+  const entry = qOpen
+    ? questionnaireEntryHTML(ui.q, appState, nextDue ? { code: nextDue.ind.code, name: nameOf(nextDue.ind) } : null, T.back)
+    : sel ? entryHTML(sel, rows) : "";
   const total = rows.length;
   const upToDate = rows.filter((r) => !r.due && !r.skipped).length;
   const crew = targetCrewText(appState);
 
   container.innerHTML = `
-  <div class="av-console av-ms" data-av-measure-root ${sel ? "data-open" : ""}>
+  <div class="av-console av-ms" data-av-measure-root ${entry ? "data-open" : ""}>
     <header class="av-ms-head">
       <h1 class="av-ms-title">${esc(T.title)}</h1>
       ${DATA_MODE === "demo" ? `<span class="av-ms-tag" title="${esc(T.demoHelp)}">${esc(T.demoTag)}</span>` : ""}
@@ -322,13 +342,29 @@ function paint(container, appState, helpers) {
         ${tilesHTML(rows)}
         ${DATA_MODE === "demo" ? `<p class="av-ms-foot">${esc(T.demoHelp)} <button type="button" class="av-ms-link" data-act="reset">${esc(T.reset)}</button></p>` : ""}
       </div>
-      ${sel ? entryHTML(sel, rows) : ""}
+      ${entry}
     </div>
     <div id="av-measure-live" class="av-ms-sr" role="status" aria-live="polite"></div>
   </div>`;
 
   const root = container.querySelector("[data-av-measure-root]");
   bind(root, container, appState, helpers, sel, rows);
+  if (qOpen) {
+    bindQuestionnaire(root, ui.q, {
+      appState,
+      helpers,
+      repaint: () => { if (root.isConnected) paint(container, appState, helpers); },
+      reload: async () => {
+        ui.q = await loadQuestionnaire(appState);
+        if (root.isConnected) paint(container, appState, helpers);
+      },
+      announce: (msg) => {
+        const live = root.ownerDocument.getElementById("av-measure-live");
+        setTimeout(() => { if (live && live.isConnected) live.textContent = msg; }, 80);
+      },
+      setFocus: (s) => { ui.focus = s; },
+    });
+  }
   if (ui.focus) {
     const el = root.querySelector(ui.focus);
     ui.focus = null;
@@ -360,6 +396,7 @@ function tilesHTML(rows) {
   <div class="av-ms-tiles">
     ${due.length ? `<h2 class="av-ms-group">${esc(T.pendingGroup)} <span>${due.length}</span><em>· ${esc(T.pendingHint)}</em></h2><ul class="av-ms-grid">${due.map(tile).join("")}</ul>` : ""}
     ${rest.length ? `<h2 class="av-ms-group">${esc(T.doneGroup)} <span>${rest.length}</span></h2><ul class="av-ms-grid">${rest.map(tile).join("")}</ul>` : ""}
+    ${questionnaireGroupHTML(ui.q, ui.code)}
   </div>`;
 }
 
@@ -483,7 +520,10 @@ function bind(root, container, appState, helpers, sel, rows) {
     const p = ev.target.closest("[data-pick]");
     if (p) {
       const code = p.getAttribute("data-pick");
-      if (code !== ui.code) ui.result = null;
+      if (code !== ui.code) {
+        ui.result = null;
+        if (code === Q_CODE) resetQuestionnaireUi();
+      }
       ui.code = code;
       ui.focus = p.hasAttribute("data-from-result") ? "#av-ms-value, .av-ms-scale input" : "#av-ms-entry-title";
       repaint();

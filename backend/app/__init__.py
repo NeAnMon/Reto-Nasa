@@ -1,2 +1,2 @@
-"""AstroVital Application Package."""
+"""SEMSA Application Package."""
 

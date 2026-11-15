@@ -1,5 +1,5 @@
 /* =========================================================================
-   AstroVital — traducción de textos que llegan del backend (siempre en español)
+   SEMSA — traducción de textos que llegan del backend (siempre en español)
    -------------------------------------------------------------------------
    El backend guarda y genera sus textos en español (catálogo de indicadores,
    regiones corporales, perfiles de entorno, contramedidas, insignias,

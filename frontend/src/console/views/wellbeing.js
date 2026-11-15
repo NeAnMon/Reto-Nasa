@@ -1,10 +1,12 @@
-/* AstroVital · Consola · pestaña principal "Bienestar"
+/* SEMSA · Consola · pestaña principal "Bienestar"
  * Riesgo NASA HRP de aislamiento y confinamiento: fatiga mental, sueño y ritmo circadiano,
  * ánimo y dinámica de equipo. Contrato: docs/CONTRATO_AISLAMIENTO.md (§1–3; §4 solo resumen/enlace).
  *
  * Subsecciones (pestañas internas WAI-ARIA, la elegida se recuerda en la sesión):
  *   - Hoy: check-in rápido (sueño, ánimo, energía, aislamiento, nota privada) + tarjeta de sueño
- *     y accesos al cuestionario completo, check-in emocional, evaluación cognitiva y respiración.
+ *     y accesos al check-in emocional y a la evaluación cognitiva (el cuestionario de bienestar
+ *     psicológico está en "Registrar medición").
+ *   - Respiración: respiración guiada en cuadrado 4-4-4-4 con rondas y contador local (breathing.js).
  *   - Contacto con Tierra: tarjeta informativa (recomendación, no funcionalidad) sobre el contacto
  *     asíncrono con seres queridos frente al aislamiento; enlaza al módulo Recomendaciones (issue #15).
  *   - Tiempo libre: hobbies breves con filtros, pasos, fuente NASA y registro "Lo hice".
@@ -17,6 +19,7 @@
 import { apiService } from "../../services/api.js";
 import { tr, fmt as fmtT, fmtNum, locale } from "../../i18n/i18n.js";
 import { bt, btLines } from "/src/i18n/backend.js";
+import { renderBreathing } from "./breathing.js";
 import {
   esc, tag, errMsg, ensureCss, makeStale, roleOf, isOwnAstronaut, astronautName,
   snapshotFields, restoreFields, langChanged,
@@ -51,7 +54,7 @@ const DICT = {
     intro: "Un espacio para cuidar el descanso, el ánimo y la conexión con los demás durante la misión. Todo lo que escribas aquí es privado por defecto.",
     introLeader: "Resumen de bienestar de {name}. Por privacidad, ánimo, energía, sensación de aislamiento y notas solo los ve la propia persona.",
     tabsAria: "Secciones de bienestar",
-    tabs: { today: "Hoy", earth: "Contacto con Tierra", leisure: "Tiempo libre", crew: "Tripulación" },
+    tabs: { today: "Hoy", breath: "Respiración", earth: "Contacto con Tierra", leisure: "Tiempo libre", crew: "Tripulación" },
     loading: "Cargando…",
     retry: "Reintentar",
     noData: "—",
@@ -109,15 +112,11 @@ const DICT = {
     noteShort: "Nota",
     // Hoy · herramientas
     toolsTitle: "Más herramientas de bienestar",
-    toolWellness: "Cuestionario completo de bienestar",
-    toolWellnessSub: "Unos 5 minutos · con historial y recomendaciones",
     toolEmotional: "Check-in emocional",
     toolEmotionalSub: "Cuestionarios que te envía el equipo de apoyo",
     toolPending: "{n} pendientes",
     toolCognitive: "Evaluación cognitiva",
     toolCognitiveSub: "Atención, memoria y tiempo de reacción",
-    toolBreath: "Respiración guiada 4-4-4-4",
-    toolBreathSub: "Dentro del cuestionario completo · 2 minutos para bajar el ritmo",
     // Contacto con Tierra (recomendación; no es una funcionalidad de la app)
     earthTitle: "Contacto con Tierra",
     earthTag: "Recomendación",
@@ -211,7 +210,7 @@ const DICT = {
     intro: "A space to look after your rest, your mood and your connection with others during the mission. Everything you write here is private by default.",
     introLeader: "Well-being summary for {name}. For privacy, mood, energy, feeling isolated and notes are only visible to that person.",
     tabsAria: "Well-being sections",
-    tabs: { today: "Today", earth: "Contact with Earth", leisure: "Free time", crew: "Crew" },
+    tabs: { today: "Today", breath: "Breathing", earth: "Contact with Earth", leisure: "Free time", crew: "Crew" },
     loading: "Loading…",
     retry: "Retry",
     noData: "—",
@@ -266,15 +265,11 @@ const DICT = {
     isolatedShort: "Isolation",
     noteShort: "Note",
     toolsTitle: "More well-being tools",
-    toolWellness: "Full well-being questionnaire",
-    toolWellnessSub: "About 5 minutes · with history and recommendations",
     toolEmotional: "Emotional check-in",
     toolEmotionalSub: "Questionnaires sent by the support team",
     toolPending: "{n} pending",
     toolCognitive: "Cognitive assessment",
     toolCognitiveSub: "Attention, memory and reaction time",
-    toolBreath: "4-4-4-4 guided breathing",
-    toolBreathSub: "Inside the full questionnaire · 2 minutes to slow down",
     earthTitle: "Contact with Earth",
     earthTag: "Recommendation",
     earthWhy: "Feeling close to the people you love helps a lot when you live isolated in a small space. NASA's Human Research Program (HRP) identifies isolation and confinement as a risk to mood, sleep and getting along with others, and support from loved ones is one of the things that cushions it most.",
@@ -362,7 +357,7 @@ const DICT = {
   },
 };
 
-const SUBS = ["today", "earth", "leisure", "crew"];
+const SUBS = ["today", "breath", "earth", "leisure", "crew"];
 const SUB_KEY = "av_wb_sub";
 const CATEGORIES = ["PLANTS", "READING", "GAMES", "MUSIC", "ART", "PHOTOGRAPHY", "WRITING", "MOVEMENT"];
 const DURATIONS = [10, 20, 30];
@@ -579,7 +574,7 @@ async function renderPanel() {
   if (!panel.querySelector(`[data-wb-sub="${sub}"]`)) {
     panel.innerHTML = `<div class="av-sub av-wb-loading" role="status">${esc(tr(DICT).loading)}</div>`;
   }
-  const renderers = { today: renderToday, earth: renderEarth, leisure: renderLeisure, crew: renderCrew };
+  const renderers = { today: renderToday, breath: (p) => renderBreathing(p, appState), earth: renderEarth, leisure: renderLeisure, crew: renderCrew };
   await renderers[sub](panel, isStale);
   if (isStale()) return;
   panel.querySelector("[data-wb-retry]")?.addEventListener("click", () => renderPanel());
@@ -622,11 +617,9 @@ function toolsHTML(T, appState, own) {
   return `<section class="av-panel" aria-labelledby="av-wb-tools-h">
       <div class="av-panel-head"><h3 class="av-h3" id="av-wb-tools-h">${esc(T.toolsTitle)}</h3></div>
       <ul class="av-wb-tools">
-        ${tool("wellness-center", T.toolWellness, T.toolWellnessSub)}
         ${tool("emotional-center", T.toolEmotional, T.toolEmotionalSub,
           pending > 0 ? ` <span class="av-wb-count">${esc(fmtT(T.toolPending, { n: pending }))}</span>` : "")}
         ${tool("cognitive-center", T.toolCognitive, T.toolCognitiveSub)}
-        ${tool("wellness-center", T.toolBreath, T.toolBreathSub)}
       </ul>
     </section>`;
 }

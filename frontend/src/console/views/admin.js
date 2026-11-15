@@ -1,4 +1,4 @@
-/* AstroVital · Consola · vista "Administración" (sustituye al antiguo panel Administration)
+/* SEMSA · Consola · vista "Administración" (sustituye al antiguo panel Administration)
  *
  * Solo ADMINISTRATOR: alta de cuentas, asignación a misiones, suspensión/reactivación,
  * catálogo de reglas operativas versionadas (solo lectura, DEMO) y registro de auditoría.
@@ -27,7 +27,7 @@ const DICT = {
     fullName: "Nombre completo",
     fullNamePlaceholder: "Ej.: Dra. Sofía Ramírez",
     email: "Correo electrónico",
-    emailPlaceholder: "sofia.ramirez@astrovital.demo",
+    emailPlaceholder: "sofia.ramirez@semsa.demo",
     password: "Contraseña inicial",
     role: "Rol",
     roles: { ASTRONAUT: "Astronauta", MISSION_LEADER: "Líder de misión", ADMINISTRATOR: "Administración" },
@@ -96,7 +96,7 @@ const DICT = {
     fullName: "Full name",
     fullNamePlaceholder: "E.g.: Dr. Sofía Ramírez",
     email: "Email",
-    emailPlaceholder: "sofia.ramirez@astrovital.demo",
+    emailPlaceholder: "sofia.ramirez@semsa.demo",
     password: "Initial password",
     role: "Role",
     roles: { ASTRONAUT: "Astronaut", MISSION_LEADER: "Mission leader", ADMINISTRATOR: "Administration" },

@@ -1,0 +1,47 @@
+/* SEMSA · Consola · Bienestar → Respiración guiada (breathing.js)
+ * Prefijo av-br-. Usa los tokens de .av-console (console.css), las clases av-mx-* de more.css y el
+ * esqueleto av-wb-* de wellbeing.css. Sin colores de alarma: solo texto, contraste y movimiento.
+ */
+
+.av-br-stage { display: flex; flex-wrap: wrap; gap: 16px 24px; align-items: center; }
+.av-br-fig { flex: 0 1 240px; width: min(100%, 240px); margin: 0 auto; }
+.av-br-svg { display: block; width: 100%; height: auto; overflow: visible; }
+.av-br-info { flex: 1 1 240px; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+
+/* Figura: cuadrado de recorrido, lado activo, "pulmón" interior y punto guía */
+.av-br-track { fill: none; stroke: var(--av-border); stroke-width: 2; }
+.av-br-lung { fill: var(--av-raised); stroke: var(--av-strong); stroke-width: 1; }
+.av-br-side { stroke: var(--av-strong); stroke-width: 4; stroke-linecap: square; opacity: .45; transition: opacity .3s ease, stroke .3s ease; }
+.av-br-side.av-br-active { stroke: var(--av-text); opacity: 1; }
+.av-br-dot { fill: var(--av-text); stroke: var(--av-panel); stroke-width: 3; }
+.av-br-lbl { fill: var(--av-text2); font: 600 11px "IBM Plex Sans", system-ui, sans-serif; letter-spacing: .04em; }
+.av-br-count { fill: var(--av-text); font-size: 34px; font-weight: 600; }
+
+/* Estado */
+.av-br-phase { margin: 0; font-size: 22px; font-weight: 600; line-height: 1.2; color: var(--av-text); overflow-wrap: anywhere; }
+.av-br-round { margin: 0; }
+.av-br-progress { height: 6px; background: var(--av-raised); border: 1px solid var(--av-border); }
+.av-br-progress > span { display: block; height: 100%; width: 0; background: var(--av-text); }
+.av-br-status { margin: 0; min-height: 1.2em; }
+
+.av-br-controls { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-end; }
+.av-br-select { flex: 1 1 200px; max-width: 260px; }
+.av-br-select .av-input { font-family: "IBM Plex Sans", system-ui, sans-serif; min-height: 44px; }
+.av-br-select option { background: var(--av-panel); color: var(--av-text); }
+.av-br-btn { min-width: 128px; }
+
+.av-br-steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.av-br-sessions { margin: 0; }
+
+@media (max-width: 480px) {
+  .av-br-stage { gap: 12px; }
+  .av-br-fig { flex-basis: 100%; width: min(100%, 220px); }
+  .av-br-phase { font-size: 20px; text-align: center; }
+  .av-br-round { text-align: center; }
+  .av-br-select { max-width: none; }
+  .av-br-btn { flex: 1 1 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .av-br-side { transition: none; }
+}

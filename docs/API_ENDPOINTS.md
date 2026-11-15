@@ -1,6 +1,6 @@
-# Documentación de Endpoints REST — AstroVital (`/api/v1`)
+# Documentación de Endpoints REST — SEMSA (`/api/v1`)
 
-La API de **AstroVital** sigue principios RESTful bajo el prefijo versionado `/api/v1`. Todos los endpoints protegidos requieren el encabezado `Authorization: Bearer <access_token>` obtenido al iniciar sesión, y validan permisos de rol (`ASTRONAUT`, `MISSION_LEADER`, `ADMINISTRATOR`) y aislamiento horizontal de datos en el servidor.
+La API de **SEMSA** sigue principios RESTful bajo el prefijo versionado `/api/v1`. Todos los endpoints protegidos requieren el encabezado `Authorization: Bearer <access_token>` obtenido al iniciar sesión, y validan permisos de rol (`ASTRONAUT`, `MISSION_LEADER`, `ADMINISTRATOR`) y aislamiento horizontal de datos en el servidor.
 
 ---
 
