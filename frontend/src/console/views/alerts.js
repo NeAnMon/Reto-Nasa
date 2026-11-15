@@ -1060,11 +1060,11 @@ function bind(ctx) {
       renderTable(ctx);
       root.querySelector('[data-al-act="toggle-adv"]')?.focus();
     } else if (act === "go-console" || act === "go-measure") {
-      await selectAstronautIfNeeded(ctx, Number(btn.getAttribute("data-al-astro")));
+      if (!(await selectAstronautIfNeeded(ctx, Number(btn.getAttribute("data-al-astro"))))) return;
       helpers.navigateToSection(act === "go-console" ? "mission-control" : "my-health-check");
     } else if (act === "go-cm") {
       // Contramedida de una alerta: lleva al módulo donde se hace (y a su pestaña de Bienestar)
-      await selectAstronautIfNeeded(ctx, Number(btn.getAttribute("data-al-astro")));
+      if (!(await selectAstronautIfNeeded(ctx, Number(btn.getAttribute("data-al-astro"))))) return;
       const sub = btn.getAttribute("data-al-sub");
       if (sub) openWellbeingSub(sub);
       helpers.navigateToSection(btn.getAttribute("data-al-sec"));
@@ -1181,18 +1181,14 @@ function bind(ctx) {
 }
 
 /* Para líder o administración: abre la consola del tripulante de la alerta (mismo
- * patrón que "Inspeccionar" en Crew Monitoring: cambia el selector superior). */
+ * patrón que "Inspeccionar" en Crew Monitoring). helpers.selectAstronaut (app.js) fija el
+ * astronauta y su misión, refresca el encabezado (y con él el selector "Tripulante" de la
+ * barra de estado) y, si falla, conserva el tripulante anterior y avisa con un toast. */
 async function selectAstronautIfNeeded(ctx, astronautId) {
   const { appState, helpers } = ctx;
-  if (!isLeader(appState) || !astronautId || Number(appState.selectedAstronautId) === astronautId) return;
-  appState.selectedAstronautId = astronautId;
-  const crewSelect = document.getElementById("topbar-crew-select");
-  if (crewSelect) crewSelect.value = String(astronautId);
-  try {
-    await helpers.refreshGlobalHeaderAndSummary();
-  } catch {
-    // si falla, la sección destino vuelve a cargar sus datos
-  }
+  if (!isLeader(appState) || !astronautId || Number(appState.selectedAstronautId) === astronautId) return true;
+  // false: el cambio hacía falta y no prosperó (no se debe navegar con el tripulante anterior)
+  return helpers.selectAstronaut(astronautId, { navigate: false });
 }
 
 /* Sondeo: refresca el resumen sin perder lo que se está escribiendo */
