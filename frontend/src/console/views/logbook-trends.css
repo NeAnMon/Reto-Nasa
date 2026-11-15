@@ -1,0 +1,87 @@
+/* AstroVital · Bitácora · Tendencias por indicador (logbook-trends.js)
+ * Solo clases con prefijo av-lt-. Usa los tokens --av-* de console.css.
+ * Amarillo/rojo solo para límites y puntos en alarma; siempre con texto (Y / R, leyenda).
+ */
+
+.av-lt-sr {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+.av-lt-body { display: grid; grid-template-columns: minmax(220px, 280px) minmax(0, 1fr); }
+.av-lt-empty { padding: 24px 12px; margin: 0; color: var(--av-text2); }
+
+/* Lista de indicadores */
+.av-lt-list {
+  list-style: none; margin: 0; padding: 8px; display: flex; flex-direction: column; gap: 6px;
+  border-right: 1px solid var(--av-border); max-height: 520px; overflow-y: auto;
+}
+.av-lt-item {
+  width: 100%; min-height: 44px; display: grid; grid-template-columns: 1fr; gap: 2px;
+  padding: 8px 10px; border: 1px solid var(--av-border); border-left: 4px solid transparent;
+  background: var(--av-raised); color: var(--av-text); cursor: pointer; text-align: left; font: inherit;
+}
+.av-lt-item:hover { background: var(--av-hover); }
+.av-lt-item[aria-pressed="true"] { border-color: var(--av-strong); border-left-color: var(--av-text); background: var(--av-hover); }
+.av-lt-item-C { border-left-color: var(--av-y); }
+.av-lt-item-W { border-left-color: var(--av-r); }
+.av-lt-item-C[aria-pressed="true"] { border-left-color: var(--av-y); }
+.av-lt-item-W[aria-pressed="true"] { border-left-color: var(--av-r); }
+.av-lt-item:focus-visible, .av-lt-chart:focus-visible { outline: 2px solid var(--av-text); outline-offset: 2px; }
+.av-lt-item-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.av-lt-item-name { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.av-lt-item-val { font-size: 14px; }
+.av-lt-spark { display: block; width: 100%; height: 26px; }
+.av-lt-spark-empty { display: block; height: 26px; line-height: 26px; }
+
+/* Detalle */
+.av-lt-detail { min-width: 0; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.av-lt-dhead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 12px; }
+.av-lt-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; color: var(--av-text2); }
+.av-lt-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.av-lt-key { display: inline-block; width: 18px; height: 10px; flex: none; }
+.av-lt-key-line { height: 0; border-top: 2px solid var(--av-text); }
+.av-lt-key-base { height: 0; border-top: 2px dashed var(--av-s); }
+.av-lt-key-y { background: rgba(242, 201, 76, .18); border-top: 2px dashed var(--av-y); }
+.av-lt-key-r { background: rgba(209, 52, 56, .2); border-top: 2px dashed var(--av-r); }
+
+.av-lt-chart { position: relative; touch-action: pan-y; }
+.av-lt-svgbox { min-height: 120px; }
+.av-lt-svg { display: block; width: 100%; height: auto; user-select: none; -webkit-user-select: none; }
+.av-lt-grid { stroke: var(--av-row); stroke-width: 1; }
+.av-lt-axis, .av-lt-lim-txt { font: 11px "IBM Plex Mono", ui-monospace, monospace; fill: var(--av-muted); }
+.av-lt-band-y { fill: rgba(242, 201, 76, .10); }
+.av-lt-band-r { fill: rgba(209, 52, 56, .14); }
+.av-lt-lim-y { stroke: var(--av-y); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.av-lt-lim-r { stroke: var(--av-r); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.av-lt-base { stroke: var(--av-s); stroke-width: 1.5; stroke-dasharray: 8 4; }
+.av-lt-lim-y-txt { fill: var(--av-y); font-weight: 600; }
+.av-lt-lim-r-txt { fill: var(--av-r-text); font-weight: 600; }
+.av-lt-base-txt { fill: var(--av-s); }
+.av-lt-line { fill: none; stroke: var(--av-text); stroke-width: 2; stroke-linejoin: round; }
+.av-lt-dot { fill: var(--av-text); }
+.av-lt-dot-C { fill: var(--av-y); stroke: var(--av-panel); stroke-width: 1.5; }
+.av-lt-dot-W { fill: var(--av-r); stroke: var(--av-panel); stroke-width: 1.5; }
+.av-lt-cursor-line { stroke: var(--av-strong); stroke-width: 1; }
+.av-lt-cursor-dot { fill: var(--av-text); stroke: var(--av-panel); stroke-width: 2; }
+.av-lt-cursor-dot.av-lt-dot-C { fill: var(--av-y); }
+.av-lt-cursor-dot.av-lt-dot-W { fill: var(--av-r); }
+
+.av-lt-tip {
+  position: absolute; z-index: 2; pointer-events: none; display: flex; flex-direction: column; gap: 2px;
+  padding: 6px 10px; background: var(--av-bar); border: 1px solid var(--av-strong);
+  font-size: 12px; color: var(--av-text); white-space: nowrap; box-shadow: 0 2px 8px rgba(0, 0, 0, .35);
+}
+.av-lt-tip[hidden] { display: none; }
+.av-lt-tip strong { font-size: 14px; }
+.av-lt-help, .av-lt-note { margin: 0; }
+
+body[data-theme="high-contrast"] .av-lt-band-y, body[data-theme="high-contrast"] .av-lt-band-r { fill: none; }
+
+@media (max-width: 720px) {
+  .av-lt-body { grid-template-columns: 1fr; }
+  .av-lt-list {
+    flex-direction: row; overflow-x: auto; overflow-y: hidden; max-height: none;
+    border-right: 0; border-bottom: 1px solid var(--av-border); scroll-snap-type: x proximity;
+  }
+  .av-lt-list li { flex: 0 0 170px; scroll-snap-align: start; }
+}

@@ -24,6 +24,25 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+FAMILY_ROLE_CODE = "FAMILY_MEMBER"
+
+# Rutas (bajo /api/v1) que un FAMILY_MEMBER puede usar; todo lo demás devuelve 403.
+_FAMILY_ALLOWED_EXACT = {"/api/v1/auth/me", "/api/v1/auth/logout", "/api/v1/conversations", "/api/v1/attachments"}
+_FAMILY_ALLOWED_PREFIXES = (
+    "/api/v1/conversations/",
+    "/api/v1/messages/",
+    "/api/v1/attachments/",
+    "/api/v1/family/",
+)
+
+
+def is_family_path_allowed(path: str) -> bool:
+    path = path.rstrip("/") or "/"
+    if path in _FAMILY_ALLOWED_EXACT:
+        return True
+    return any(path.startswith(p) for p in _FAMILY_ALLOWED_PREFIXES)
+
+
 def ensure_aware(dt: Optional[datetime]) -> Optional[datetime]:
     if dt is None:
         return None
@@ -142,6 +161,22 @@ def get_current_session(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User account is suspended or inactive.",
+        )
+
+    # Rol FAMILY_MEMBER: denegación por defecto. Solo sesión, /auth/me, su canal FAMILY y adjuntos.
+    if user.role and user.role.code == FAMILY_ROLE_CODE and not is_family_path_allowed(request.url.path):
+        log_audit_event(
+            db=db,
+            action="FAMILY_MEMBER_ACCESS_DENIED",
+            resource_type=request.url.path[:80],
+            actor=user,
+            status_code="DENIED",
+            details="Un familiar autorizado intentó acceder a un módulo fuera del canal familiar.",
+            ip_address=request.client.host if request.client else "127.0.0.1",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acceso denegado: los familiares solo pueden usar el canal Conexión con Tierra.",
         )
 
     return session_obj

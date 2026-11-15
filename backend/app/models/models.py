@@ -595,3 +595,648 @@ class AuditEvent(Base):
     details = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
 
+
+# ============================================================================
+# MODULE 1: COMMUNICATION CENTER MODELS
+# ============================================================================
+
+class Conversation(Base):
+    __tablename__ = "conversations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    mission_id = Column(Integer, ForeignKey("missions.id", ondelete="CASCADE"), nullable=False, index=True)
+    astronaut_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    leader_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    subject = Column(String(200), nullable=False)
+    status = Column(String(40), default="OPEN", nullable=False)  # OPEN,PENDING_FOLLOWUP,ARCHIVED
+    # Canal: MISSION (astronauta ↔ líder, por defecto) o FAMILY (astronauta ↔ familiar autorizado).
+    # En FAMILY, leader_id guarda el id del usuario familiar (la columna no se renombra).
+    channel = Column(String(20), default="MISSION", server_default="MISSION", nullable=False, index=True)
+    is_highlighted = Column(Boolean, default=False, nullable=False)
+    linked_alert_id = Column(Integer, ForeignKey("alerts.id", ondelete="SET NULL"), nullable=True)
+    last_message_at = Column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
+    is_simulated = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    participants = relationship("ConversationParticipant", back_populates="conversation", cascade="all, delete-orphan")
+    messages = relationship("Message", back_populates="conversation", cascade="all, delete-orphan")
+
+
+class ConversationParticipant(Base):
+    __tablename__ = "conversation_participants"
+    __table_args__ = (UniqueConstraint("conversation_id", "user_id", name="uq_conv_participant"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    conversation_id = Column(Integer, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    role_in_conversation = Column(String(50), nullable=False)  # ASTRONAUT, MISSION_LEADER
+    last_seen_at = Column(DateTime(timezone=True), default=utcnow, nullable=True)
+    joined_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    conversation = relationship("Conversation", back_populates="participants")
+
+
+class Message(Base):
+    __tablename__ = "messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    dedup_key = Column(String(120), unique=True, nullable=True, index=True)
+    conversation_id = Column(Integer, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True)
+    sender_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    recipient_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    content = Column(Text, nullable=False)
+    category = Column(String(60), default="GENERAL", nullable=False, index=True)
+    # Categories: GENERAL, HEALTH_UPDATE, COGNITIVE_SUPPORT, EMOTIONAL_SUPPORT,
+    # MISSION_COORDINATION, TECHNICAL_ISSUE, REQUEST_FOR_ASSISTANCE, URGENT_COMMUNICATION
+    delivery_status = Column(String(40), default="DELIVERED", nullable=False)  # SENT, DELIVERED, READ
+    is_important = Column(Boolean, default=False, nullable=False)
+    marked_unread_by_recipient = Column(Boolean, default=False, nullable=False)
+    reply_to_message_id = Column(Integer, ForeignKey("messages.id", ondelete="SET NULL"), nullable=True)
+    linked_alert_id = Column(Integer, ForeignKey("alerts.id", ondelete="SET NULL"), nullable=True)
+    has_attachment = Column(Boolean, default=False, nullable=False)
+    sync_metadata_json = Column(Text, default="{}", nullable=False)
+    is_simulated = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
+    sent_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    conversation = relationship("Conversation", back_populates="messages")
+    attachments = relationship("MessageAttachment", back_populates="message", cascade="all, delete-orphan")
+    read_receipts = relationship("MessageReadReceipt", back_populates="message", cascade="all, delete-orphan")
+
+
+class MessageAttachment(Base):
+    __tablename__ = "message_attachments"
+    # SQLite: AUTOINCREMENT para que un id borrado (huérfano purgado o descartado) nunca se reutilice;
+    # si no, un mensaje en cola que referencia ese id podría adjuntar un archivo nuevo distinto.
+    __table_args__ = {"sqlite_autoincrement": True}
+
+    id = Column(Integer, primary_key=True, index=True)
+    # Nulo mientras el adjunto está "huérfano" (subido pero aún no referenciado por un mensaje)
+    message_id = Column(Integer, ForeignKey("messages.id", ondelete="CASCADE"), nullable=True, index=True)
+    file_name = Column(String(180), nullable=False)
+    mime_type = Column(String(80), default="text/plain", nullable=False)
+    file_size_bytes = Column(Integer, default=0, nullable=False)
+    safe_summary_note = Column(String(255), nullable=True)
+    uploaded_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    # Adjuntos con archivo real (foto / nota de voz). Los adjuntos históricos solo guardan el nombre.
+    uploader_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    storage_key = Column(String(64), nullable=True, unique=True)  # nombre aleatorio en disco, nunca el del cliente
+    kind = Column(String(10), nullable=True)  # IMAGE, AUDIO
+    duration_seconds = Column(Float, nullable=True)
+
+    message = relationship("Message", back_populates="attachments")
+
+
+class MessageReadReceipt(Base):
+    __tablename__ = "message_read_receipts"
+    __table_args__ = (UniqueConstraint("message_id", "user_id", name="uq_message_reader"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    message_id = Column(Integer, ForeignKey("messages.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    read_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    message = relationship("Message", back_populates="read_receipts")
+
+
+class MessageNotification(Base):
+    __tablename__ = "message_notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    conversation_id = Column(Integer, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False)
+    message_id = Column(Integer, ForeignKey("messages.id", ondelete="CASCADE"), nullable=True)
+    title = Column(String(180), nullable=False)
+    is_read = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class SupportRequest(Base):
+    __tablename__ = "support_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    astronaut_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    leader_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    mission_id = Column(Integer, ForeignKey("missions.id", ondelete="CASCADE"), nullable=False, index=True)
+    conversation_id = Column(Integer, ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True)
+    category = Column(String(60), default="REQUEST_FOR_ASSISTANCE", nullable=False)
+    reason_title = Column(String(180), nullable=False)
+    description = Column(Text, nullable=False)
+    wants_private_conversation = Column(Boolean, default=True, nullable=False)
+    is_emergency = Column(Boolean, default=False, nullable=False)
+    status = Column(String(40), default="REQUESTED", nullable=False)
+    # States: REQUESTED, RECEIVED, IN_REVIEW, RESPONDED, ESCALATED, CLOSED
+    leader_response_notes = Column(Text, nullable=True)
+    emergency_protocol_displayed = Column(Boolean, default=False, nullable=False)
+    is_simulated = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+
+class ConversationAuditEvent(Base):
+    __tablename__ = "conversation_audit_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    conversation_id = Column(Integer, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=True, index=True)
+    actor_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    actor_role = Column(String(50), nullable=True)
+    action = Column(String(100), nullable=False)
+    justification = Column(Text, nullable=True)
+    details = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+# ============================================================================
+# MODULE 2: COGNITIVE ASSESSMENT CENTER MODELS
+# ============================================================================
+
+class CognitiveDomain(Base):
+    __tablename__ = "cognitive_domains"
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String(60), unique=True, nullable=False, index=True)
+    # VISUAL_LEARNING, MEMORY, ATTENTION, ABSTRACTION, SPATIAL_ORIENTATION,
+    # EMOTION_RECOGNITION, ABSTRACT_REASONING, COMPLEX_EXPLORATION, VISUAL_TRACKING
+    name = Column(String(120), nullable=False)
+    objective = Column(Text, nullable=False)
+    scientific_disclaimer = Column(Text, nullable=False)
+    badge_code = Column(String(60), nullable=True)
+
+
+class CognitiveTest(Base):
+    __tablename__ = "cognitive_tests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String(60), unique=True, nullable=False, index=True)
+    domain_code = Column(String(60), ForeignKey("cognitive_domains.code"), nullable=False, index=True)
+    title = Column(String(150), nullable=False)
+    instructions = Column(Text, nullable=False)
+    practice_example_json = Column(Text, nullable=False)
+    estimated_duration_seconds = Column(Integer, default=60, nullable=False)
+    current_version = Column(String(30), default="1.0-DEMO", nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+
+    versions = relationship("CognitiveTestVersion", back_populates="test", cascade="all, delete-orphan")
+
+
+class CognitiveTestVersion(Base):
+    __tablename__ = "cognitive_test_versions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    test_id = Column(Integer, ForeignKey("cognitive_tests.id", ondelete="CASCADE"), nullable=False, index=True)
+    version_number = Column(String(30), nullable=False)
+    supported_difficulties_csv = Column(String(120), default="BASIC,INTERMEDIATE,ADVANCED", nullable=False)
+    tasks_payload_json = Column(Text, nullable=False)
+    educational_feedback = Column(Text, nullable=False)
+    is_current = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    test = relationship("CognitiveTest", back_populates="versions")
+
+
+class CognitiveSchedule(Base):
+    __tablename__ = "cognitive_schedules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    astronaut_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    mission_id = Column(Integer, ForeignKey("missions.id", ondelete="CASCADE"), nullable=False)
+    domain_code = Column(String(60), ForeignKey("cognitive_domains.code"), nullable=False)
+    test_code = Column(String(60), ForeignKey("cognitive_tests.code"), nullable=False)
+    difficulty = Column(String(30), default="INTERMEDIATE", nullable=False)
+    scheduled_for = Column(DateTime(timezone=True), nullable=False)
+    assigned_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    status = Column(String(40), default="PENDING", nullable=False)  # PENDING, COMPLETED, POSTPONED, OVERDUE
+    postpone_reason = Column(Text, nullable=True)
+    is_simulated = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class CognitiveAssessment(Base):
+    __tablename__ = "cognitive_assessments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    astronaut_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    mission_id = Column(Integer, ForeignKey("missions.id", ondelete="CASCADE"), nullable=False, index=True)
+    domain_code = Column(String(60), ForeignKey("cognitive_domains.code"), nullable=False, index=True)
+    test_code = Column(String(60), ForeignKey("cognitive_tests.code"), nullable=False, index=True)
+    version_number = Column(String(30), default="1.0-DEMO", nullable=False)
+    difficulty = Column(String(30), default="INTERMEDIATE", nullable=False)  # BASIC, INTERMEDIATE, ADVANCED
+    phase_code = Column(String(60), default="SURFACE", nullable=False)
+    environment_code = Column(String(60), default="LUNAR_SURFACE", nullable=False)
+    readiness_status = Column(String(60), default="READY", nullable=False)  # READY, FATIGUED, POST_EVA, POSTPONED
+    conditions_notes = Column(Text, nullable=True)
+    completion_status = Column(String(40), default="IN_PROGRESS", nullable=False)
+    # IN_PROGRESS, COMPLETED, INCOMPLETE, POSTPONED
+    postpone_reason = Column(Text, nullable=True)
+    attempt_number = Column(Integer, default=1, nullable=False)
+    duration_seconds = Column(Float, default=0.0, nullable=False)
+    source_code = Column(String(60), default="INTERACTIVE_SESSION", nullable=False)
+    is_simulated = Column(Boolean, default=True, nullable=False)
+    started_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    completed_at = Column(DateTime(timezone=True), nullable=True, index=True)
+
+    sessions = relationship("CognitiveAssessmentSession", back_populates="assessment", cascade="all, delete-orphan")
+    responses = relationship("CognitiveResponse", back_populates="assessment", cascade="all, delete-orphan")
+    result = relationship("CognitiveResult", back_populates="assessment", uselist=False, cascade="all, delete-orphan")
+
+
+class CognitiveAssessmentSession(Base):
+    __tablename__ = "cognitive_assessment_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    assessment_id = Column(Integer, ForeignKey("cognitive_assessments.id", ondelete="CASCADE"), nullable=False, index=True)
+    current_step_index = Column(Integer, default=0, nullable=False)
+    autosave_state_json = Column(Text, default="{}", nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+    assessment = relationship("CognitiveAssessment", back_populates="sessions")
+
+
+class CognitiveTask(Base):
+    __tablename__ = "cognitive_tasks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    test_code = Column(String(60), ForeignKey("cognitive_tests.code", ondelete="CASCADE"), nullable=False, index=True)
+    difficulty = Column(String(30), default="INTERMEDIATE", nullable=False)
+    sequence_order = Column(Integer, default=1, nullable=False)
+    prompt_text = Column(Text, nullable=False)
+    stimulus_json = Column(Text, nullable=False)
+    options_json = Column(Text, nullable=False)
+    correct_answer_key = Column(String(120), nullable=False)
+
+
+class CognitiveResponse(Base):
+    __tablename__ = "cognitive_responses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    assessment_id = Column(Integer, ForeignKey("cognitive_assessments.id", ondelete="CASCADE"), nullable=False, index=True)
+    task_index = Column(Integer, nullable=False)
+    selected_answer = Column(String(255), nullable=False)
+    is_correct = Column(Boolean, nullable=False)
+    is_omission = Column(Boolean, default=False, nullable=False)
+    response_time_ms = Column(Float, default=1000.0, nullable=False)
+    moves_or_actions_count = Column(Integer, default=1, nullable=False)
+    decision_sequence_json = Column(Text, nullable=True)
+    recorded_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    assessment = relationship("CognitiveAssessment", back_populates="responses")
+
+
+class CognitiveResult(Base):
+    __tablename__ = "cognitive_results"
+
+    id = Column(Integer, primary_key=True, index=True)
+    assessment_id = Column(Integer, ForeignKey("cognitive_assessments.id", ondelete="CASCADE"), unique=True, nullable=False, index=True)
+    total_items = Column(Integer, nullable=False)
+    correct_count = Column(Integer, nullable=False)
+    incorrect_count = Column(Integer, default=0, nullable=False)
+    omissions_count = Column(Integer, default=0, nullable=False)
+    accuracy_percent = Column(Float, nullable=False)
+    mean_response_time_ms = Column(Float, nullable=False)
+    response_time_variability_ms = Column(Float, default=0.0, nullable=False)
+    moves_count = Column(Integer, default=0, nullable=False)
+    targets_tracked = Column(Integer, default=0, nullable=False)
+    requires_review = Column(Boolean, default=False, nullable=False)
+    practice_effect_note = Column(Text, nullable=False)
+    non_diagnostic_summary = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    assessment = relationship("CognitiveAssessment", back_populates="result")
+
+
+class CognitiveBaseline(Base):
+    __tablename__ = "cognitive_baselines"
+    __table_args__ = (
+        UniqueConstraint("astronaut_id", "domain_code", "difficulty", "version_number", name="uq_cog_baseline"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    astronaut_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    domain_code = Column(String(60), ForeignKey("cognitive_domains.code"), nullable=False)
+    difficulty = Column(String(30), default="INTERMEDIATE", nullable=False)
+    version_number = Column(String(30), default="1.0-DEMO", nullable=False)
+    baseline_accuracy_percent = Column(Float, nullable=False)
+    baseline_mean_rt_ms = Column(Float, nullable=False)
+    established_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    is_simulated = Column(Boolean, default=True, nullable=False)
+
+
+class CognitiveFeedback(Base):
+    __tablename__ = "cognitive_feedbacks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    assessment_id = Column(Integer, ForeignKey("cognitive_assessments.id", ondelete="CASCADE"), nullable=False, index=True)
+    astronaut_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    perceived_difficulty = Column(Integer, default=5, nullable=False)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+# ============================================================================
+# MODULE 3: EMOTIONAL ASSESSMENT CENTER MODELS
+# ============================================================================
+
+class EmotionalQuestionnaire(Base):
+    __tablename__ = "emotional_questionnaires"
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String(60), unique=True, nullable=False, index=True)
+    title = Column(String(180), nullable=False)
+    description = Column(Text, nullable=False)
+    reference_period_label = Column(String(100), default="Últimos 3 a 7 días de misión", nullable=False)
+    estimated_minutes = Column(Integer, default=5, nullable=False)
+    is_clinically_validated = Column(Boolean, default=False, nullable=False)
+    privacy_and_usage_notice = Column(Text, nullable=False)
+    current_version = Column(String(30), default="1.0-DEMO", nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+
+    versions = relationship("EmotionalQuestionnaireVersion", back_populates="questionnaire", cascade="all, delete-orphan")
+
+
+class EmotionalQuestionnaireVersion(Base):
+    __tablename__ = "emotional_questionnaire_versions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    questionnaire_id = Column(Integer, ForeignKey("emotional_questionnaires.id", ondelete="CASCADE"), nullable=False, index=True)
+    version_number = Column(String(30), nullable=False)
+    scoring_rules_json = Column(Text, nullable=False)
+    interpretation_guidelines = Column(Text, nullable=False)
+    is_current = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    questionnaire = relationship("EmotionalQuestionnaire", back_populates="versions")
+    questions = relationship("EmotionalQuestion", back_populates="version", cascade="all, delete-orphan")
+
+
+class EmotionalQuestion(Base):
+    __tablename__ = "emotional_questions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    version_id = Column(Integer, ForeignKey("emotional_questionnaire_versions.id", ondelete="CASCADE"), nullable=False, index=True)
+    question_code = Column(String(60), nullable=False, index=True)
+    dimension_code = Column(String(60), nullable=False)
+    # 12 Dimensions: MOOD, PERCEIVED_STRESS, ISOLATION, MISSION_ADAPTATION, REST_QUALITY,
+    # EMOTIONAL_FATIGUE, SOCIAL_SUPPORT, MOTIVATION, COPING_CONTROL, MISSION_CONCERNS,
+    # ACCOMPANIMENT_NEED, GENERAL_WELLBEING, OPEN_REFLECTION
+    sequence_order = Column(Integer, nullable=False)
+    prompt_text = Column(Text, nullable=False)
+    question_type = Column(String(40), nullable=False)  # SCALE_1_5, FREQUENCY, OPEN_TEXT, BOOLEAN_SUPPORT
+    is_optional = Column(Boolean, default=False, nullable=False)
+    allow_prefer_not_to_answer = Column(Boolean, default=True, nullable=False)
+    higher_value_indicates_concern = Column(Boolean, default=False, nullable=False)
+
+    version = relationship("EmotionalQuestionnaireVersion", back_populates="questions")
+    options = relationship("EmotionalQuestionOption", back_populates="question", cascade="all, delete-orphan")
+
+
+class EmotionalQuestionOption(Base):
+    __tablename__ = "emotional_question_options"
+
+    id = Column(Integer, primary_key=True, index=True)
+    question_id = Column(Integer, ForeignKey("emotional_questions.id", ondelete="CASCADE"), nullable=False, index=True)
+    option_value = Column(String(60), nullable=False)
+    option_label = Column(String(150), nullable=False)
+    numeric_weight = Column(Integer, nullable=True)
+    sequence_order = Column(Integer, default=1, nullable=False)
+
+    question = relationship("EmotionalQuestion", back_populates="options")
+
+
+class EmotionalAssessmentRequest(Base):
+    __tablename__ = "emotional_assessment_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    requested_by_admin_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    astronaut_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    mission_id = Column(Integer, ForeignKey("missions.id", ondelete="CASCADE"), nullable=False, index=True)
+    questionnaire_code = Column(String(60), ForeignKey("emotional_questionnaires.code"), nullable=False)
+    version_number = Column(String(30), default="1.0-DEMO", nullable=False)
+    periodicity = Column(String(40), default="ONCE", nullable=False)  # ONCE, WEEKLY, BIWEEKLY, PHASE_CHANGE
+    is_recurring = Column(Boolean, default=False, nullable=False)
+    priority = Column(String(30), default="NORMAL", nullable=False)  # NORMAL, HIGH, URGENT_CHECKIN
+    custom_message = Column(Text, nullable=True)
+    status = Column(String(40), default="SENT", nullable=False, index=True)
+    # States: DRAFT, SCHEDULED, SENT, DELIVERED, IN_PROGRESS, COMPLETED, OVERDUE, POSTPONED, CANCELLED
+    postpone_reason = Column(Text, nullable=True)
+    status_history_json = Column(Text, default="[]", nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    sent_at = Column(DateTime(timezone=True), nullable=True)
+    due_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    is_simulated = Column(Boolean, default=True, nullable=False)
+
+    assessment = relationship("EmotionalAssessment", back_populates="request", uselist=False, cascade="all, delete-orphan")
+
+
+class EmotionalAssessment(Base):
+    __tablename__ = "emotional_assessments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    request_id = Column(Integer, ForeignKey("emotional_assessment_requests.id", ondelete="CASCADE"), unique=True, nullable=False, index=True)
+    astronaut_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    mission_id = Column(Integer, ForeignKey("missions.id", ondelete="CASCADE"), nullable=False)
+    questionnaire_code = Column(String(60), nullable=False)
+    version_number = Column(String(30), default="1.0-DEMO", nullable=False)
+    phase_code = Column(String(60), default="SURFACE", nullable=False)
+    environment_code = Column(String(60), default="LUNAR_SURFACE", nullable=False)
+    is_draft = Column(Boolean, default=True, nullable=False)
+    share_summary_with_leader = Column(Boolean, default=True, nullable=False)
+    allow_admin_detailed_review = Column(Boolean, default=False, nullable=False)
+    started_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    is_simulated = Column(Boolean, default=True, nullable=False)
+
+    request = relationship("EmotionalAssessmentRequest", back_populates="assessment")
+    responses = relationship("EmotionalAssessmentResponse", back_populates="assessment", cascade="all, delete-orphan")
+    result = relationship("EmotionalAssessmentResult", back_populates="assessment", uselist=False, cascade="all, delete-orphan")
+
+
+class EmotionalAssessmentResponse(Base):
+    __tablename__ = "emotional_assessment_responses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    assessment_id = Column(Integer, ForeignKey("emotional_assessments.id", ondelete="CASCADE"), nullable=False, index=True)
+    question_code = Column(String(60), nullable=False, index=True)
+    dimension_code = Column(String(60), nullable=False)
+    response_value = Column(String(120), nullable=True)
+    numeric_score = Column(Integer, nullable=True)
+    open_text_answer = Column(Text, nullable=True)
+    prefer_not_to_answer = Column(Boolean, default=False, nullable=False)
+    recorded_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    assessment = relationship("EmotionalAssessment", back_populates="responses")
+
+
+class EmotionalAssessmentResult(Base):
+    __tablename__ = "emotional_assessment_results"
+
+    id = Column(Integer, primary_key=True, index=True)
+    assessment_id = Column(Integer, ForeignKey("emotional_assessments.id", ondelete="CASCADE"), unique=True, nullable=False, index=True)
+    operational_state = Column(String(60), nullable=False)
+    # States: EMOTIONAL_WELLNESS_STABLE, EMOTIONAL_WELLNESS_MONITORING, SUPPORT_REQUESTED,
+    # PROFESSIONAL_REVIEW, URGENT_SUPPORT, ASSESSMENT_INCOMPLETE, ASSESSMENT_UNAVAILABLE
+    explicit_support_requested = Column(Boolean, default=False, nullable=False)
+    urgent_protocol_triggered = Column(Boolean, default=False, nullable=False)
+    authorized_operational_summary = Column(Text, nullable=False)
+    personal_feedback_summary = Column(Text, nullable=False)
+    recommended_next_step = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    assessment = relationship("EmotionalAssessment", back_populates="result")
+
+
+class EmotionalFollowUp(Base):
+    __tablename__ = "emotional_follow_ups"
+
+    id = Column(Integer, primary_key=True, index=True)
+    request_id = Column(Integer, ForeignKey("emotional_assessment_requests.id", ondelete="CASCADE"), nullable=False, index=True)
+    astronaut_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    author_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    author_role = Column(String(50), nullable=False)
+    action_type = Column(String(60), nullable=False)  # FOLLOW_UP_SCHEDULED, SUPPORT_PROVIDED, ESCALATED, CLOSED
+    notes = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class EmotionalSupportRequest(Base):
+    __tablename__ = "emotional_support_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    assessment_id = Column(Integer, ForeignKey("emotional_assessments.id", ondelete="CASCADE"), nullable=False, index=True)
+    astronaut_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    urgency_level = Column(String(40), default="ROUTINE", nullable=False)  # ROUTINE, PRIORITY, URGENT
+    preferred_contact_channel = Column(String(80), default="PRIVATE_CHANNEL", nullable=False)
+    notes = Column(Text, nullable=True)
+    status = Column(String(40), default="OPEN", nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class EmotionalAssessmentNotification(Base):
+    __tablename__ = "emotional_assessment_notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    request_id = Column(Integer, ForeignKey("emotional_assessment_requests.id", ondelete="CASCADE"), nullable=False)
+    title = Column(String(200), nullable=False)
+    message = Column(Text, nullable=False)
+    is_read = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+
+
+# ============================================================================
+# MÓDULO DE AISLAMIENTO Y CONFINAMIENTO (NASA HRP — Isolation & Confinement)
+# ============================================================================
+
+class QuickCheckin(Base):
+    """Check-in rápido de sueño y ánimo. La nota y el ánimo son privados del astronauta."""
+    __tablename__ = "quick_checkins"
+
+    id = Column(Integer, primary_key=True, index=True)
+    astronaut_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    dedup_key = Column(String(120), unique=True, nullable=True, index=True)  # reenvío desde la cola sin enlace
+    sleep_hours = Column(Float, nullable=False)
+    sleep_quality = Column(Integer, nullable=False)  # 1-5
+    mood = Column(Integer, nullable=False)  # 1-5
+    energy = Column(Integer, nullable=False)  # 1-5
+    feels_isolated = Column(Boolean, default=False, nullable=False)
+    note = Column(Text, nullable=True)
+    operational_flag = Column(String(30), default="OK", nullable=False)  # OK, NEEDS_CHECK_IN
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
+
+
+class LeisureActivity(Base):
+    """Catálogo de actividades breves de tiempo libre (hobbies) para la tripulación."""
+    __tablename__ = "leisure_activities"
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String(60), unique=True, nullable=False, index=True)
+    title = Column(String(150), nullable=False)
+    category = Column(String(30), nullable=False)  # PLANTS, READING, GAMES, MUSIC, ART, PHOTOGRAPHY, WRITING, MOVEMENT
+    duration_minutes = Column(Integer, nullable=False)
+    description = Column(Text, nullable=False)
+    how_to_json = Column(Text, default="[]", nullable=False)
+    solo_or_group = Column(String(10), default="SOLO", nullable=False)  # SOLO, GROUP, BOTH
+    source_title = Column(String(255), nullable=True)
+    source_url = Column(String(255), nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+
+
+class LeisureLog(Base):
+    __tablename__ = "leisure_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    astronaut_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    activity_code = Column(String(60), ForeignKey("leisure_activities.code"), nullable=False)
+    minutes = Column(Integer, nullable=False)
+    enjoyment = Column(Integer, nullable=False)  # 1-5
+    note = Column(Text, nullable=True)
+    xp_awarded = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
+
+
+class CrewActivityTemplate(Base):
+    """Plantillas de actividades de integración (comida compartida, noche de película...)."""
+    __tablename__ = "crew_activity_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String(60), unique=True, nullable=False, index=True)
+    title = Column(String(150), nullable=False)
+    description = Column(Text, nullable=False)
+    duration_minutes = Column(Integer, nullable=False)
+    category = Column(String(30), nullable=False)  # MEAL, MOVIE, GARDEN, GAME, OBSERVATION, CELEBRATION
+    is_active = Column(Boolean, default=True, nullable=False)
+
+
+class CrewActivity(Base):
+    __tablename__ = "crew_activities"
+
+    id = Column(Integer, primary_key=True, index=True)
+    mission_id = Column(Integer, ForeignKey("missions.id", ondelete="CASCADE"), nullable=False, index=True)
+    template_code = Column(String(60), ForeignKey("crew_activity_templates.code"), nullable=True)
+    title = Column(String(150), nullable=False)
+    description = Column(Text, nullable=True)
+    scheduled_for = Column(DateTime(timezone=True), nullable=False, index=True)
+    duration_minutes = Column(Integer, nullable=False)
+    status = Column(String(20), default="SCHEDULED", nullable=False, index=True)  # SCHEDULED, COMPLETED, CANCELLED
+    created_by_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    cancelled_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    participants = relationship(
+        "CrewActivityParticipant",
+        back_populates="activity",
+        cascade="all, delete-orphan",
+        order_by="CrewActivityParticipant.id",
+    )
+
+
+class CrewActivityParticipant(Base):
+    __tablename__ = "crew_activity_participants"
+    __table_args__ = (UniqueConstraint("activity_id", "user_id", name="uq_crew_activity_participant"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    activity_id = Column(Integer, ForeignKey("crew_activities.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    response = Column(String(20), default="PENDING", nullable=False)  # PENDING, JOINED, DECLINED
+    attended = Column(Boolean, default=False, nullable=False)
+    xp_awarded = Column(Boolean, default=False, nullable=False)  # garantiza XP una sola vez por actividad
+    responded_at = Column(DateTime(timezone=True), nullable=True)
+    attended_at = Column(DateTime(timezone=True), nullable=True)
+
+    activity = relationship("CrewActivity", back_populates="participants")
+
+
+class FamilyContact(Base):
+    """Vínculo autorizado entre un astronauta y un usuario FAMILY_MEMBER (canal "Conexión con Tierra")."""
+    __tablename__ = "family_contacts"
+    __table_args__ = (UniqueConstraint("astronaut_id", "user_id", name="uq_family_contact"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    astronaut_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    relationship_label = Column("relationship", String(60), nullable=False)  # "Pareja", "Hija", ...
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)

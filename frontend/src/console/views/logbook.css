@@ -1,0 +1,80 @@
+/* AstroVital · Bitácora de misión (vista de consola)
+ * Solo clases con prefijo av-log-. Usa los tokens --av-* de console.css.
+ * Amarillo/rojo reservados para alertas; el color nunca va solo.
+ */
+
+.av-log-sr {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
+/* Filtros */
+.av-log-filters {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px;
+  padding: 12px; border-bottom: 1px solid var(--av-border); align-items: end; margin: 0;
+}
+.av-log-filters select.av-input, .av-log-filters input.av-input { min-height: 44px; }
+.av-log-filters [aria-invalid="true"] { border-color: var(--av-y); }
+.av-log-check, .av-field label.av-log-check {
+  display: flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer;
+  font-size: 14px; color: var(--av-text);
+}
+.av-log-check input { width: 20px; height: 20px; margin: 0; accent-color: var(--av-text); flex: none; }
+body:not([data-theme="daylight-clean"]) .av-log-root input[type="date"] { color-scheme: dark; }
+.av-log-filter-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Recuentos y avisos */
+.av-log-counts {
+  display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 8px 12px;
+  border-bottom: 1px solid var(--av-border); font-size: 13px; color: var(--av-text2);
+}
+.av-log-counts strong { color: var(--av-text); font-family: "IBM Plex Mono", ui-monospace, monospace; font-weight: 600; }
+.av-log-warn {
+  margin: 0; padding: 8px 12px; border-bottom: 1px solid var(--av-border);
+  border-left: 4px solid var(--av-y); font-size: 13px; color: var(--av-text);
+}
+.av-log-empty { padding: 24px 12px; margin: 0; color: var(--av-text2); }
+
+/* Tabla de la bitácora */
+.av-log-table td { height: auto; padding: 8px; vertical-align: top; }
+.av-log-table th { white-space: nowrap; }
+.av-log-time { white-space: nowrap; font-size: 13px; }
+.av-log-type {
+  font: 600 12px "IBM Plex Mono", ui-monospace, monospace; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--av-text2); white-space: nowrap;
+}
+.av-log-detail { min-width: 260px; }
+.av-log-note { display: block; margin-top: 2px; font-size: 12px; color: var(--av-text2); max-width: 70ch; overflow-wrap: anywhere; }
+.av-log-state { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 13px; }
+.av-log-src { font-size: 13px; overflow-wrap: anywhere; }
+.av-log-sim {
+  display: inline-block; padding: 1px 6px; border: 1px dashed var(--av-strong);
+  font: 600 11px "IBM Plex Mono", ui-monospace, monospace; letter-spacing: .06em; color: var(--av-text2); white-space: nowrap;
+}
+
+/* Pie de la tabla (paginación) */
+.av-log-foot {
+  display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between;
+  padding: 10px 12px; border-top: 1px solid var(--av-border);
+}
+
+/* Panel de exportación */
+.av-log-body { padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+.av-log-dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; margin: 0; font-size: 13px; }
+.av-log-dl dt { color: var(--av-muted); }
+.av-log-dl dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.av-log-fmt { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.av-log-fmt legend { padding: 0; margin-bottom: 6px; }
+.av-log-fmt-item { display: flex; flex-direction: column; gap: 4px; }
+.av-log-fmt-item .av-btn { width: 100%; }
+.av-log-status { margin: 0; min-height: 20px; font-size: 13px; color: var(--av-text); }
+.av-log-status:empty { display: none; }
+.av-log-status[data-kind="busy"] { color: var(--av-text2); }
+.av-log-status[data-kind="ok"] { border-left: 4px solid var(--av-text2); padding: 6px 10px; background: var(--av-raised); }
+.av-log-status[data-kind="error"] { border-left: 4px solid var(--av-r); padding: 6px 10px; color: var(--av-r-text); background: var(--av-raised); }
+
+/* Procedencia */
+.av-log-prov { margin: 0; padding: 0; list-style: none; font-size: 13px; }
+.av-log-prov li { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--av-row); }
+.av-log-prov li span:last-child { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+.av-log-p { margin: 0; font-size: 13px; color: var(--av-text2); }

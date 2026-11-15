@@ -92,6 +92,7 @@ class ContextResolver:
             "connectivity_status": "OFFLINE",
             "recorded_at": None,
             "age_minutes": None,
+            "comms_delay_seconds": None,
             "conflict_notes": "No se encontró fuente verificada. Nunca se asume ubicación por GPS local.",
             "is_simulated": True,
             "clinical_thresholds_modified": False,

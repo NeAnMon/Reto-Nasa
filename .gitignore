@@ -27,3 +27,6 @@ Thumbs.db
 .vscode/
 .idea/
 
+
+# Adjuntos subidos (canal familiar)
+uploads/

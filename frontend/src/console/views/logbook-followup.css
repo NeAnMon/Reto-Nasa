@@ -1,0 +1,16 @@
+/* AstroVital · Bitácora → Seguimiento periódico (logbook-followup.js)
+ * Solo clases con prefijo av-logfu-. Usa los tokens --av-* de console.css.
+ */
+
+.av-logfu-toggle { min-height: 48px; justify-content: space-between; padding: 0 12px; gap: 8px; text-align: left; }
+/* Columna lateral de la bitácora: los tres bloques se apilan */
+.av-logfu-grid { display: flex; flex-direction: column; border-top: 1px solid var(--av-border); }
+.av-logfu-cell {
+  padding: 12px; display: flex; flex-direction: column; gap: 6px;
+  border-bottom: 1px solid var(--av-border);
+}
+.av-logfu-cell:last-child { border-bottom: 0; }
+.av-logfu-imm { border-collapse: collapse; font-size: 13px; }
+.av-logfu-imm td { padding: 2px 8px 2px 0; }
+.av-logfu-imm td.av-mono { text-align: right; padding-right: 0; white-space: nowrap; }
+.av-logfu-src { font-size: 11px; color: var(--av-muted); }

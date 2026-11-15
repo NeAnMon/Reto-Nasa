@@ -48,9 +48,53 @@ class Settings:
         "DEMO_ASTRONAUT3_PASSWORD", "AstroCrew!2026"
     )
 
+    DEMO_FAMILY1_EMAIL: str = os.getenv("DEMO_FAMILY1_EMAIL", "ana.rostova@astrovital.demo")
+    DEMO_FAMILY1_PASSWORD: str = os.getenv("DEMO_FAMILY1_PASSWORD", "AstroFamily!2026")
+    DEMO_FAMILY2_EMAIL: str = os.getenv("DEMO_FAMILY2_EMAIL", "sofia.rostova@astrovital.demo")
+    DEMO_FAMILY2_PASSWORD: str = os.getenv("DEMO_FAMILY2_PASSWORD", "AstroFamily!2026")
+
+    # Adjuntos (fotos y notas de voz del canal familiar). Se guardan con nombre aleatorio; ignorado por git.
+    UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", str(BASE_DIR / "uploads"))
+    MAX_ATTACHMENT_BYTES: int = int(os.getenv("MAX_ATTACHMENT_BYTES", str(5 * 1024 * 1024)))
+    MAX_PENDING_ATTACHMENTS_PER_USER: int = int(os.getenv("MAX_PENDING_ATTACHMENTS_PER_USER", "20"))
+    # Adjuntos subidos y nunca enviados ("huérfanos"): se purgan (fila + archivo) pasado este plazo.
+    # 7 días por defecto, para no invalidar mensajes que esperan en la cola sin conexión.
+    ORPHAN_ATTACHMENT_TTL_HOURS: int = int(os.getenv("ORPHAN_ATTACHMENT_TTL_HOURS", "168"))
+
+    # SOLO DEMO LOCAL: devuelve el token de recuperación de contraseña en la respuesta HTTP.
+    # Permite tomar cualquier cuenta sin autenticar: nunca activarlo en un despliegue accesible.
+    DEMO_EXPOSE_RECOVERY_TOKEN: bool = (
+        os.getenv("DEMO_EXPOSE_RECOVERY_TOKEN", "false").lower() == "true"
+    )
+
     AI_PROVIDER_ENABLED: bool = (
         os.getenv("AI_PROVIDER_ENABLED", "false").lower() == "true"
     )
+
+
+DEFAULT_DEMO_SECRET_KEY = "replace-this-demo-secret-key-in-production-9f8e7d6c5b4a3210"
+
+
+def insecure_config_warnings(cfg: "Settings") -> list:
+    """Avisos de configuración insegura que se registran al arrancar (no impiden el arranque demo local)."""
+    warnings = []
+    key = cfg.SECRET_KEY or ""
+    if key == DEFAULT_DEMO_SECRET_KEY or "replace-this" in key or len(key) < 32:
+        warnings.append(
+            "SECRET_KEY usa el valor de demostración o es demasiado corta: genere una clave aleatoria "
+            "(p. ej. `python -c \"import secrets; print(secrets.token_urlsafe(48))\"`) antes de exponer el servicio."
+        )
+    if cfg.DEMO_EXPOSE_RECOVERY_TOKEN:
+        warnings.append(
+            "DEMO_EXPOSE_RECOVERY_TOKEN=true: /auth/password-recovery/request devuelve el token de recuperación "
+            "y cualquiera puede tomar cualquier cuenta. Úselo solo en una demo local aislada."
+        )
+    if cfg.SEED_DEMO_DATA:
+        warnings.append(
+            "SEED_DEMO_DATA=true: existen cuentas demo con contraseñas públicas (incluidos familiares). "
+            "Desactívelo y cambie las contraseñas DEMO_* antes de producción."
+        )
+    return warnings
 
 
 settings = Settings()

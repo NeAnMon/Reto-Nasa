@@ -1,0 +1,111 @@
+/* AstroVital · Consola · vistas del menú "Más"
+ * (bienestar, cognitivo, emocional, tripulación, administración, ajustes).
+ * Clases av-mx-* compartidas + prefijos propios (av-wl-, av-cg-, av-em-, av-cr-, av-ad-, av-set-).
+ * Usa los tokens de .av-console definidos en console.css. Nominal sin color; el estado va en texto.
+ */
+
+.av-mx-sr {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.av-mx-root [hidden] { display: none !important; }
+.av-mx-pad { padding: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.av-mx-p { margin: 0; max-width: 80ch; overflow-wrap: anywhere; white-space: pre-line; }
+.av-mx-side { flex: 1 1 340px; max-width: 440px; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.av-mx-btns { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.av-mx-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
+
+/* Avisos de privacidad / metodología: borde izquierdo, nunca color de alarma */
+.av-mx-note {
+  margin: 0; padding: 8px 12px; border-left: 4px solid var(--av-strong); background: var(--av-raised);
+  font-size: 12px; color: var(--av-text2); overflow-wrap: anywhere; white-space: pre-line;
+}
+.av-mx-note strong { color: var(--av-text); }
+.av-mx-banner { padding: 10px 12px; border-bottom: 1px solid var(--av-border); background: var(--av-raised); font-size: 13px; color: var(--av-text2); }
+/* Instrucción urgente (protocolo de apoyo): borde de aviso + texto, role="alert" */
+.av-mx-urgent { margin: 0; padding: 12px; border: 2px solid var(--av-r); background: var(--av-raised); color: var(--av-text); font-weight: 600; white-space: pre-line; }
+
+/* Etiquetas de texto (estado, SIMULADO, rol…) */
+.av-mx-tag {
+  display: inline-flex; align-items: center; padding: 1px 6px; font: 600 11px/1.5 "IBM Plex Mono", monospace;
+  letter-spacing: .04em; text-transform: uppercase; border: 1px solid var(--av-border); color: var(--av-text2); white-space: nowrap;
+}
+.av-mx-tag-strong { border-color: var(--av-text); color: var(--av-text); }
+
+/* Región de resultado (aria-live) */
+.av-mx-status { margin: 0; font-size: 13px; color: var(--av-text); }
+.av-mx-status:not(:empty) { padding: 8px 12px; border: 1px solid var(--av-text2); background: var(--av-raised); }
+
+/* Formularios */
+.av-mx-form { display: flex; flex-direction: column; gap: 12px; }
+.av-mx-form fieldset { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.av-mx-form legend { padding: 0; margin-bottom: 4px; }
+.av-mx-check { display: flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; font-size: 13px; color: var(--av-text); }
+.av-mx-check input { width: 20px; height: 20px; margin: 0; flex: none; accent-color: var(--av-text); }
+.av-mx-textarea { min-height: 64px; resize: vertical; font-family: "IBM Plex Sans", system-ui, sans-serif; }
+.av-mx-root select.av-input, .av-mx-root input.av-input[type="text"], .av-mx-root input.av-input[type="email"] { font-family: "IBM Plex Sans", system-ui, sans-serif; }
+.av-mx-wide { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+
+/* Tablas con texto largo: filas de alto libre */
+.av-mx-table { font-size: 13px; min-width: 640px; }
+.av-mx-table td { height: auto; padding: 8px; vertical-align: top; overflow-wrap: anywhere; }
+.av-mx-table th:first-child, .av-mx-table td:first-child { padding-left: 12px; }
+.av-mx-table th:last-child, .av-mx-table td:last-child { padding-right: 12px; }
+.av-mx-table .av-mx-nowrap { white-space: nowrap; }
+.av-mx-table .av-mx-right { text-align: right; }
+.av-mx-scroll { max-height: 420px; overflow-y: auto; }
+.av-mx-empty { margin: 0; padding: 12px; color: var(--av-text2); }
+
+/* Listas de filas y pares clave-valor */
+.av-mx-list { list-style: none; margin: 0; padding: 0; }
+.av-mx-list > li { padding: 10px 12px; border-top: 1px solid var(--av-row); display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.av-mx-list > li:first-child { border-top: 0; }
+.av-mx-kv { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; margin: 0; font-size: 13px; }
+.av-mx-kv dt { color: var(--av-text2); }
+.av-mx-kv dd { margin: 0; text-align: right; font: 600 13px "IBM Plex Mono", monospace; }
+.av-mx-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+.av-mx-card-active { box-shadow: inset 4px 0 0 var(--av-text); }
+.av-mx-chart { display: block; width: 100%; height: 200px; }
+
+/* ── Bienestar: respiración guiada 4-4-4-4 ── */
+.av-wl-breath { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 16px 12px; }
+.av-wl-circle {
+  width: 132px; height: 132px; border-radius: 50%; border: 2px solid var(--av-strong); background: var(--av-bg);
+  display: flex; align-items: center; justify-content: center; text-align: center; padding: 8px;
+  font: 600 13px/1.3 "IBM Plex Mono", monospace; color: var(--av-text);
+  transform: scale(.82); transition: transform 4s ease-in-out, border-color 1s ease;
+}
+.av-wl-circle.av-wl-in { transform: scale(1.08); border-color: var(--av-text); }
+.av-wl-circle.av-wl-out { transform: scale(.82); }
+
+/* ── Cognitivo ── */
+.av-cg-stage { border-color: var(--av-text); }
+.av-cg-prompt { margin: 0; font-size: 16px; font-weight: 600; white-space: pre-line; overflow-wrap: anywhere; }
+.av-cg-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; }
+.av-cg-opt { min-height: 52px; justify-content: flex-start; text-align: left; line-height: 1.3; padding: 8px 14px; }
+.av-cg-example { border-left: 2px solid var(--av-border); padding-left: 10px; display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.av-cg-domain { justify-content: space-between; }
+.av-cg-domain .av-btn { align-self: flex-start; }
+.av-cg-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
+.av-cg-kpis > div { border: 1px solid var(--av-border); padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+
+/* ── Emocional ── */
+.av-em-recips { max-height: 150px; overflow-y: auto; border: 1px solid var(--av-border); padding: 0 10px; }
+.av-em-q { border: 1px solid var(--av-border); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.av-em-q label { font-size: 13px; font-weight: 600; color: var(--av-text); }
+.av-em-qgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 8px; }
+.av-em-result { border-left: 2px solid var(--av-border); padding-left: 10px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+
+/* ── Ajustes ── */
+.av-set-themes { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Separador del menú "Más" (grupo de supervisión / ajustes) */
+.av-more-sep { height: 1px; margin: 4px 0; background: var(--av-border); }
+
+@media (prefers-reduced-motion: reduce) {
+  .av-wl-circle { transition: none; }
+  .av-wl-circle.av-wl-in, .av-wl-circle.av-wl-out { transform: none; }
+}
+@media (max-width: 980px) {
+  .av-mx-side { max-width: none; flex-basis: 100%; }
+}

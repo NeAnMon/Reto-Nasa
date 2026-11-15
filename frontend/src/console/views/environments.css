@@ -1,0 +1,135 @@
+/* AstroVital · Consola · Vista "Insights por entorno"
+ * Solo clases av-env-*; usa los tokens de .av-console definidos en console.css.
+ * Dark cockpit: nominal sin color; amarillo solo para nivel alto. El color nunca va solo:
+ * cada nivel lleva texto (Bajo / Medio / Alto) y cada estado su letra.
+ */
+
+.av-env-sr {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+/* El texto oculto dentro de las tablas desplazables queda contenido en su contenedor
+ * (si no, su posición estática ensancha la página en móvil) */
+.av-env-root .av-hscroll { position: relative; }
+.av-env-pad { padding: 12px; margin: 0; }
+.av-env-wrap { display: flex; flex-direction: column; gap: 12px; padding: 12px; min-width: 0; }
+
+/* Cabecera: entorno actual / previsualizado */
+.av-env-now { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.av-env-nowbox { display: flex; flex-direction: column; gap: 2px; padding-left: 10px; border-left: 3px solid var(--av-text); min-width: 0; }
+.av-env-nowbox-prev { border-left-style: dashed; border-left-color: var(--av-text2); }
+.av-env-nowval { font-weight: 600; overflow-wrap: anywhere; }
+.av-env-code { font-size: 11px; font-weight: 600; letter-spacing: .06em; color: var(--av-muted); }
+
+/* Etiquetas ACTUAL / VISTA */
+.av-env-tag { display: inline-flex; align-items: center; padding: 1px 6px; font: 600 11px/1.4 "IBM Plex Mono", monospace; letter-spacing: .04em; border: 1px solid var(--av-text); color: var(--av-text); white-space: nowrap; vertical-align: middle; }
+.av-env-tag-prev { border-style: dashed; border-color: var(--av-text2); color: var(--av-text2); }
+
+/* Selector de previsualización (grupo de radio) */
+.av-env-selrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 12px; }
+.av-env-sel { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.av-env-opt {
+  min-height: 44px; min-width: 0; max-width: 100%; padding: 4px 12px; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px;
+  border: 1px solid var(--av-border); background: var(--av-raised); color: var(--av-text2);
+  font: 600 13px "IBM Plex Sans", system-ui, sans-serif; cursor: pointer; text-align: left;
+}
+.av-env-opt:hover { border-color: var(--av-text); color: var(--av-text); }
+.av-env-opt[aria-checked="true"] { background: var(--av-text); color: var(--av-bg); border-color: var(--av-text); }
+.av-env-opt[aria-checked="true"] .av-env-code { color: var(--av-bg); }
+.av-env-opt[aria-checked="true"] .av-env-tag { border-color: var(--av-bg); color: var(--av-bg); }
+.av-env-opt-cur { border-color: var(--av-text2); }
+.av-env-status { margin: 0; font-size: 13px; }
+.av-env-status:not(:empty) { padding: 0 12px 10px; color: var(--av-text2); }
+.av-env-prevnote { margin: 0; padding: 8px 12px; border-bottom: 1px dashed var(--av-strong); font-size: 13px; color: var(--av-text2); }
+
+/* Distribución: principal + insights */
+.av-env-grid { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
+.av-env-main { flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.av-env-side { flex: 1 1 320px; max-width: 420px; min-width: 0; position: sticky; top: 12px; }
+
+/* Nivel relativo: 3 barras + texto */
+.av-env-lv { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font: 600 11px/1.2 "IBM Plex Mono", monospace; letter-spacing: .04em; text-transform: uppercase; color: var(--av-muted); }
+.av-env-lv-bars { display: inline-flex; gap: 2px; }
+.av-env-lv-bars i { display: block; width: 6px; height: 10px; border: 1px solid var(--av-strong); }
+.av-env-lv-1 .av-env-lv-bars i:nth-child(-n+1),
+.av-env-lv-2 .av-env-lv-bars i:nth-child(-n+2) { background: var(--av-text2); border-color: var(--av-text2); }
+.av-env-lv-3 .av-env-lv-bars i { background: var(--av-y); border-color: var(--av-y); }
+.av-env-lv-2 { color: var(--av-text2); }
+.av-env-lv-3 { color: var(--av-y); }
+body[data-theme="daylight-clean"] .av-env-lv-3 { color: var(--av-text); }
+
+/* Peligros */
+.av-env-hzlist { list-style: none; margin: 0; padding: 12px; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.av-env-hz { display: flex; flex-direction: column; gap: 4px; padding: 10px; background: var(--av-bg); border: 1px solid var(--av-border); min-width: 0; }
+.av-env-hz-3 { border-left: 3px solid var(--av-y); }
+.av-env-hzval { font-size: 18px; font-weight: 600; line-height: 1.2; overflow-wrap: anywhere; }
+.av-env-hzlv { margin-top: auto; padding-top: 4px; }
+
+/* Prioridades por sistema */
+.av-env-systable { font-size: 13px; min-width: 560px; }
+.av-env-systable th:first-child, .av-env-systable td:first-child { padding-left: 12px; }
+.av-env-systable td { padding-top: 6px; padding-bottom: 6px; height: auto; }
+.av-env-systable .av-env-sysname { font-weight: 600; color: var(--av-text); text-transform: none; letter-spacing: 0; font-size: 13px; white-space: nowrap; border-top: 1px solid var(--av-row); }
+.av-env-systxt { color: var(--av-text2); }
+.av-env-sysst { white-space: nowrap; text-align: center; }
+
+/* Contramedidas */
+.av-env-cm { display: grid; grid-template-columns: minmax(150px, max-content) minmax(0, 1fr); gap: 8px 16px; margin: 0; padding: 12px; font-size: 13px; }
+.av-env-cm dt { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--av-muted); padding-top: 2px; }
+.av-env-cm dd { margin: 0; min-width: 0; overflow-wrap: anywhere; padding-bottom: 8px; border-bottom: 1px solid var(--av-row); }
+.av-env-cm dd:last-of-type { border-bottom: 0; padding-bottom: 0; }
+.av-env-big { font-size: 16px; font-weight: 600; }
+.av-env-watch { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.av-env-watch li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+
+/* Insights personalizados */
+.av-env-srv { border-bottom: 1px solid var(--av-border); }
+.av-env-ins { list-style: none; margin: 0; padding: 0; }
+.av-env-ins li { display: flex; gap: 10px; padding: 10px 12px; border-top: 1px solid var(--av-row); font-size: 13px; }
+.av-env-ins li:first-child { border-top: 0; }
+.av-env-ins-C { background: rgba(242, 201, 76, .06); box-shadow: inset 3px 0 0 var(--av-y); }
+.av-env-ins-W { background: rgba(209, 52, 56, .08); box-shadow: inset 3px 0 0 var(--av-r); }
+.av-env-ins-b { flex: 0 0 auto; padding-top: 1px; }
+.av-env-ins-t { min-width: 0; overflow-wrap: anywhere; }
+.av-env-basis { display: block; margin-top: 4px; font: 500 11px/1.3 "IBM Plex Mono", monospace; color: var(--av-muted); }
+
+/* Comparativa */
+.av-env-cmptable { font-size: 13px; min-width: 820px; }
+.av-env-cmptable th, .av-env-cmptable td { vertical-align: top; }
+.av-env-cmptable th:first-child { padding-left: 12px; }
+.av-env-cmptable tbody th { font-weight: 600; color: var(--av-text2); text-transform: none; letter-spacing: 0; font-size: 13px; border-top: 1px solid var(--av-row); white-space: nowrap; }
+.av-env-cmptable td.av-env-cell { height: auto; padding: 8px; }
+.av-env-cell { min-width: 140px; }
+.av-env-cell .av-mono { display: block; font-weight: 600; margin-bottom: 4px; overflow-wrap: anywhere; }
+.av-env-colh { padding: 4px !important; }
+.av-env-colbtn {
+  width: 100%; min-height: 44px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 6px 8px;
+  border: 1px solid transparent; background: transparent; color: var(--av-text); cursor: pointer; text-align: left;
+  font: 600 13px "IBM Plex Sans", system-ui, sans-serif; text-transform: none; letter-spacing: 0;
+}
+.av-env-colbtn:hover { border-color: var(--av-strong); }
+.av-env-colbtn[aria-pressed="true"] { border-color: var(--av-text); }
+.av-env-col-cur { background: var(--av-raised); }
+.av-env-col-view { box-shadow: inset 2px 0 0 var(--av-text), inset -2px 0 0 var(--av-text); }
+thead .av-env-col-view { box-shadow: inset 2px 0 0 var(--av-text), inset -2px 0 0 var(--av-text), inset 0 2px 0 var(--av-text); }
+tbody tr:last-child .av-env-col-view { box-shadow: inset 2px 0 0 var(--av-text), inset -2px 0 0 var(--av-text), inset 0 -2px 0 var(--av-text); }
+
+/* Pie: aviso y fuentes */
+.av-env-foot { display: flex; flex-direction: column; gap: 6px; padding: 4px 2px 12px; }
+.av-env-foot p { margin: 0; }
+.av-env-disc { font-size: 13px; color: var(--av-text); padding: 8px 12px; border: 1px solid var(--av-border); background: var(--av-panel); }
+
+@media (max-width: 980px) {
+  .av-env-side { max-width: none; flex-basis: 100%; position: static; }
+}
+@media (max-width: 600px) {
+  .av-env-wrap { padding: 8px; gap: 8px; }
+  .av-env-opt { flex: 1 1 calc(50% - 6px); }
+  .av-env-hzlist { grid-template-columns: 1fr 1fr; padding: 8px; }
+  .av-env-cm { grid-template-columns: 1fr; gap: 4px; }
+  .av-env-cm dt { padding-top: 6px; }
+}
+@media (max-width: 380px) {
+  .av-env-hzlist { grid-template-columns: 1fr; }
+  .av-env-opt { flex-basis: 100%; }
+}

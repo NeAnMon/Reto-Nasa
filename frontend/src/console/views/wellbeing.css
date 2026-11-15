@@ -1,0 +1,95 @@
+/* AstroVital · Consola · pestaña "Bienestar" (wellbeing.js)
+ * Prefijo av-wb-. Usa los tokens de .av-console (console.css) y las clases av-mx-* de more.css.
+ * Estados emocionales solo con texto y borde neutro: nunca amarillo/rojo (reservados a alertas C&W).
+ */
+
+.av-wb-intro { padding: 10px 12px 0; color: var(--av-text2); }
+
+/* Pestañas internas (patrón WAI-ARIA tabs) */
+.av-wb-tabs {
+  display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 12px 0; border-bottom: 1px solid var(--av-border);
+}
+.av-wb-tab {
+  min-height: 44px; padding: 0 14px; border: 0; border-bottom: 3px solid transparent; background: transparent;
+  color: var(--av-text2); cursor: pointer; font: 600 14px "IBM Plex Sans", system-ui, sans-serif;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.av-wb-tab:hover { color: var(--av-text); background: var(--av-hover); }
+.av-wb-tab[aria-selected="true"] { color: var(--av-text); border-bottom-color: var(--av-text); }
+.av-wb-root .av-wb-tab:focus-visible { outline: 2px solid var(--av-text); outline-offset: -2px; }
+.av-wb-count {
+  display: inline-flex; align-items: center; padding: 0 6px; min-height: 20px; border: 1px solid var(--av-text2);
+  font: 600 11px/1 "IBM Plex Mono", monospace; color: var(--av-text); white-space: nowrap;
+}
+
+.av-wb-panel { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.av-wb-panel:focus { outline: none; }
+.av-wb-loading { padding: 16px 12px; }
+
+/* Dos columnas que se apilan en pantallas estrechas */
+.av-wb-cols { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
+.av-wb-col { flex: 1 1 340px; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.av-wb-stack { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.av-wb-subh { padding: 4px 2px 0; }
+
+/* Escalas 1–5 como botones segmentados (radio nativos, accesibles con teclado) */
+.av-wb-scale { border: 0; margin: 0; padding: 0; min-width: 0; }
+.av-wb-legend { font-size: 13px; font-weight: 600; color: var(--av-text); padding: 0; margin-bottom: 6px; }
+.av-wb-seg { display: grid; grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); gap: 6px; }
+.av-wb-opt { position: relative; display: flex; min-width: 0; cursor: pointer; }
+.av-wb-opt input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
+.av-wb-opt > span {
+  flex: 1; min-height: 44px; padding: 6px 8px; border: 1px solid var(--av-strong); background: var(--av-raised);
+  display: flex; align-items: center; justify-content: center; gap: 6px; text-align: center;
+  font-size: 13px; line-height: 1.2; color: var(--av-text); overflow-wrap: anywhere;
+}
+.av-wb-opt:hover > span { border-color: var(--av-text); }
+.av-wb-opt input:checked + span { background: var(--av-text); color: var(--av-bg); border-color: var(--av-text); font-weight: 600; }
+.av-wb-opt input:focus-visible + span { outline: 2px solid var(--av-text); outline-offset: 2px; }
+.av-wb-hours { max-width: 260px; }
+
+.av-wb-chips { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--av-text2); }
+.av-wb-care { display: flex; flex-direction: column; gap: 6px; }
+
+/* Accesos a otras herramientas */
+.av-wb-tools { list-style: none; margin: 0; padding: 12px; display: grid; gap: 8px; }
+.av-wb-tool {
+  width: 100%; min-height: 56px; padding: 8px 12px; flex-direction: column; align-items: flex-start; gap: 2px;
+  text-align: left; line-height: 1.3;
+}
+.av-wb-tool-t { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.av-wb-tool .av-sub { font-weight: 400; }
+
+.av-wb-feat { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 2px; }
+
+/* Tarjetas (tiempo libre y actividades) */
+.av-wb-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 12px; }
+.av-wb-card, .av-wb-act { padding: 12px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.av-wb-card h4, .av-wb-act h4 { overflow-wrap: anywhere; }
+.av-wb-attend-note { margin: 0; overflow-wrap: anywhere; }
+.av-wb-how summary, .av-wb-sum {
+  cursor: pointer; min-height: 36px; display: flex; align-items: center; font-weight: 600; font-size: 13px; color: var(--av-text);
+}
+.av-wb-how ol, .av-wb-how ul { margin: 6px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.av-wb-root summary:focus-visible { outline: 2px solid var(--av-text); outline-offset: 2px; }
+.av-wb-src { font-size: 12px; color: var(--av-text2); text-decoration: underline; overflow-wrap: anywhere; }
+.av-wb-src:hover { color: var(--av-text); }
+.av-wb-log { border-top: 1px solid var(--av-row); padding-top: 8px; }
+.av-wb-people { list-style: none; padding-left: 0 !important; }
+.av-wb-people li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; }
+
+.av-wb-week { margin: 0; font-weight: 600; }
+.av-wb-filters { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+.av-wb-goal { display: flex; flex-direction: column; gap: 4px; }
+.av-wb-progress { width: 100%; height: 10px; accent-color: var(--av-text); }
+
+.av-wb-propose { min-width: 0; }
+.av-wb-propose > .av-wb-sum { padding: 10px 12px; font-size: 14px; }
+.av-wb-propose[open] > .av-wb-sum { border-bottom: 1px solid var(--av-border); }
+
+@media (max-width: 480px) {
+  .av-wb-tabs { padding: 6px 6px 0; gap: 0; }
+  .av-wb-tab { padding: 0 10px; font-size: 13px; }
+  .av-wb-seg { grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); }
+  .av-wb-hours { max-width: none; }
+}

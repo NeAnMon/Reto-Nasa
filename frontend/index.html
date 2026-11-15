@@ -3,163 +3,121 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AstroVital — Plataforma de Monitoreo Integral de Salud Espacial</title>
-    <link rel="stylesheet" href="/src/styles/main.css" />
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <title data-i18n="doc.title">AstroVital — Plataforma de Monitoreo Integral de Salud Espacial</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap" />
+    <!-- __BUILD__ se reemplaza en cada despliegue: fuerza copias nuevas en Cloudflare y en el navegador -->
+    <link rel="stylesheet" href="/src/styles/main.css?v=__BUILD__" />
+    <link rel="stylesheet" href="/src/console/console.css?v=__BUILD__" />
+    <!-- Hojas de las vistas declaradas aquí (con versión) para que las vistas no las inyecten sin versión -->
+    <link rel="stylesheet" id="av-measure-css" href="/src/console/views/measure.css?v=__BUILD__" />
+    <link rel="stylesheet" data-av-cm-css href="/src/console/views/countermeasures.css?v=__BUILD__" />
+    <link rel="stylesheet" id="av-al-css" href="/src/console/views/alerts.css?v=__BUILD__" />
+    <link rel="stylesheet" data-av-msg-css href="/src/console/views/messages.css?v=__BUILD__" />
+    <link rel="stylesheet" id="av-log-css" href="/src/console/views/logbook.css?v=__BUILD__" />
+    <link rel="stylesheet" id="av-logfu-css" href="/src/console/views/logbook-followup.css?v=__BUILD__" />
+    <link rel="stylesheet" id="av-lt-css" href="/src/console/views/logbook-trends.css?v=__BUILD__" />
+    <link rel="stylesheet" id="av-mx-css" href="/src/console/views/more.css?v=__BUILD__" />
+    <link rel="stylesheet" id="av-env-css" href="/src/console/views/environments.css?v=__BUILD__" />
+    <link rel="stylesheet" id="av-wb-css" href="/src/console/views/wellbeing.css?v=__BUILD__" />
+    <!-- Mapa de módulos: las importaciones relativas entre módulos también llevan la versión -->
+    <script type="importmap">
+      {
+        "imports": {
+          "/src/app/app.js": "/src/app/app.js?v=__BUILD__",
+          "/src/i18n/i18n.js": "/src/i18n/i18n.js?v=__BUILD__",
+          "/src/i18n/backend.js": "/src/i18n/backend.js?v=__BUILD__",
+          "/src/i18n/backend-en-seed.js": "/src/i18n/backend-en-seed.js?v=__BUILD__",
+          "/src/i18n/backend-en-runtime.js": "/src/i18n/backend-en-runtime.js?v=__BUILD__",
+          "/src/services/api.js": "/src/services/api.js?v=__BUILD__",
+          "/src/console/console.js": "/src/console/console.js?v=__BUILD__",
+          "/src/console/body-figure.js": "/src/console/body-figure.js?v=__BUILD__",
+          "/src/console/alert-classes.js": "/src/console/alert-classes.js?v=__BUILD__",
+          "/src/console/views/measure.js": "/src/console/views/measure.js?v=__BUILD__",
+          "/src/console/views/countermeasures.js": "/src/console/views/countermeasures.js?v=__BUILD__",
+          "/src/console/views/alerts.js": "/src/console/views/alerts.js?v=__BUILD__",
+          "/src/console/views/messages.js": "/src/console/views/messages.js?v=__BUILD__",
+          "/src/console/views/logbook.js": "/src/console/views/logbook.js?v=__BUILD__",
+          "/src/console/views/logbook-followup.js": "/src/console/views/logbook-followup.js?v=__BUILD__",
+          "/src/console/views/logbook-trends.js": "/src/console/views/logbook-trends.js?v=__BUILD__",
+          "/src/console/views/more-common.js": "/src/console/views/more-common.js?v=__BUILD__",
+          "/src/console/views/wellness.js": "/src/console/views/wellness.js?v=__BUILD__",
+          "/src/console/views/cognitive.js": "/src/console/views/cognitive.js?v=__BUILD__",
+          "/src/console/views/emotional.js": "/src/console/views/emotional.js?v=__BUILD__",
+          "/src/console/views/crew.js": "/src/console/views/crew.js?v=__BUILD__",
+          "/src/console/views/admin.js": "/src/console/views/admin.js?v=__BUILD__",
+          "/src/console/views/settings.js": "/src/console/views/settings.js?v=__BUILD__",
+          "/src/console/views/environments.js": "/src/console/views/environments.js?v=__BUILD__",
+          "/src/console/views/wellbeing.js": "/src/console/views/wellbeing.js?v=__BUILD__"
+        }
+      }
+    </script>
   </head>
   <body data-theme="space-dark">
-    <!-- 1. AUTHENTICATION SCREEN -->
-    <main id="auth-screen" class="auth-screen" aria-label="Inicio de sesión de AstroVital">
-      <div class="auth-card">
-        <div class="brand-header">
-          <div class="brand-logo" aria-hidden="true">AV</div>
-          <div>
-            <h1 class="brand-title">AstroVital</h1>
-            <p class="brand-slogan">Your health. Your mission. Your future.</p>
-          </div>
-        </div>
-        <p style="font-size:0.84rem; color:var(--text-secondary); margin-top:0;">
-          Centro digital interactivo, gamificado y adaptativo para la observación preventiva de la salud y bienestar de astronautas.
-        </p>
-
-        <div id="login-error" class="hidden" role="alert" style="padding:0.65rem; background:var(--state-critical-bg); border:1px solid var(--state-critical); color:var(--state-critical); border-radius:8px; margin-bottom:0.85rem; font-size:0.83rem;"></div>
-
-        <form id="login-form">
-          <div class="form-group">
-            <label for="login-email">Correo Electrónico de Misión</label>
-            <input type="email" id="login-email" class="form-control" value="elena.rostova@astrovital.demo" required />
-          </div>
-          <div class="form-group">
-            <label for="login-password">Contraseña</label>
-            <input type="password" id="login-password" class="form-control" value="AstroCrew!2026" required />
-          </div>
-          <button type="submit" class="btn btn-primary" style="width:100%; padding:0.65rem;">
-            🚀 Iniciar Sesión en AstroVital
-          </button>
-        </form>
-
-        <div class="demo-accounts-box">
-          <div style="font-size:0.78rem; font-weight:700; color:var(--accent-cyan);">
-            Credenciales Ficticias para Demostración Local (Clic para autocompletar):
-          </div>
-          <div class="demo-accounts-grid">
-            <button type="button" class="btn btn-sm" data-demo-email="elena.rostova@astrovital.demo" data-demo-pass="AstroCrew!2026">
-              👩‍🚀 Astronauta 1 (Elena)
-            </button>
-            <button type="button" class="btn btn-sm" data-demo-email="marcus.vance@astrovital.demo" data-demo-pass="AstroCrew!2026">
-              👨‍🚀 Astronauta 2 (Marcus)
-            </button>
-            <button type="button" class="btn btn-sm" data-demo-email="leader@astrovital.demo" data-demo-pass="AstroLeader!2026">
-              📡 Líder en Tierra (Carlos)
-            </button>
-            <button type="button" class="btn btn-sm" data-demo-email="admin@astrovital.demo" data-demo-pass="AstroAdmin!2026">
-              🛡 Administradora (Valeria)
-            </button>
-          </div>
-          <p style="font-size:0.72rem; color:var(--text-muted); margin:0.5rem 0 0;">
-            Nota: Datos sintéticos etiquetados como SIMULADO. Sustituya las credenciales antes de cualquier despliegue en producción.
-          </p>
-        </div>
-      </div>
-    </main>
-
-    <!-- 2. APPLICATION SHELL -->
-    <div id="app-shell" class="app-shell hidden">
-      <!-- Desktop Sidebar Navigation -->
-      <aside class="sidebar" aria-label="Navegación principal de AstroVital">
-        <div class="brand-header" style="margin-bottom:0.4rem;">
-          <div class="brand-logo" aria-hidden="true">AV</div>
-          <div>
-            <h2 class="brand-title" style="font-size:1.2rem;">AstroVital</h2>
-            <p class="brand-slogan" style="font-size:0.73rem;">Your health. Your mission. Your future.</p>
-          </div>
-        </div>
-
-        <nav aria-label="Módulos de plataforma">
-          <ul class="nav-list">
-            <li><button class="nav-btn active" data-nav-section="mission-control"><span>1.</span> Mission Control</button></li>
-            <li><button class="nav-btn" data-nav-section="my-health-check"><span>2.</span> My Health Check</button></li>
-            <li><button class="nav-btn" data-nav-section="body-explorer"><span>3.</span> Body Explorer</button></li>
-            <li><button class="nav-btn" data-nav-section="wellness-center"><span>4.</span> Wellness Center</button></li>
-            <li><button class="nav-btn" data-nav-section="daily-missions"><span>5.</span> Daily Missions</button></li>
-            <li><button class="nav-btn" data-nav-section="mission-analytics"><span>6.</span> Mission Analytics</button></li>
-            <li>
-              <button class="nav-btn" data-nav-section="alerts-center">
-                <span>7.</span> Alerts Center
-                <span class="nav-badge js-alert-badge hidden">0</span>
-              </button>
-            </li>
-            <li><button class="nav-btn" data-nav-section="crew-monitoring"><span>8.</span> Crew Monitoring</button></li>
-            <li><button class="nav-btn" data-nav-section="reports"><span>9.</span> Reports</button></li>
-            <li><button class="nav-btn" data-nav-section="administration"><span>10.</span> Administration</button></li>
-            <li><button class="nav-btn" data-nav-section="settings-help"><span>11.</span> Settings &amp; Help</button></li>
-          </ul>
-        </nav>
-
-        <div style="margin-top:auto; padding-top:0.8rem; border-top:1px solid var(--border-subtle); font-size:0.75rem; color:var(--text-muted);">
-          <div><strong>5 Peligros Espaciales:</strong></div>
-          <div>Radiación • Aislamiento • Distancia • Gravedad • Entornos Cerrados</div>
-        </div>
-      </aside>
-
-      <!-- Main Area -->
+    <!-- APPLICATION SHELL (sin pantalla de acceso: app.js abre la sesión demo al arrancar; sin barra lateral: la navegación es solo por la barra de pestañas global) -->
+    <div id="app-shell" class="app-shell">
       <div class="main-area">
-        <!-- Mission Header Topbar -->
-        <header class="mission-topbar" aria-label="Encabezado de contexto de misión">
-          <div class="mission-meta-strip">
-            <div class="meta-pill">Misión: <strong id="hdr-mission-name">Cargando...</strong></div>
-            <div class="meta-pill">Usuario: <strong id="hdr-user-badge">-</strong></div>
-            <div class="meta-pill">Reloj: <strong id="hdr-system-clock">-</strong></div>
-            <div class="meta-pill">MET: <strong id="hdr-mission-elapsed">-</strong></div>
-            <div class="meta-pill">Fase: <strong id="hdr-phase">-</strong></div>
-            <div class="meta-pill">Entorno: <strong id="hdr-environment">-</strong></div>
-            <div class="meta-pill">Enlace: <strong id="hdr-connectivity">-</strong></div>
-          </div>
-
-          <div style="display:flex; align-items:center; gap:0.55rem; flex-wrap:wrap;">
-            <div id="topbar-crew-selector-wrap" class="hidden" style="display:flex; align-items:center; gap:0.35rem;">
-              <label for="topbar-crew-select" style="font-size:0.78rem; color:var(--text-secondary);">Tripulante:</label>
-              <select id="topbar-crew-select" class="form-control" style="padding:0.3rem 0.55rem; font-size:0.8rem;"></select>
+        <!-- Encabezado global fijo: barra HERA (la inserta console.js al inicio) → barra de estado → barra de alarma C&W → pestañas -->
+        <header id="av-chrome" class="av-console av-chrome" aria-label="Encabezado de la consola de salud" data-i18n-attr="aria-label:chrome.aria">
+          <div id="av-chrome-status"></div>
+          <div id="av-chrome-alarm"></div>
+          <div class="av-navrow">
+            <nav id="av-global-tabs" class="av-gtabs" aria-label="Navegación principal" data-i18n-attr="aria-label:nav.aria">
+              <button type="button" class="av-tab" data-nav-section="mission-control" aria-current="page" data-i18n="tab.summary">Resumen</button>
+              <button type="button" class="av-tab" data-nav-section="radiation" data-i18n="tab.radiation">Radiación</button>
+              <button type="button" class="av-tab" data-nav-section="environments" data-i18n="tab.environments">Entornos</button>
+              <button type="button" class="av-tab" data-nav-section="my-health-check" data-i18n="tab.measure">Registrar medición</button>
+              <button type="button" class="av-tab" data-nav-section="daily-missions" data-i18n="tab.countermeasures">Contramedidas</button>
+              <button type="button" class="av-tab" data-nav-section="wellbeing-hub">
+                <span data-i18n="tab.wellbeing">Bienestar</span> <span class="av-tab-badge js-emo-badge hidden" title="Cuestionarios pendientes" data-i18n-attr="title:badge.emo">0</span>
+              </button>
+              <button type="button" class="av-tab" data-nav-section="alerts-center">
+                <span data-i18n="tab.alerts">Alertas</span> <span class="av-tab-badge js-alert-badge hidden" title="Alertas activas" data-i18n-attr="title:badge.alerts">0</span>
+              </button>
+              <button type="button" class="av-tab" data-nav-section="communication-center">
+                <span data-i18n="tab.messages">Mensajes</span> <span class="av-tab-badge js-comm-badge hidden" title="Mensajes sin leer" data-i18n-attr="title:badge.messages">0</span>
+              </button>
+              <button type="button" class="av-tab" data-nav-section="reports" data-i18n="tab.logbook">Bitácora</button>
+            </nav>
+            <div class="av-navtools">
+              <div class="av-more" id="av-more">
+                <button type="button" class="av-tab av-more-btn" id="av-more-btn" aria-expanded="false" aria-controls="av-more-menu">
+                  <span data-i18n="more.btn">Más</span> <span class="av-more-caret" aria-hidden="true">▾</span>
+                </button>
+                <ul id="av-more-menu" class="av-more-menu" aria-label="Más secciones" data-i18n-attr="aria-label:more.aria" hidden>
+                  <!-- Explorador corporal y Analítica de misión ya están en el Resumen (mapa corporal y tendencia por indicador);
+                       sus ids antiguos se redirigen en navigateToSection (app.js).
+                       Bienestar psicológico, Evaluación cognitiva y Check-in emocional se abren desde la pestaña
+                       "Bienestar" → Hoy (wellbeing.js); sus rutas siguen en app.js. -->
+                  <!-- Supervisión: visibles según el rol (updateRoleNavigation en app.js) -->
+                  <li><button type="button" class="av-more-item" data-nav-section="crew-monitoring" data-i18n="more.crew">Monitoreo de tripulación</button></li>
+                  <li><button type="button" class="av-more-item" data-nav-section="administration" data-i18n="more.admin">Administración</button></li>
+                  <li><button type="button" class="av-more-item" data-nav-section="settings-help" data-i18n="more.settings">Ajustes y ayuda</button></li>
+                </ul>
+              </div>
+              <div id="topbar-crew-selector-wrap" class="av-crew hidden">
+                <label for="topbar-crew-select" class="av-lbl" data-i18n="crew.label">Tripulante</label>
+                <select id="topbar-crew-select" class="av-input"></select>
+              </div>
+              <div class="av-lang">
+                <label class="av-lbl" for="av-lang-select" data-i18n="lang.label">Idioma</label>
+                <select id="av-lang-select" class="av-input" data-av-lang></select>
+              </div>
+              <button type="button" class="av-btn" id="btn-quick-theme" aria-pressed="false" title="Alternar alto contraste" data-i18n="btn.contrast" data-i18n-attr="title:btn.contrastTitle">Contraste</button>
             </div>
-            <button class="btn btn-sm" id="btn-quick-theme" title="Alternar Alto Contraste">◐ Contraste</button>
-            <button class="btn btn-sm btn-danger" id="btn-logout">Salir</button>
           </div>
         </header>
 
         <!-- Dynamic Section Container -->
         <main id="section-view-container" class="content-wrapper" aria-live="polite"></main>
-
-        <!-- Compact Mobile Navigation -->
-        <nav class="mobile-bottom-nav" aria-label="Navegación móvil">
-          <button class="nav-btn active" data-nav-section="mission-control">Mission</button>
-          <button class="nav-btn" data-nav-section="my-health-check">Check</button>
-          <button class="nav-btn" data-nav-section="body-explorer">Body SVG</button>
-          <button class="nav-btn" data-nav-section="wellness-center">Wellness</button>
-          <button class="nav-btn" data-nav-section="daily-missions">Missions</button>
-          <button class="nav-btn" data-nav-section="mission-analytics">Analytics</button>
-          <button class="nav-btn" data-nav-section="alerts-center">Alerts</button>
-          <button class="nav-btn" data-nav-section="crew-monitoring">Crew</button>
-          <button class="nav-btn" data-nav-section="reports">Reports</button>
-          <button class="nav-btn" data-nav-section="administration">Admin</button>
-          <button class="nav-btn" data-nav-section="settings-help">Help</button>
-        </nav>
-      </div>
-    </div>
-
-    <!-- Modal Dialog for Detailed Indicator History & Assistive Explanation -->
-    <div id="global-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-label="Detalle de indicador">
-      <div class="modal-card">
-        <div style="display:flex; justify-content:flex-end; margin-bottom:0.5rem;">
-          <button class="btn btn-sm" id="btn-close-modal">✕ Cerrar</button>
-        </div>
-        <div id="global-modal-body"></div>
       </div>
     </div>
 
     <!-- Toast Notifications -->
     <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
-    <script type="module" src="/src/app/app.js"></script>
+    <script type="module" src="/src/app/app.js?v=__BUILD__"></script>
   </body>
 </html>
 

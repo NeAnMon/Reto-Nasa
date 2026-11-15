@@ -1,0 +1,84 @@
+/* AstroVital · Consola · Vista "Alertas" (resumen C&W)
+ * Solo clases av-al-*; usa los tokens de .av-console definidos en console.css.
+ * El color nunca va solo: cada estado lleva letra o texto.
+ */
+
+/* Texto solo para lectores de pantalla */
+.av-al-sr {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.av-al-pad { padding: 12px; margin: 0; }
+.av-al-p { margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
+
+/* Columna de detalle: a la derecha en escritorio, debajo en móvil */
+.av-al-detail { flex: 1 1 360px; max-width: 460px; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.av-al-card { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.av-al-status { margin: 0; min-height: 0; font-size: 13px; color: var(--av-text); }
+.av-al-status:not(:empty) { padding: 8px 12px; border: 1px solid var(--av-text2); background: var(--av-raised); }
+
+/* Contadores */
+.av-al-counters { list-style: none; margin: 0; padding: 10px 12px; display: flex; flex-wrap: wrap; gap: 8px 20px; border-bottom: 1px solid var(--av-border); }
+.av-al-counters li { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.av-al-counters li.av-al-cnt-cls { flex-direction: row; align-items: center; gap: 6px; }
+.av-al-cnt { font-size: 20px; font-weight: 600; line-height: 1.1; }
+.av-al-b0-W { color: var(--av-r-text); border-color: var(--av-r); }
+.av-al-b0-C { color: var(--av-y); border-color: var(--av-y); }
+.av-al-b0-A { color: var(--av-text2); border-color: var(--av-border); }
+
+/* Filtros */
+.av-al-filters { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: flex-end; padding: 10px 12px; border-bottom: 1px solid var(--av-border); }
+.av-al-filters .av-field { flex: 1 1 170px; max-width: 260px; }
+.av-al-filter-btn { display: flex; align-items: flex-end; }
+.av-al-filter-btn .av-btn { min-height: 40px; }
+
+/* Tabla resumen */
+.av-al-table { font-size: 13px; min-width: 640px; }
+.av-al-table th:first-child, .av-al-table td:first-child { padding-left: 12px; }
+.av-al-table th:last-child, .av-al-table td:last-child { padding-right: 12px; }
+.av-al-gmt { text-align: right; white-space: nowrap; }
+.av-al-ack { text-align: center; font-weight: 600; }
+.av-al-statuscell { white-space: nowrap; color: var(--av-text2); }
+.av-al-msgcell { width: 100%; }
+.av-al-pick { width: 100%; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; padding: 6px 0; color: var(--av-text); }
+.av-al-msg { font-weight: 600; }
+.av-al-msgsub { display: block; text-decoration: none; }
+.av-al-table tr.av-al-sel { background: var(--av-hover); box-shadow: inset 4px 0 0 var(--av-text); }
+.av-al-table tr.av-al-norm .av-al-msg { font-weight: 400; color: var(--av-text2); }
+
+/* Estado ALARM / NORM: texto siempre, con borde cuando está activo */
+.av-al-state { display: inline-block; padding: 2px 6px; font: 600 12px/1.2 "IBM Plex Mono", monospace; color: var(--av-muted); border: 1px solid transparent; }
+.av-al-state-on { color: var(--av-text); border-color: var(--av-text2); }
+
+/* Etiquetas de texto (SIMULADO, DEMO, estado de gestión) */
+.av-al-tag { display: inline-flex; align-items: center; padding: 1px 6px; font: 600 11px/1.4 "IBM Plex Mono", monospace; letter-spacing: .04em; border: 1px solid var(--av-border); color: var(--av-text2); white-space: nowrap; }
+.av-al-tag-strong { border-color: var(--av-text); color: var(--av-text); }
+.av-al-legend { margin: 0; padding: 8px 12px; border-top: 1px solid var(--av-border); }
+
+/* Detalle */
+.av-al-dtitle { margin: 0; font-size: 18px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.av-al-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 13px; }
+.av-al-value { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+.av-al-big { font-size: 28px; font-weight: 600; line-height: 1.1; overflow-wrap: anywhere; }
+.av-al-kv { display: grid; grid-template-columns: minmax(110px, auto) minmax(0, 1fr); gap: 6px 12px; margin: 0; font-size: 13px; }
+.av-al-kv dt { color: var(--av-muted); }
+.av-al-kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.av-al-steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+.av-al-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Formularios de acción */
+.av-al-form { display: flex; flex-direction: column; gap: 8px; padding-top: 10px; border-top: 1px solid var(--av-row); }
+.av-al-form .av-btn { align-self: flex-start; }
+.av-al-form-danger { border-top-color: var(--av-r-text); }
+.av-al-textarea { min-height: 64px; resize: vertical; font-family: "IBM Plex Sans", system-ui, sans-serif; }
+.av-al-form [aria-invalid="true"] { border-color: var(--av-r-text); }
+
+/* Historial */
+.av-al-timeline { list-style: none; margin: 0; padding: 0 0 0 12px; border-left: 2px solid var(--av-border); display: flex; flex-direction: column; gap: 10px; }
+.av-al-timeline li { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.av-al-tl-head { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+
+@media (max-width: 980px) {
+  .av-al-detail { max-width: none; flex-basis: 100%; }
+  .av-al-filters .av-field { max-width: none; }
+}

@@ -5,6 +5,35 @@ const STORAGE_TOKEN_KEY = "astrovital_session_token";
 const STORAGE_CSRF_KEY = "astrovital_csrf_token";
 const STORAGE_OFFLINE_QUEUE_KEY = "astrovital_offline_queue";
 
+/**
+ * Convierte el cuerpo de error de la API en un texto legible.
+ * - FastAPI (HTTPException): { detail: "texto" }.
+ * - Validación (422): { detail: [{ loc: ["body", "minutes"], msg: "...", ... }, ...] }.
+ * - Otros: { detail: { message | msg } } o { message }.
+ * Nunca devuelve "[object Object]": si no hay texto utilizable, devuelve el respaldo.
+ */
+export function errorDetailText(data, fallback) {
+  const itemText = (it) => {
+    if (it === null || it === undefined) return "";
+    if (typeof it === "string") return it.trim();
+    if (typeof it === "number" || typeof it === "boolean") return String(it);
+    if (typeof it !== "object") return "";
+    const msg = typeof it.msg === "string" ? it.msg : typeof it.message === "string" ? it.message : "";
+    if (!msg) return "";
+    const loc = Array.isArray(it.loc) ? it.loc.filter((p) => p !== "body" && p !== "query" && p !== "path") : [];
+    const field = loc.length ? String(loc[loc.length - 1]) : "";
+    return field ? `${field}: ${msg.trim()}` : msg.trim();
+  };
+  const fromDetail = (d) => {
+    if (Array.isArray(d)) {
+      return [...new Set(d.map(itemText).filter(Boolean))].join(" · ");
+    }
+    return itemText(d);
+  };
+  if (!data || typeof data !== "object") return itemText(data) || fallback;
+  return fromDetail(data.detail) || itemText(data.message) || fallback;
+}
+
 export const apiService = {
   simulatedOfflineMode: false,
 
@@ -24,26 +53,50 @@ export const apiService = {
     sessionStorage.removeItem(STORAGE_TOKEN_KEY);
     localStorage.removeItem(STORAGE_TOKEN_KEY);
     sessionStorage.removeItem(STORAGE_CSRF_KEY);
+    this.queueOwnerId = null;
   },
 
-  getOfflineQueue() {
+  /* ── Cola sin enlace, por persona usuaria ──────────────────────────────
+   * Todos los elementos llevan owner_id. Cada sesión solo ve, guarda y transmite los suyos;
+   * los de otra persona en el mismo terminal se conservan intactos para cuando vuelva a entrar.
+   * Los elementos antiguos sin owner_id no se transmiten nunca (no se sabe de quién son). */
+  queueOwnerId: null,
+
+  setQueueOwner(userId) {
+    this.queueOwnerId = userId ?? null;
+  },
+
+  _readAllQueue() {
     try {
-      return JSON.parse(localStorage.getItem(STORAGE_OFFLINE_QUEUE_KEY) || "[]");
+      const q = JSON.parse(localStorage.getItem(STORAGE_OFFLINE_QUEUE_KEY) || "[]");
+      return Array.isArray(q) ? q : [];
     } catch {
       return [];
     }
   },
 
+  _isMine(item) {
+    return !!item && this.queueOwnerId != null && item.owner_id === this.queueOwnerId;
+  },
+
+  getOfflineQueue() {
+    return this._readAllQueue().filter((x) => this._isMine(x));
+  },
+
   saveOfflineQueue(queue) {
-    localStorage.setItem(STORAGE_OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+    // Reemplaza solo los elementos propios; los de otras personas no se tocan
+    const others = this._readAllQueue().filter((x) => !this._isMine(x));
+    const mine = (queue || []).filter((x) => this._isMine(x));
+    localStorage.setItem(STORAGE_OFFLINE_QUEUE_KEY, JSON.stringify([...others, ...mine]));
   },
 
   enqueueOfflineItem(item) {
+    if (this.queueOwnerId == null) throw new Error("No hay sesión activa para encolar el registro.");
     const queue = this.getOfflineQueue();
     const dedupKey = item.dedup_key || `OFFLINE-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const exists = queue.some((x) => x.dedup_key === dedupKey);
     if (!exists) {
-      queue.push({ ...item, dedup_key: dedupKey, queued_at: new Date().toISOString() });
+      queue.push({ ...item, owner_id: this.queueOwnerId, dedup_key: dedupKey, queued_at: new Date().toISOString() });
       this.saveOfflineQueue(queue);
     }
     return queue.length;
@@ -52,23 +105,57 @@ export const apiService = {
   async flushOfflineQueue() {
     const queue = this.getOfflineQueue();
     if (!queue.length || this.simulatedOfflineMode) {
-      return { synced: 0, remaining: queue.length };
+      return { synced: 0, remaining: queue.length, rejected: [], rejected_count: 0 };
     }
-    const remaining = [];
+    const done = new Set();
     let synced = 0;
+    // Elementos descartados por rechazo definitivo: [{ type, preview, reason }]
+    const rejected = [];
+    const MSG_ENDPOINT = /^\/conversations\/[^/]+\/messages$/;
+    const typeOf = (endpoint) => {
+      if (MSG_ENDPOINT.test(endpoint || "")) return "MESSAGE";
+      if (endpoint === "/wellness/quick-checkin") return "QUICK_CHECKIN";
+      return String(endpoint || "UNKNOWN");
+    };
     for (const item of queue) {
+      // Mensajes con adjuntos aún en IndexedDB: solo los transmite la vista Mensajes (sube antes los archivos)
+      if (Array.isArray(item.pending_blob_keys) && item.pending_blob_keys.length) continue;
       try {
         await this.request(item.endpoint, {
           method: "POST",
           body: JSON.stringify({ ...item.payload, dedup_key: item.dedup_key }),
         });
         synced += 1;
-      } catch {
-        remaining.push(item);
+        done.add(item.dedup_key);
+      } catch (err) {
+        // Rechazo definitivo del servidor (4xx salvo 408/429): reintentar no sirve, se descarta
+        const st = err && err.status;
+        if (st >= 400 && st < 500 && st !== 408 && st !== 429) {
+          const payload = (item && item.payload) || {};
+          const type = typeOf(item.endpoint);
+          rejected.push({
+            type,
+            preview: typeof payload.content === "string" ? payload.content.trim().slice(0, 60) : "",
+            reason: (err && err.message) || `Error HTTP ${st}`,
+          });
+          done.add(item.dedup_key);
+          // Mensaje descartado con adjuntos ya subidos: liberarlos (best-effort, errores ignorados)
+          if (type === "MESSAGE" && Array.isArray(payload.attachment_ids)) {
+            for (const attId of payload.attachment_ids) {
+              try {
+                await this.request(`/attachments/${encodeURIComponent(attId)}`, { method: "DELETE" });
+              } catch {
+                /* best-effort: el backend limpia los adjuntos huérfanos */
+              }
+            }
+          }
+        }
       }
     }
+    // Relee la cola: conserva lo que se haya encolado mientras se transmitía
+    const remaining = this.getOfflineQueue().filter((x) => !done.has(x.dedup_key));
     this.saveOfflineQueue(remaining);
-    return { synced, remaining: remaining.length };
+    return { synced, remaining: remaining.length, rejected, rejected_count: rejected.length };
   },
 
   async request(path, options = {}) {
@@ -76,6 +163,10 @@ export const apiService = {
       "Content-Type": "application/json",
       ...(options.headers || {}),
     };
+    // FormData (subida de archivos): el navegador fija multipart/form-data con su boundary
+    if (typeof FormData !== "undefined" && options.body instanceof FormData) {
+      delete headers["Content-Type"];
+    }
     const token = this.getToken();
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
@@ -98,13 +189,19 @@ export const apiService = {
 
     if (!response.ok) {
       let errMsg = `Error HTTP ${response.status}`;
+      let errDetail;
       try {
         const errData = await response.json();
-        errMsg = errData.detail || errData.message || errMsg;
+        errDetail = errData && typeof errData === "object" ? errData.detail : undefined;
+        // 422 de validación: detail es una LISTA de objetos → texto legible (nunca "[object Object]")
+        errMsg = errorDetailText(errData, errMsg);
       } catch {
         // ignore JSON parse error
       }
-      throw new Error(errMsg);
+      const err = new Error(errMsg);
+      err.status = response.status;
+      if (errDetail !== undefined) err.detail = errDetail; // cuerpo original (p. ej. lista de validación)
+      throw err;
     }
 
     const contentType = response.headers.get("content-type") || "";
@@ -424,5 +521,393 @@ export const apiService = {
   getAuditEvents() {
     return this.request("/audit/events");
   },
+
+  // =========================================================================
+  // MODULE 1: COMMUNICATION CENTER API METHODS
+  // =========================================================================
+  getConversations(paramsObj = {}) {
+    const params = new URLSearchParams();
+    Object.entries(paramsObj).forEach(([k, v]) => {
+      if (v !== null && v !== undefined && v !== "") params.set(k, v);
+    });
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    return this.request(`/conversations${qs}`);
+  },
+
+  createOrGetConversation(payload) {
+    return this.request("/conversations", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  getConversationMessages(conversationId, paramsObj = {}) {
+    const params = new URLSearchParams();
+    Object.entries(paramsObj).forEach(([k, v]) => {
+      if (v !== null && v !== undefined && v !== "") params.set(k, v);
+    });
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    return this.request(`/conversations/${conversationId}/messages${qs}`);
+  },
+
+  sendMessage(conversationId, payload) {
+    if (this.simulatedOfflineMode) {
+      const dedupKey = `MSG-OFFLINE-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const count = this.enqueueOfflineItem({
+        endpoint: `/conversations/${conversationId}/messages`,
+        dedup_key: dedupKey,
+        payload,
+      });
+      return Promise.resolve({
+        queued_offline: true,
+        server_confirmed_delivery: false,
+        queue_size: count,
+        message: {
+          id: `temp-${Date.now()}`,
+          conversation_id: conversationId,
+          content: payload.content,
+          category: payload.category || "GENERAL",
+          delivery_status: "PENDING_OFFLINE_SYNC",
+          is_important: Boolean(payload.is_important),
+          created_at: new Date().toISOString(),
+        },
+        notice: "Sin conexión: mensaje conservado temporalmente en cola local segura (NO marcado como entregado hasta confirmación del servidor).",
+      });
+    }
+    return this.request(`/conversations/${conversationId}/messages`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  markMessageRead(messageId) {
+    return this.request(`/messages/${messageId}/read`, { method: "PATCH" });
+  },
+
+  updateMessageFlags(messageId, payload) {
+    return this.request(`/messages/${messageId}/flags`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  createSupportRequest(payload) {
+    return this.request("/support-requests", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  getSupportRequests(missionId = null, statusFilter = null) {
+    const params = new URLSearchParams();
+    if (missionId) params.set("mission_id", missionId);
+    if (statusFilter) params.set("status_filter", statusFilter);
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    return this.request(`/support-requests${qs}`);
+  },
+
+  updateSupportRequestStatus(requestId, status, leaderResponseNotes = "") {
+    return this.request(`/support-requests/${requestId}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status, leader_response_notes: leaderResponseNotes }),
+    });
+  },
+
+  /* ── Canal familiar y adjuntos ── */
+  /* "Conexión con Tierra" (docs/CONTRATO_AISLAMIENTO.md §4). Los mensajes FAMILY usan las mismas rutas
+   * /conversations/{id}/messages: sendMessage() reenvía tal cual `attachment_ids` (máx. 4) en el payload. */
+  getConversationsByChannel(channel = "MISSION", paramsObj = {}) {
+    return this.getConversations({ ...paramsObj, channel });
+  },
+
+  getFamilyContacts() {
+    return this.request("/family/contacts");
+  },
+
+  /** Sube un archivo (foto o nota de voz) como multipart, campo `file`. Devuelve { id, file_name, mime_type, kind, … }. */
+  uploadAttachment(file, fileName = null) {
+    const fd = new FormData();
+    if (fileName) fd.append("file", file, fileName);
+    else fd.append("file", file);
+    return this.request("/attachments", { method: "POST", body: fd });
+  },
+
+  /** Ruta del binario. Solo para referencia: la autenticación va por cabecera, así que se descarga con getAttachmentBlob(). */
+  attachmentUrl(attachmentId) {
+    return `/api/v1/attachments/${encodeURIComponent(attachmentId)}`;
+  },
+
+  /** Descarga autenticada del adjunto como Blob (para URL.createObjectURL). */
+  async getAttachmentBlob(attachmentId) {
+    const res = await this.request(`/attachments/${encodeURIComponent(attachmentId)}`);
+    if (!(res instanceof Blob)) throw new Error("Respuesta inesperada al descargar el adjunto.");
+    return res;
+  },
+
+  // =========================================================================
+  // MODULE 2: COGNITIVE ASSESSMENT CENTER API METHODS
+  // =========================================================================
+  getCognitiveDomains() {
+    return this.request("/cognitive/domains");
+  },
+
+  getCognitiveTests(domainCode = null) {
+    const qs = domainCode ? `?domain_code=${domainCode}` : "";
+    return this.request(`/cognitive/tests${qs}`);
+  },
+
+  getCognitiveTestDetail(testIdentifier, difficulty = "INTERMEDIATE") {
+    return this.request(`/cognitive/tests/${testIdentifier}?difficulty=${difficulty}`);
+  },
+
+  startCognitiveAssessment(payload) {
+    return this.request("/cognitive/assessments", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  getCognitiveAssessments(paramsObj = {}) {
+    const params = new URLSearchParams();
+    Object.entries(paramsObj).forEach(([k, v]) => {
+      if (v !== null && v !== undefined && v !== "") params.set(k, v);
+    });
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    return this.request(`/cognitive/assessments${qs}`);
+  },
+
+  submitCognitiveResponses(assessmentId, payload) {
+    return this.request(`/cognitive/assessments/${assessmentId}/responses`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  completeCognitiveAssessment(assessmentId, payload) {
+    return this.request(`/cognitive/assessments/${assessmentId}/complete`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  postponeCognitiveAssessment(assessmentId, postponeReason) {
+    return this.request(`/cognitive/assessments/${assessmentId}/postpone`, {
+      method: "POST",
+      body: JSON.stringify({ postpone_reason: postponeReason }),
+    });
+  },
+
+  getCognitiveHistory(astronautId = null, domainCode = null, difficulty = null) {
+    const params = new URLSearchParams();
+    if (astronautId) params.set("astronaut_id", astronautId);
+    if (domainCode) params.set("domain_code", domainCode);
+    if (difficulty) params.set("difficulty", difficulty);
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    return this.request(`/cognitive/history${qs}`);
+  },
+
+  getCognitiveAnalytics(astronautId = null, missionId = null, domainCode = null) {
+    const params = new URLSearchParams();
+    if (astronautId) params.set("astronaut_id", astronautId);
+    if (missionId) params.set("mission_id", missionId);
+    if (domainCode) params.set("domain_code", domainCode);
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    return this.request(`/cognitive/analytics${qs}`);
+  },
+
+  getCognitiveSchedules(astronautId = null, missionId = null) {
+    const params = new URLSearchParams();
+    if (astronautId) params.set("astronaut_id", astronautId);
+    if (missionId) params.set("mission_id", missionId);
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    return this.request(`/cognitive/schedules${qs}`);
+  },
+
+  createCognitiveSchedule(payload) {
+    return this.request("/cognitive/schedules", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  // =========================================================================
+  // MODULE 3: EMOTIONAL ASSESSMENT CENTER API METHODS
+  // =========================================================================
+  getEmotionalQuestionnaires() {
+    return this.request("/emotional-assessments/questionnaires");
+  },
+
+  createEmotionalRequests(payload) {
+    return this.request("/emotional-assessments/requests", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  getEmotionalRequests(paramsObj = {}) {
+    const params = new URLSearchParams();
+    Object.entries(paramsObj).forEach(([k, v]) => {
+      if (v !== null && v !== undefined && v !== "") params.set(k, v);
+    });
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    return this.request(`/emotional-assessments/requests${qs}`);
+  },
+
+  getMyEmotionalRequests(statusFilter = null) {
+    const qs = statusFilter ? `?status_filter=${statusFilter}` : "";
+    return this.request(`/emotional-assessments/my-requests${qs}`);
+  },
+
+  getMyEmotionalRequestDetail(requestId) {
+    return this.request(`/emotional-assessments/my-requests/${requestId}`);
+  },
+
+  patchEmotionalRequest(requestId, payload) {
+    return this.request(`/emotional-assessments/requests/${requestId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  sendOrRemindEmotionalRequest(requestId) {
+    return this.request(`/emotional-assessments/requests/${requestId}/send`, {
+      method: "POST",
+    });
+  },
+
+  cancelEmotionalRequest(requestId) {
+    return this.request(`/emotional-assessments/requests/${requestId}/cancel`, {
+      method: "POST",
+    });
+  },
+
+  startEmotionalAssessment(requestId) {
+    return this.request(`/emotional-assessments/${requestId}/start`, {
+      method: "POST",
+    });
+  },
+
+  saveEmotionalResponses(assessmentId, payload) {
+    return this.request(`/emotional-assessments/${assessmentId}/responses`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  completeEmotionalAssessment(assessmentId, payload) {
+    return this.request(`/emotional-assessments/${assessmentId}/complete`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  getEmotionalFollowUps(requestId = null, astronautId = null) {
+    const params = new URLSearchParams();
+    if (requestId) params.set("request_id", requestId);
+    if (astronautId) params.set("astronaut_id", astronautId);
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    return this.request(`/emotional-assessments/follow-ups${qs}`);
+  },
+
+  createEmotionalFollowUp(payload) {
+    return this.request("/emotional-assessments/follow-ups", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  getExpansionAnalyticsOverview(astronautId = null, missionId = null) {
+    const params = new URLSearchParams();
+    if (astronautId) params.set("astronaut_id", astronautId);
+    if (missionId) params.set("mission_id", missionId);
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    return this.request(`/analytics/expansion-overview${qs}`);
+  },
+
+  /* ── Bienestar: check-in rápido, tiempo libre, tripulación ── */
+  // Contrato: docs/CONTRATO_AISLAMIENTO.md §1–3 (+ GET /family/contacts de §4)
+  getQuickCheckins(astronautId = null, limit = 14) {
+    const params = new URLSearchParams();
+    if (astronautId) params.set("astronaut_id", astronautId);
+    if (limit) params.set("limit", limit);
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    return this.request(`/wellness/quick-checkin${qs}`);
+  },
+
+  /* Sin enlace (simulado): el check-in va a la cola local y se envía al reconectar.
+     Si el payload trae dedup_key (una por envío del formulario), la cola reutiliza esa misma
+     clave: el backend devuelve el registro existente si llega dos veces. */
+  createQuickCheckin(payload) {
+    if (this.simulatedOfflineMode) {
+      const count = this.enqueueOfflineItem({
+        endpoint: "/wellness/quick-checkin",
+        payload,
+        ...(payload && payload.dedup_key ? { dedup_key: payload.dedup_key } : {}),
+      });
+      return Promise.resolve({ queued_offline: true, queue_size: count });
+    }
+    return this.request("/wellness/quick-checkin", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  getLeisureActivities({ maxMinutes = null, category = null } = {}) {
+    const params = new URLSearchParams();
+    if (maxMinutes) params.set("max_minutes", maxMinutes);
+    if (category) params.set("category", category);
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    return this.request(`/wellness/leisure${qs}`);
+  },
+
+  logLeisureActivity(code, payload) {
+    return this.request(`/wellness/leisure/${encodeURIComponent(code)}/log`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  getLeisureLog(astronautId = null, limit = 20) {
+    const params = new URLSearchParams();
+    if (astronautId) params.set("astronaut_id", astronautId);
+    if (limit) params.set("limit", limit);
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    return this.request(`/wellness/leisure/log${qs}`);
+  },
+
+  getCrewActivityCatalog() {
+    return this.request("/crew-activities/catalog");
+  },
+
+  getCrewActivities({ missionId = null, status = null } = {}) {
+    const params = new URLSearchParams();
+    if (missionId) params.set("mission_id", missionId);
+    if (status) params.set("status", status);
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    return this.request(`/crew-activities${qs}`);
+  },
+
+  createCrewActivity(payload) {
+    return this.request("/crew-activities", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  respondCrewActivity(activityId, response) {
+    return this.request(`/crew-activities/${encodeURIComponent(activityId)}/respond`, {
+      method: "POST",
+      body: JSON.stringify({ response }),
+    });
+  },
+
+  attendCrewActivity(activityId) {
+    return this.request(`/crew-activities/${encodeURIComponent(activityId)}/attend`, { method: "POST" });
+  },
+
+  cancelCrewActivity(activityId) {
+    return this.request(`/crew-activities/${encodeURIComponent(activityId)}/cancel`, { method: "POST" });
+  },
+  // getFamilyContacts() lo define el bloque "Canal familiar y adjuntos" (mismo endpoint); se reutiliza.
 };
 

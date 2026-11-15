@@ -1,5 +1,7 @@
 import json
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Dict, Optional
 from sqlalchemy.orm import Session
 
 from backend.app.core.config import settings
@@ -11,32 +13,70 @@ from backend.app.models.models import (
     Badge,
     ClinicalRule,
     ClinicalRuleVersion,
+    CognitiveAssessment,
+    CognitiveAssessmentSession,
+    CognitiveBaseline,
+    CognitiveDomain,
+    CognitiveFeedback,
+    CognitiveResponse,
+    CognitiveResult,
+    CognitiveSchedule,
+    CognitiveTask,
+    CognitiveTest,
+    CognitiveTestVersion,
+    Conversation,
+    ConversationAuditEvent,
+    ConversationParticipant,
+    CrewActivity,
+    CrewActivityParticipant,
+    CrewActivityTemplate,
     DailyMission,
     DataQualityEvent,
     DataSource,
+    EmotionalAssessment,
+    EmotionalAssessmentNotification,
+    EmotionalAssessmentRequest,
+    EmotionalAssessmentResponse,
+    EmotionalAssessmentResult,
+    EmotionalFollowUp,
+    EmotionalQuestion,
+    EmotionalQuestionOption,
+    EmotionalQuestionnaire,
+    EmotionalQuestionnaireVersion,
+    EmotionalSupportRequest,
     EnvironmentalMeasurement,
     EnvironmentProfile,
     FollowUpAction,
+    FamilyContact,
     GamificationEvent,
     GamificationProfile,
     HealthBaseline,
     HealthIndicatorDefinition,
     HealthMeasurement,
+    LeisureActivity,
+    LeisureLog,
+    Message,
+    MessageAttachment,
+    MessageNotification,
+    MessageReadReceipt,
     Mission,
     MissionAssignment,
     MissionContext,
     MissionPhase,
     Permission,
     PsychologicalWellnessAssessment,
+    QuickCheckin,
     Role,
     RolePermission,
     SensorRegistry,
+    SupportRequest,
     User,
     UserBadge,
     WellnessInstrument,
     WellnessRecommendation,
 )
 from backend.app.security.auth import hash_password
+from backend.app.services.cognitive_engine import COGNITIVE_DOMAINS_CATALOG
 
 
 def utcnow() -> datetime:
@@ -599,6 +639,66 @@ DAILY_MISSIONS_DATA = [
         False,
         "Comprender cómo los 5 peligros del espacio interactúan con cada sistema anatómico empodera el autocuidado.",
     ),
+    (
+        "COMPLETE_COGNITIVE_CHECK",
+        "Complete Cognitive Check",
+        "COGNITIVE",
+        "Completar una actividad interactiva en el Cognitive Performance Center.",
+        35,
+        "ALL",
+        False,
+        "El seguimiento por dominio cognitivo permite observar el impacto del sueño y la carga operativa sin calificaciones estigmatizantes.",
+    ),
+    (
+        "COMPLETE_EMOTIONAL_CHECKIN",
+        "Complete Emotional Check-In",
+        "WELLNESS",
+        "Responder un cuestionario emocional estructurado en My Emotional Check-In.",
+        35,
+        "ALL",
+        False,
+        "Expresar cómo te sientes facilita el acompañamiento preventivo oportuno con privacidad reforzada.",
+    ),
+    (
+        "REVIEW_MISSION_MESSAGES",
+        "Review Mission Messages",
+        "COMMUNICATION",
+        "Revisar y confirmar lectura de comunicaciones directas con el líder de misión en el Communication Center.",
+        20,
+        "ALL",
+        False,
+        "La comunicación fluida entre el astronauta y el apoyo en tierra reduce la incertidumbre operativa.",
+    ),
+    (
+        "RESPOND_SUPPORT_REQUEST",
+        "Respond Support Request",
+        "FOLLOW_UP",
+        "Dar seguimiento o actualizar una solicitud de apoyo o mensaje prioritario con Tierra.",
+        30,
+        "ALL",
+        False,
+        "El seguimiento estructurado de solicitudes asegura que ninguna inquietud quede sin respuesta.",
+    ),
+    (
+        "MEMORY_TRAINING_ACTIVITY",
+        "Memory Training Activity",
+        "COGNITIVE",
+        "Realizar una sesión breve de entrenamiento de memoria operativa o aprendizaje visual.",
+        25,
+        "ALL",
+        False,
+        "Ejercitar la memoria de trabajo apoya la ejecución de listas de verificación complejas.",
+    ),
+    (
+        "VISUAL_ATTENTION_ACTIVITY",
+        "Visual Attention Activity",
+        "COGNITIVE",
+        "Realizar una actividad de atención sostenida o seguimiento visual en el centro cognitivo.",
+        25,
+        "ALL",
+        False,
+        "La vigilancia visual y el rastreo espacial son esenciales durante acoplamientos y actividades extravehiculares.",
+    ),
 ]
 
 
@@ -651,6 +751,62 @@ BADGES_DATA = [
         "award",
         "Hito de participación integral durante la misión espacial.",
         "Alcanzar 150 puntos de experiencia (XP) verificados por el servidor.",
+    ),
+    (
+        "MEMORY_EXPLORER",
+        "Memory Explorer",
+        "brain",
+        "Participación en actividades de memoria operativa y recuerdo inmediato.",
+        "Completar una evaluación del dominio MEMORY en el Cognitive Performance Center.",
+    ),
+    (
+        "VISUAL_NAVIGATOR",
+        "Visual Navigator",
+        "eye",
+        "Dominio de actividades de aprendizaje visual y seguimiento de trayectorias.",
+        "Completar una evaluación de VISUAL_LEARNING o VISUAL_TRACKING.",
+    ),
+    (
+        "ATTENTION_SPECIALIST",
+        "Attention Specialist",
+        "target",
+        "Entrenamiento de vigilancia, atención sostenida e inhibición de distractores.",
+        "Completar una evaluación del dominio ATTENTION.",
+    ),
+    (
+        "PATTERN_DETECTIVE",
+        "Pattern Detective",
+        "puzzle",
+        "Exploración de reglas lógicas y categorización conceptual.",
+        "Completar una evaluación del dominio ABSTRACTION.",
+    ),
+    (
+        "SPATIAL_EXPLORER",
+        "Spatial Explorer",
+        "box",
+        "Orientación espacial, rotación mental e integración interpersonal.",
+        "Completar una evaluación de SPATIAL_ORIENTATION o EMOTION_RECOGNITION.",
+    ),
+    (
+        "LOGIC_CHALLENGER",
+        "Logic Challenger",
+        "cpu",
+        "Resolución de matrices relacionales y exploración compleja de escenarios.",
+        "Completar una evaluación de ABSTRACT_REASONING o COMPLEX_EXPLORATION.",
+    ),
+    (
+        "COGNITIVE_MISSION_COMPLETED",
+        "Cognitive Mission Completed",
+        "sparkles",
+        "Primera actividad cognitiva completada exitosamente en misión.",
+        "Completar cualquier evaluación cognitiva interactiva.",
+    ),
+    (
+        "FOCUS_TRAINING",
+        "Focus Training",
+        "zap",
+        "Constancia en el entrenamiento y monitoreo cognitivo preventivo.",
+        "Completar 3 o más actividades en el Cognitive Performance Center.",
     ),
 ]
 
@@ -750,11 +906,18 @@ WELLNESS_RECOMMENDATIONS_DATA = [
 
 
 def seed_database(db: Session, force_reseed_sim: bool = False) -> None:
+    # Migración ligera de BD existentes (siempre, aunque no se siembren datos demo)
+    apply_lightweight_migrations(db)
     if not settings.SEED_DEMO_DATA:
+        # BD ya inicializada: mantiene al día los catálogos del módulo de aislamiento, sin cuentas demo
+        if db.query(Role).count() > 0:
+            seed_isolation_module(db, include_demo_accounts=False)
         return
 
     existing_roles = db.query(Role).count()
-    if existing_roles > 0 and not force_reseed_sim:
+    existing_cog_domains = db.query(CognitiveDomain).count()
+    if existing_roles > 0 and existing_cog_domains > 0 and not force_reseed_sim:
+        seed_isolation_module(db)
         return
 
     now = utcnow()
@@ -1036,6 +1199,172 @@ def seed_database(db: Session, force_reseed_sim: bool = False) -> None:
             )
     db.flush()
 
+    # 5B. Cognitive Performance Center Catalog (9 Independent Domains + Tasks)
+    for dcat in COGNITIVE_DOMAINS_CATALOG:
+        dom = db.query(CognitiveDomain).filter(CognitiveDomain.code == dcat["code"]).first()
+        if not dom:
+            dom = CognitiveDomain(
+                code=dcat["code"],
+                name=dcat["name"],
+                objective=dcat["objective"],
+                scientific_disclaimer=dcat["scientific_disclaimer"],
+                badge_code=dcat.get("badge_code"),
+            )
+            db.add(dom)
+            db.flush()
+
+        tcode = dcat["test_code"]
+        ct = db.query(CognitiveTest).filter(CognitiveTest.code == tcode).first()
+        if not ct:
+            ct = CognitiveTest(
+                code=tcode,
+                domain_code=dcat["code"],
+                title=dcat["test_title"],
+                instructions=dcat["instructions"],
+                practice_example_json=json.dumps(dcat["practice_example"], ensure_ascii=False),
+                estimated_duration_seconds=60,
+                current_version="1.0-DEMO",
+                is_active=True,
+            )
+            db.add(ct)
+            db.flush()
+
+            ver = CognitiveTestVersion(
+                test_id=ct.id,
+                version_number="1.0-DEMO",
+                supported_difficulties_csv="BASIC,INTERMEDIATE,ADVANCED",
+                tasks_payload_json=json.dumps(dcat["tasks"], ensure_ascii=False),
+                educational_feedback=(
+                    "La repetición frecuente mejora la familiaridad procedimental con la tarea; "
+                    "los cambios deben interpretarse junto con sueño y fatiga. Actividad NO diagnóstica."
+                ),
+                is_current=True,
+            )
+            db.add(ver)
+            db.flush()
+
+            for diff in ("BASIC", "INTERMEDIATE", "ADVANCED"):
+                for idx, task_item in enumerate(dcat["tasks"], start=1):
+                    db.add(
+                        CognitiveTask(
+                            test_code=ct.code,
+                            difficulty=diff,
+                            sequence_order=idx,
+                            prompt_text=task_item["prompt"],
+                            stimulus_json=json.dumps(task_item["stimulus"], ensure_ascii=False),
+                            options_json=json.dumps(task_item["options"], ensure_ascii=False),
+                            correct_answer_key=task_item["correct"],
+                        )
+                    )
+    db.flush()
+
+    # 5C. Emotional Assessment Center Catalog (12 Dimensions + 6 Optional Open Questions)
+    eq = db.query(EmotionalQuestionnaire).filter(EmotionalQuestionnaire.code == "EMOTIONAL_CHECKIN_DEMO_V1").first()
+    if not eq:
+        eq = EmotionalQuestionnaire(
+            code="EMOTIONAL_CHECKIN_DEMO_V1",
+            title="Cuestionario Estructurado de Bienestar Emocional y Acompañamiento en Misión (DEMO)",
+            description=(
+                "Evaluación preventiva de 12 dimensiones emocionales y preguntas abiertas opcionales solicitada "
+                "para acompañar la adaptación de la tripulación con privacidad reforzada."
+            ),
+            reference_period_label="Últimos 3 a 7 días de misión",
+            estimated_minutes=5,
+            is_clinically_validated=False,
+            privacy_and_usage_notice=(
+                "AVISO ÉTICO Y DE PRIVACIDAD: Este cuestionario es una herramienta preventiva de demostración "
+                "(NO diagnóstica y NO validada clínicamente). Sus respuestas detalladas están protegidas con "
+                "privacidad reforzada; la administración solo visualiza el estado operativo de cumplimiento."
+            ),
+            current_version="1.0-DEMO",
+            is_active=True,
+        )
+        db.add(eq)
+        db.flush()
+
+        eq_ver = EmotionalQuestionnaireVersion(
+            questionnaire_id=eq.id,
+            version_number="1.0-DEMO",
+            scoring_rules_json=json.dumps(
+                {
+                    "dimensions_count": 12,
+                    "open_questions_count": 6,
+                    "single_global_score_allowed": False,
+                },
+                ensure_ascii=False,
+            ),
+            interpretation_guidelines="Evaluación multidimensional sin puntaje único universal de salud mental.",
+            is_current=True,
+        )
+        db.add(eq_ver)
+        db.flush()
+
+        scale_options_positive = [
+            ("1", "1 - Muy bajo / Casi nunca", 1),
+            ("2", "2 - Bajo / Ocasionalmente", 2),
+            ("3", "3 - Moderado / Regularmente", 3),
+            ("4", "4 - Alto / Frecuentemente", 4),
+            ("5", "5 - Muy alto / Casi siempre", 5),
+            ("PREFER_NOT_TO_ANSWER", "Prefiero no responder", None),
+        ]
+        scale_options_support = [
+            ("1", "1 - No requiero acompañamiento adicional por ahora", 1),
+            ("2", "2 - Me gustaría mantener seguimiento preventivo habitual", 2),
+            ("3", "3 - Deseo conversar próximamente con apoyo de misión", 3),
+            ("4", "4 - Solicito revisión prioritaria con especialista autorizado", 4),
+            ("5", "5 - Necesito apoyo inmediato / protocolo urgente", 5),
+            ("PREFER_NOT_TO_ANSWER", "Prefiero no responder", None),
+        ]
+
+        emotional_questions_cfg = [
+            # (qcode, seq, dim_code, qtype, prompt, is_optional, allow_pna, higher_concern, opts)
+            ("Q_MOOD", 1, "MOOD", "SCALE_1_5", "¿Cómo describirías tu estado de ánimo general durante las últimas 24–48 horas?", False, True, False, scale_options_positive),
+            ("Q_STRESS", 2, "PERCEIVED_STRESS", "SCALE_1_5", "¿Qué nivel de estrés o sobrecarga percibes frente a las tareas actuales?", False, True, True, scale_options_positive),
+            ("Q_ISOLATION", 3, "ISOLATION", "SCALE_1_5", "¿En qué medida has experimentado sensación de aislamiento o distancia de tus seres queridos?", False, True, True, scale_options_positive),
+            ("Q_ADAPTATION", 4, "MISSION_ADAPTATION", "SCALE_1_5", "¿Qué tan cómoda y fluida sientes tu adaptación al entorno y rutinas de la misión?", False, True, False, scale_options_positive),
+            ("Q_REST", 5, "REST_QUALITY", "SCALE_1_5", "¿Cómo evalúas la calidad reparadora de tu descanso reciente?", False, True, False, scale_options_positive),
+            ("Q_FATIGUE", 6, "EMOTIONAL_FATIGUE", "SCALE_1_5", "¿Qué nivel de desgaste o fatiga emocional sientes al finalizar la jornada?", False, True, True, scale_options_positive),
+            ("Q_SOCIAL", 7, "SOCIAL_SUPPORT", "SCALE_1_5", "¿Qué tan respaldado te sientes por tu tripulación y por el equipo en Tierra?", False, True, False, scale_options_positive),
+            ("Q_MOTIVATION", 8, "MOTIVATION", "SCALE_1_5", "¿Cómo describirías tu motivación y sentido de propósito con los objetivos actuales?", False, True, False, scale_options_positive),
+            ("Q_COPING", 9, "COPING_CONTROL", "SCALE_1_5", "¿Qué tanta sensación de control y recursos propios sientes para manejar imprevistos?", False, True, False, scale_options_positive),
+            ("Q_CONCERNS", 10, "MISSION_CONCERNS", "SCALE_1_5", "¿Qué nivel de preocupación tienes respecto al desarrollo técnico u operativo de la misión?", False, True, True, scale_options_positive),
+            ("Q_ACCOMPANIMENT", 11, "ACCOMPANIMENT_NEED", "BOOLEAN_SUPPORT", "¿Qué nivel de acompañamiento o conversación con el equipo de apoyo deseas solicitar?", False, True, True, scale_options_support),
+            ("Q_WELLBEING", 12, "GENERAL_WELLBEING", "SCALE_1_5", "En conjunto, ¿cómo valoras tu bienestar integral en este momento de la misión?", False, True, False, scale_options_positive),
+            # 6 optional open-ended questions
+            ("Q_OPEN_FEELING", 13, "OPEN_REFLECTION", "OPEN_TEXT", "1. ¿Cómo te has sentido durante los últimos días de la misión? (Opcional)", True, True, False, []),
+            ("Q_OPEN_WORRY", 14, "OPEN_REFLECTION", "OPEN_TEXT", "2. ¿Hay alguna situación que te esté generando preocupación o cansancio? (Opcional)", True, True, False, []),
+            ("Q_OPEN_REST_FOCUS", 15, "OPEN_REFLECTION", "OPEN_TEXT", "3. ¿Cómo sientes tu nivel de descanso y concentración? (Opcional)", True, True, False, []),
+            ("Q_OPEN_TEAM_COMMS", 16, "OPEN_REFLECTION", "OPEN_TEXT", "4. ¿Cómo percibes la comunicación con el equipo en tierra? (Opcional)", True, True, False, []),
+            ("Q_OPEN_NEED_SUPPORT", 17, "OPEN_REFLECTION", "OPEN_TEXT", "5. ¿Necesitas apoyo adicional en este momento? (Opcional)", True, True, False, []),
+            ("Q_OPEN_PRIVATE_TOPIC", 18, "OPEN_REFLECTION", "OPEN_TEXT", "6. ¿Deseas conversar de forma privada con el líder o personal autorizado? (Opcional)", True, True, False, []),
+        ]
+
+        for qcode, seq_ord, dim_code, qtype, qtext, opt_flag, pna_flag, hi_conc, opts in emotional_questions_cfg:
+            q_obj = EmotionalQuestion(
+                version_id=eq_ver.id,
+                question_code=qcode,
+                dimension_code=dim_code,
+                sequence_order=seq_ord,
+                prompt_text=qtext,
+                question_type=qtype,
+                is_optional=opt_flag,
+                allow_prefer_not_to_answer=pna_flag,
+                higher_value_indicates_concern=hi_conc,
+            )
+            db.add(q_obj)
+            db.flush()
+            for o_idx, (oval, olbl, nscore) in enumerate(opts, start=1):
+                db.add(
+                    EmotionalQuestionOption(
+                        question_id=q_obj.id,
+                        sequence_order=o_idx,
+                        option_value=oval,
+                        option_label=olbl,
+                        numeric_weight=nscore,
+                    )
+                )
+    db.flush()
+
     # 6. Users (Admin, Leader, 3 Astronauts)
     users_seed = [
         (
@@ -1222,8 +1551,14 @@ def seed_database(db: Session, force_reseed_sim: bool = False) -> None:
     db.flush()
 
     # Populate synthetic dynamic data
-    _populate_synthetic_demo_records(db, m1, m2, user_objs, now)
-    db.commit()
+    if existing_roles > 0:
+        reset_simulated_demo_data(db)
+    else:
+        _populate_synthetic_demo_records(db, m1, m2, user_objs, now)
+        db.commit()
+
+    # Módulo de aislamiento y confinamiento (catálogos, rol FAMILY_MEMBER, familiares demo)
+    seed_isolation_module(db)
 
 
 def _populate_synthetic_demo_records(
@@ -1663,6 +1998,8 @@ def _populate_synthetic_demo_records(
         ("CONSISTENCY_STREAK", "Racha de 5 días de participación constante."),
         ("SLEEP_ROUTINE_COMPLETED", "Registro de rutina de descanso completado."),
         ("LEARNING_EXPLORER", "Exploración de cápsulas educativas en Body Explorer."),
+        ("COGNITIVE_MISSION_COMPLETED", "Primera actividad cognitiva interactiva completada en misión."),
+        ("MEMORY_EXPLORER", "Evaluación del dominio MEMORY completada en Hábitat Selene-Base."),
     ]:
         if not db.query(UserBadge).filter(UserBadge.user_id == elena.id, UserBadge.badge_code == bcode).first():
             db.add(
@@ -1674,12 +2011,475 @@ def _populate_synthetic_demo_records(
                 )
             )
 
+    admin_user = user_objs["ADM-001"]
+
+    # 8. Module 1 — Communication Center Demo Records (1-on-1 Conversations, Messages & Support Requests)
+    conv_elena = (
+        db.query(Conversation)
+        .filter(
+            Conversation.mission_id == m1.id,
+            Conversation.astronaut_id == elena.id,
+            Conversation.leader_id == leader.id,
+        )
+        .first()
+    )
+    if not conv_elena:
+        conv_elena = Conversation(
+            mission_id=m1.id,
+            astronaut_id=elena.id,
+            leader_id=leader.id,
+            subject="Canal Directo: Cmdr. Elena Rostova ↔ Dir. Carlos Ibáñez",
+            status="OPEN",
+            is_highlighted=True,
+            last_message_at=now - timedelta(minutes=15),
+            is_simulated=True,
+        )
+        db.add(conv_elena)
+        db.flush()
+        db.add(
+            ConversationParticipant(
+                conversation_id=conv_elena.id,
+                user_id=elena.id,
+                role_in_conversation="ASTRONAUT",
+                last_seen_at=now - timedelta(minutes=5),
+            )
+        )
+        db.add(
+            ConversationParticipant(
+                conversation_id=conv_elena.id,
+                user_id=leader.id,
+                role_in_conversation="MISSION_LEADER",
+                last_seen_at=now - timedelta(minutes=2),
+            )
+        )
+
+    msg1 = Message(
+        conversation_id=conv_elena.id,
+        sender_id=elena.id,
+        recipient_id=leader.id,
+        category="HEALTH_UPDATE",
+        content="[SIMULADO] Hola Dir. Carlos, finalicé el turno de superficie lunar. Registré pulso ligeramente elevado (93 bpm) e hidratación en 1950 ml; ya inicié pauta de rehidratación fraccionada.",
+        delivery_status="READ",
+        is_important=True,
+        is_simulated=True,
+        created_at=now - timedelta(hours=2),
+        sent_at=now - timedelta(hours=2),
+    )
+    db.add(msg1)
+    db.flush()
+    db.add(
+        MessageReadReceipt(
+            message_id=msg1.id,
+            user_id=leader.id,
+            read_at=now - timedelta(hours=1, minutes=50),
+        )
+    )
+
+    msg2 = Message(
+        conversation_id=conv_elena.id,
+        sender_id=leader.id,
+        recipient_id=elena.id,
+        category="MISSION_COORDINATION",
+        content="[SIMULADO] Recibido Cmdr. Elena. Confirmamos desde Control en Tierra tu lectura en estado MONITOR. Mantén reposo relativo antes del bloque de sueño y avísanos tras tu próxima toma de agua.",
+        delivery_status="DELIVERED",
+        reply_to_message_id=msg1.id,
+        is_important=False,
+        marked_unread_by_recipient=True,
+        is_simulated=True,
+        created_at=now - timedelta(minutes=15),
+        sent_at=now - timedelta(minutes=15),
+    )
+    db.add(msg2)
+    db.flush()
+    db.add(
+        MessageNotification(
+            user_id=elena.id,
+            conversation_id=conv_elena.id,
+            message_id=msg2.id,
+            title="Nuevo mensaje de Dir. Carlos Ibáñez",
+            is_read=False,
+        )
+    )
+
+    conv_marcus = (
+        db.query(Conversation)
+        .filter(
+            Conversation.mission_id == m1.id,
+            Conversation.astronaut_id == marcus.id,
+            Conversation.leader_id == leader.id,
+        )
+        .first()
+    )
+    if not conv_marcus:
+        conv_marcus = Conversation(
+            mission_id=m1.id,
+            astronaut_id=marcus.id,
+            leader_id=leader.id,
+            subject="Canal Directo: Dr. Marcus Vance ↔ Dir. Carlos Ibáñez",
+            status="OPEN",
+            is_highlighted=False,
+            last_message_at=now - timedelta(hours=1),
+            is_simulated=True,
+        )
+        db.add(conv_marcus)
+        db.flush()
+        db.add(
+            ConversationParticipant(
+                conversation_id=conv_marcus.id,
+                user_id=marcus.id,
+                role_in_conversation="ASTRONAUT",
+                last_seen_at=now - timedelta(minutes=25),
+            )
+        )
+        db.add(
+            ConversationParticipant(
+                conversation_id=conv_marcus.id,
+                user_id=leader.id,
+                role_in_conversation="MISSION_LEADER",
+                last_seen_at=now - timedelta(minutes=2),
+            )
+        )
+
+    msg_m1 = Message(
+        conversation_id=conv_marcus.id,
+        sender_id=marcus.id,
+        recipient_id=leader.id,
+        category="REQUEST_FOR_ASSISTANCE",
+        content="[SIMULADO] Equipo en Tierra, dormí 5.1 horas y siento fatiga acumulada tras catalogar muestras. Solicito ajuste preventivo en el cronograma secundario de mañana.",
+        delivery_status="READ",
+        is_important=True,
+        is_simulated=True,
+        created_at=now - timedelta(hours=1, minutes=20),
+        sent_at=now - timedelta(hours=1, minutes=20),
+    )
+    db.add(msg_m1)
+    db.flush()
+
+    db.add(
+        SupportRequest(
+            mission_id=m1.id,
+            astronaut_id=marcus.id,
+            leader_id=leader.id,
+            conversation_id=conv_marcus.id,
+            category="COGNITIVE_SUPPORT",
+            reason_title="Ajuste preventivo de carga por fatiga de sueño (5.1 h)",
+            description="[SIMULADO] Solicitud de redistribución de carga operativa y revisión de higiene de sueño tras alerta WARNING de descanso (5.1 h).",
+            wants_private_conversation=True,
+            is_emergency=False,
+            status="IN_REVIEW",
+            leader_response_notes="En revisión con planificación de vuelo para ampliar ventana de descanso nocturno.",
+            emergency_protocol_displayed=False,
+            is_simulated=True,
+            created_at=now - timedelta(hours=1, minutes=15),
+        )
+    )
+
+    # 9. Module 2 — Cognitive Performance Center Demo Records (Baselines, Schedules & Longitudinal History)
+    tests_by_dom = {
+        t.domain_code: t
+        for t in db.query(CognitiveTest).all()
+    }
+    for dom_code, base_acc, base_rt in [
+        ("MEMORY", 92.0, 1450.0),
+        ("ATTENTION", 95.0, 980.0),
+        ("VISUAL_TRACKING", 90.0, 1620.0),
+        ("SPATIAL_ORIENTATION", 88.0, 1750.0),
+        ("VISUAL_LEARNING", 91.0, 1520.0),
+    ]:
+        for astro_u in (elena, marcus):
+            existing_cb = (
+                db.query(CognitiveBaseline)
+                .filter(
+                    CognitiveBaseline.astronaut_id == astro_u.id,
+                    CognitiveBaseline.domain_code == dom_code,
+                    CognitiveBaseline.difficulty == "INTERMEDIATE",
+                    CognitiveBaseline.version_number == "1.0-DEMO",
+                )
+                .first()
+            )
+            if not existing_cb:
+                db.add(
+                    CognitiveBaseline(
+                        astronaut_id=astro_u.id,
+                        domain_code=dom_code,
+                        difficulty="INTERMEDIATE",
+                        version_number="1.0-DEMO",
+                        baseline_accuracy_percent=base_acc,
+                        baseline_mean_rt_ms=base_rt,
+                        established_at=now - timedelta(days=16),
+                        is_simulated=True,
+                    )
+                )
+
+    # Historical cognitive assessments for Elena across phases (TRAINING -> TRANSIT -> SURFACE)
+    elena_cog_history = [
+        ("MEMORY", 15, "TRAINING", "EARTH_SURFACE", 94.0, 1410.0, False, "READY", 1),
+        ("MEMORY", 9, "TRANSIT", "LUNAR_ORBIT", 90.0, 1510.0, False, "READY", 2),
+        ("MEMORY", 1, "SURFACE", "LUNAR_SURFACE", 86.0, 1640.0, False, "READY", 3),
+        ("ATTENTION", 15, "TRAINING", "EARTH_SURFACE", 96.0, 950.0, False, "READY", 1),
+        ("ATTENTION", 8, "TRANSIT", "LUNAR_ORBIT", 92.0, 1040.0, False, "READY", 2),
+        ("ATTENTION", 0, "SURFACE", "LUNAR_SURFACE", 66.7, 1320.0, True, "FATIGUED", 3),
+        ("VISUAL_TRACKING", 4, "SURFACE", "LUNAR_SURFACE", 91.0, 1580.0, False, "READY", 1),
+    ]
+    for dom_c, d_ago, ph_c, env_c, acc_pct, rt_ms, req_rev, r_stat, att_num in elena_cog_history:
+        ct_obj = tests_by_dom.get(dom_c)
+        if not ct_obj:
+            continue
+        ts_c = now - timedelta(days=d_ago, hours=2)
+        ca = CognitiveAssessment(
+            astronaut_id=elena.id,
+            mission_id=m1.id,
+            domain_code=dom_c,
+            test_code=ct_obj.code,
+            version_number="1.0-DEMO",
+            difficulty="INTERMEDIATE",
+            phase_code=ph_c,
+            environment_code=env_c,
+            readiness_status=r_stat,
+            conditions_notes=f"[SIMULADO] Sesión realizada en fase {ph_c}.",
+            completion_status="COMPLETED",
+            attempt_number=att_num,
+            duration_seconds=round((rt_ms * 3) / 1000.0, 1),
+            source_code="DEMO_SIMULATION",
+            is_simulated=True,
+            started_at=ts_c - timedelta(minutes=2),
+            completed_at=ts_c,
+        )
+        db.add(ca)
+        db.flush()
+        db.add(
+            CognitiveAssessmentSession(
+                assessment_id=ca.id,
+                current_step_index=3,
+                autosave_state_json=json.dumps({"completed": True, "phase": ph_c}),
+            )
+        )
+        db.add(
+            CognitiveResult(
+                assessment_id=ca.id,
+                total_items=3,
+                correct_count=3 if acc_pct >= 85 else 2,
+                incorrect_count=0 if acc_pct >= 85 else 1,
+                omissions_count=0,
+                accuracy_percent=acc_pct,
+                mean_response_time_ms=rt_ms,
+                response_time_variability_ms=42.0,
+                moves_count=3,
+                targets_tracked=3 if dom_c == "VISUAL_TRACKING" else 0,
+                requires_review=req_rev,
+                practice_effect_note=(
+                    f"Intento #{att_num} en dificultad INTERMEDIATE (v1.0-DEMO). "
+                    "Sólo comparable con evaluaciones del mismo dominio, dificultad y versión."
+                ),
+                non_diagnostic_summary=(
+                    f"[SIMULADO] Desempeño en dominio {dom_c}: {acc_pct:.1f}% de precisión y {rt_ms:.0f} ms de tiempo medio. "
+                    "Evaluación orientativa específica por dominio (no representa un puntaje global de inteligencia ni un diagnóstico clínico)."
+                ),
+                created_at=ts_c,
+            )
+        )
+
+    # Cognitive Schedules for Elena & Marcus
+    for astro_u, dom_c in [
+        (elena, "SPATIAL_ORIENTATION"),
+        (elena, "VISUAL_LEARNING"),
+        (marcus, "ATTENTION"),
+    ]:
+        ct_obj = tests_by_dom.get(dom_c)
+        if ct_obj:
+            db.add(
+                CognitiveSchedule(
+                    astronaut_id=astro_u.id,
+                    mission_id=m1.id,
+                    domain_code=dom_c,
+                    test_code=ct_obj.code,
+                    difficulty="INTERMEDIATE",
+                    scheduled_for=now + timedelta(hours=18),
+                    assigned_by_user_id=leader.id,
+                    status="PENDING",
+                    is_simulated=True,
+                )
+            )
+
+    # 10. Module 3 — Emotional Assessment Center Demo Records (Admin Requests & Astronaut Check-Ins)
+    eq_obj = db.query(EmotionalQuestionnaire).filter(EmotionalQuestionnaire.code == "EMOTIONAL_CHECKIN_DEMO_V1").first()
+    if eq_obj:
+        # Request 1: Elena (COMPLETED yesterday)
+        req_elena_done = EmotionalAssessmentRequest(
+            requested_by_admin_id=admin_user.id,
+            astronaut_id=elena.id,
+            mission_id=m1.id,
+            questionnaire_code=eq_obj.code,
+            version_number="1.0-DEMO",
+            periodicity="WEEKLY",
+            is_recurring=True,
+            priority="NORMAL",
+            custom_message="Hola Cmdr. Elena, te invitamos a completar tu cuestionario preventivo semanal de adaptación en Selene-Base.",
+            status="COMPLETED",
+            status_history_json=json.dumps(
+                [
+                    {"status": "SENT", "at": (now - timedelta(days=1, hours=4)).isoformat()},
+                    {"status": "IN_PROGRESS", "at": (now - timedelta(days=1, hours=2)).isoformat()},
+                    {"status": "COMPLETED", "at": (now - timedelta(days=1, hours=1)).isoformat()},
+                ]
+            ),
+            created_at=now - timedelta(days=1, hours=4),
+            sent_at=now - timedelta(days=1, hours=4),
+            due_at=now - timedelta(hours=12),
+            completed_at=now - timedelta(days=1, hours=1),
+            is_simulated=True,
+        )
+        db.add(req_elena_done)
+        db.flush()
+
+        ea_elena = EmotionalAssessment(
+            request_id=req_elena_done.id,
+            astronaut_id=elena.id,
+            mission_id=m1.id,
+            questionnaire_code=eq_obj.code,
+            version_number="1.0-DEMO",
+            phase_code="SURFACE",
+            environment_code="LUNAR_SURFACE",
+            is_draft=False,
+            share_summary_with_leader=True,
+            allow_admin_detailed_review=False,
+            started_at=now - timedelta(days=1, hours=2),
+            completed_at=now - timedelta(days=1, hours=1),
+            is_simulated=True,
+        )
+        db.add(ea_elena)
+        db.flush()
+
+        db.add(
+            EmotionalAssessmentResult(
+                assessment_id=ea_elena.id,
+                operational_state="EMOTIONAL_WELLNESS_STABLE",
+                explicit_support_requested=False,
+                urgent_protocol_triggered=False,
+                authorized_operational_summary=(
+                    "Estado operativo: EMOTIONAL_WELLNESS_STABLE. Cuestionario completado a tiempo sin solicitud de apoyo urgente."
+                ),
+                personal_feedback_summary=(
+                    "Gracias por completar tu check-in emocional. Tus respuestas reflejan una adaptación estable "
+                    "y buen respaldo interpersonal durante la fase de superficie lunar."
+                ),
+                recommended_next_step="Mantener rutina de higiene circadiana pre-sueño y contacto periódico con el líder en Tierra.",
+            )
+        )
+
+        # Request 2: Elena (New active request SENT by Admin for today)
+        req_elena_active = EmotionalAssessmentRequest(
+            requested_by_admin_id=admin_user.id,
+            astronaut_id=elena.id,
+            mission_id=m1.id,
+            questionnaire_code=eq_obj.code,
+            version_number="1.0-DEMO",
+            periodicity="PHASE_CHANGE",
+            is_recurring=False,
+            priority="HIGH",
+            custom_message="Estimada Cmdr. Elena: tras las actividades extravehiculares recientes, agradeceremos tu check-in breve sobre descanso, carga percibida y necesidad de apoyo.",
+            status="SENT",
+            status_history_json=json.dumps([{"status": "SENT", "at": (now - timedelta(hours=2)).isoformat()}]),
+            created_at=now - timedelta(hours=2),
+            sent_at=now - timedelta(hours=2),
+            due_at=now + timedelta(days=1),
+            is_simulated=True,
+        )
+        db.add(req_elena_active)
+        db.flush()
+        db.add(
+            EmotionalAssessmentNotification(
+                user_id=elena.id,
+                request_id=req_elena_active.id,
+                title="Nuevo cuestionario emocional solicitado por Administración",
+                message="Se ha solicitado tu participación en el Check-In Emocional Post-EVA Lunar.",
+                is_read=False,
+            )
+        )
+
+        # Request 3: Marcus (SENT / Pending completion)
+        req_marcus_active = EmotionalAssessmentRequest(
+            requested_by_admin_id=admin_user.id,
+            astronaut_id=marcus.id,
+            mission_id=m1.id,
+            questionnaire_code=eq_obj.code,
+            version_number="1.0-DEMO",
+            periodicity="ONCE",
+            is_recurring=False,
+            priority="HIGH",
+            custom_message="Dr. Marcus: te enviamos este cuestionario breve para acompañar tu recuperación tras la jornada de geología lunar.",
+            status="SENT",
+            status_history_json=json.dumps([{"status": "SENT", "at": (now - timedelta(hours=3)).isoformat()}]),
+            created_at=now - timedelta(hours=3),
+            sent_at=now - timedelta(hours=3),
+            due_at=now + timedelta(hours=12),
+            is_simulated=True,
+        )
+        db.add(req_marcus_active)
+        db.flush()
+        db.add(
+            EmotionalAssessmentNotification(
+                user_id=marcus.id,
+                request_id=req_marcus_active.id,
+                title="Nuevo cuestionario emocional solicitado: Seguimiento de Descanso",
+                message="Por favor completa tu check-in emocional cuando dispongas de 5 minutos.",
+                is_read=False,
+            )
+        )
+
 
 def reset_simulated_demo_data(db: Session) -> Dict[str, int]:
     """
     Safely resets ONLY synthetic/simulated records (is_simulated=True) and restores
     the reproducible baseline demo dataset, preserving any non-simulated records.
     """
+    # Clean up Module 1 simulated records
+    sim_conv_ids = [c.id for c in db.query(Conversation).filter(Conversation.is_simulated.is_(True)).all()]
+    if sim_conv_ids:
+        db.query(MessageNotification).filter(MessageNotification.conversation_id.in_(sim_conv_ids)).delete(synchronize_session=False)
+        sim_msg_ids = [m.id for m in db.query(Message).filter(Message.conversation_id.in_(sim_conv_ids)).all()]
+        if sim_msg_ids:
+            db.query(MessageReadReceipt).filter(MessageReadReceipt.message_id.in_(sim_msg_ids)).delete(synchronize_session=False)
+            # Borra también del disco los archivos de adjuntos reales (nombre aleatorio bajo UPLOAD_DIR)
+            for (skey,) in (
+                db.query(MessageAttachment.storage_key)
+                .filter(MessageAttachment.message_id.in_(sim_msg_ids), MessageAttachment.storage_key.isnot(None))
+                .all()
+            ):
+                try:
+                    (Path(settings.UPLOAD_DIR) / Path(skey).name).unlink(missing_ok=True)
+                except OSError:
+                    pass
+            db.query(MessageAttachment).filter(MessageAttachment.message_id.in_(sim_msg_ids)).delete(synchronize_session=False)
+        db.query(Message).filter(Message.conversation_id.in_(sim_conv_ids)).delete(synchronize_session=False)
+        db.query(ConversationParticipant).filter(ConversationParticipant.conversation_id.in_(sim_conv_ids)).delete(synchronize_session=False)
+    db.query(SupportRequest).filter(SupportRequest.is_simulated.is_(True)).delete(synchronize_session=False)
+    db.query(Conversation).filter(Conversation.is_simulated.is_(True)).delete(synchronize_session=False)
+
+    # Clean up Module 2 simulated records
+    sim_cog_ids = [ca.id for ca in db.query(CognitiveAssessment).filter(CognitiveAssessment.is_simulated.is_(True)).all()]
+    if sim_cog_ids:
+        db.query(CognitiveAssessmentSession).filter(CognitiveAssessmentSession.assessment_id.in_(sim_cog_ids)).delete(synchronize_session=False)
+        db.query(CognitiveResponse).filter(CognitiveResponse.assessment_id.in_(sim_cog_ids)).delete(synchronize_session=False)
+        db.query(CognitiveResult).filter(CognitiveResult.assessment_id.in_(sim_cog_ids)).delete(synchronize_session=False)
+        db.query(CognitiveFeedback).filter(CognitiveFeedback.assessment_id.in_(sim_cog_ids)).delete(synchronize_session=False)
+    db.query(CognitiveAssessment).filter(CognitiveAssessment.is_simulated.is_(True)).delete(synchronize_session=False)
+    db.query(CognitiveSchedule).filter(CognitiveSchedule.is_simulated.is_(True)).delete(synchronize_session=False)
+    db.query(CognitiveBaseline).filter(CognitiveBaseline.is_simulated.is_(True)).delete(synchronize_session=False)
+
+    # Clean up Module 3 simulated records
+    sim_ea_ids = [ea.id for ea in db.query(EmotionalAssessment).filter(EmotionalAssessment.is_simulated.is_(True)).all()]
+    if sim_ea_ids:
+        db.query(EmotionalAssessmentResponse).filter(EmotionalAssessmentResponse.assessment_id.in_(sim_ea_ids)).delete(synchronize_session=False)
+        db.query(EmotionalAssessmentResult).filter(EmotionalAssessmentResult.assessment_id.in_(sim_ea_ids)).delete(synchronize_session=False)
+        db.query(EmotionalSupportRequest).filter(EmotionalSupportRequest.assessment_id.in_(sim_ea_ids)).delete(synchronize_session=False)
+    sim_req_ids = [r.id for r in db.query(EmotionalAssessmentRequest).filter(EmotionalAssessmentRequest.is_simulated.is_(True)).all()]
+    if sim_req_ids:
+        db.query(EmotionalAssessmentNotification).filter(EmotionalAssessmentNotification.request_id.in_(sim_req_ids)).delete(synchronize_session=False)
+        db.query(EmotionalFollowUp).filter(EmotionalFollowUp.request_id.in_(sim_req_ids)).delete(synchronize_session=False)
+    db.query(EmotionalAssessment).filter(EmotionalAssessment.is_simulated.is_(True)).delete(synchronize_session=False)
+    db.query(EmotionalAssessmentRequest).filter(EmotionalAssessmentRequest.is_simulated.is_(True)).delete(synchronize_session=False)
+
     del_alerts = db.query(Alert).filter(Alert.is_simulated.is_(True)).delete(synchronize_session=False)
     del_meas = db.query(HealthMeasurement).filter(HealthMeasurement.is_simulated.is_(True)).delete(synchronize_session=False)
     del_env = db.query(EnvironmentalMeasurement).filter(EnvironmentalMeasurement.is_simulated.is_(True)).delete(synchronize_session=False)
@@ -1705,3 +2505,299 @@ def reset_simulated_demo_data(db: Session) -> Dict[str, int]:
         "deleted_simulated_contexts": del_ctx,
     }
 
+
+
+# ============================================================================
+# MÓDULO DE AISLAMIENTO Y CONFINAMIENTO — migración ligera + catálogos idempotentes
+# ============================================================================
+
+NASA_GARDEN_SOURCE = (
+    "NASA — Can Space Gardening Help Astronauts Cope with Isolation?",
+    "https://www.nasa.gov/humans-in-space/can-space-gardening-help-astronauts-cope-with-isolation/",
+)
+NASA_HRP_SOURCE = (
+    "NASA Human Research Program — Isolation and Confinement / Behavioral Health",
+    "https://www.nasa.gov/hrp/",
+)
+
+# (code, title, category, minutes, description, how_to, solo_or_group, source)
+LEISURE_ACTIVITIES_DATA = [
+    ("PLANT_CARE", "Cuidar las plantas del huerto", "PLANTS", 15,
+     "Revisar, regar y observar los cultivos del huerto del hábitat. Cuidar algo vivo aporta rutina, propósito y contacto con lo natural.",
+     ["Revisa la humedad del sustrato y el nivel de agua", "Observa hojas nuevas o cambios de color", "Anota en tu diario cómo ha crecido desde la última vez"],
+     "SOLO", NASA_GARDEN_SOURCE),
+    ("PLANT_JOURNAL", "Diario de crecimiento del huerto", "PLANTS", 10,
+     "Fotografiar o dibujar una planta y registrar su evolución día a día.",
+     ["Elige una planta del huerto", "Haz una foto o un boceto rápido", "Escribe una línea sobre lo que ha cambiado"],
+     "SOLO", NASA_GARDEN_SOURCE),
+    ("READING_BREAK", "Lectura libre", "READING", 20,
+     "Un bloque corto de lectura por placer, sin relación con procedimientos de misión.",
+     ["Elige un libro o relato de la biblioteca digital", "Silencia notificaciones no críticas", "Lee sin objetivo, solo por disfrutar"],
+     "SOLO", NASA_HRP_SOURCE),
+    ("PUZZLE_GAME", "Rompecabezas o juego de lógica", "GAMES", 15,
+     "Sudoku, crucigrama o rompecabezas para desconectar de la carga operativa.",
+     ["Elige un nivel de dificultad cómodo", "Juega sin cronómetro", "Para cuando termine el bloque, aunque no acabes"],
+     "SOLO", NASA_HRP_SOURCE),
+    ("CARD_GAME", "Partida rápida de cartas", "GAMES", 20,
+     "Juego de cartas o de mesa breve con otra persona de la tripulación.",
+     ["Invita a un compañero o compañera", "Elige un juego de reglas sencillas", "Prioriza conversar más que ganar"],
+     "GROUP", NASA_HRP_SOURCE),
+    ("MUSIC_LISTENING", "Escuchar música de casa", "MUSIC", 10,
+     "Escuchar una lista de canciones que recuerde a la familia o a lugares queridos.",
+     ["Ponte auriculares", "Elige 2 o 3 canciones significativas", "Respira despacio mientras escuchas"],
+     "SOLO", NASA_HRP_SOURCE),
+    ("MUSIC_PLAYING", "Tocar un instrumento", "MUSIC", 20,
+     "Practicar con un instrumento ligero o cantar unas canciones.",
+     ["Calienta con escalas o una canción conocida", "Prueba algo nuevo durante unos minutos", "Comparte una pieza con la tripulación si te apetece"],
+     "BOTH", NASA_HRP_SOURCE),
+    ("SKETCHING", "Dibujo o boceto libre", "ART", 15,
+     "Dibujar el interior del hábitat, una planta o un recuerdo de la Tierra.",
+     ["Toma lápiz y papel o una tableta", "Elige un motivo cercano", "Dibuja sin buscar perfección"],
+     "SOLO", NASA_HRP_SOURCE),
+    ("EARTH_PHOTOGRAPHY", "Fotografía de la Tierra por la ventana", "PHOTOGRAPHY", 15,
+     "Fotografiar la Tierra o el paisaje exterior y elegir la mejor imagen del día.",
+     ["Consulta cuándo hay buena vista", "Haz varias tomas", "Guarda una favorita para compartir con tu familia"],
+     "SOLO", NASA_HRP_SOURCE),
+    ("GRATITUDE_JOURNAL", "Diario de gratitud", "WRITING", 5,
+     "Escribir tres cosas buenas del día, por pequeñas que sean.",
+     ["Abre tu diario privado", "Escribe tres cosas concretas", "Relee la entrada de ayer"],
+     "SOLO", NASA_HRP_SOURCE),
+    ("LETTER_HOME", "Carta a casa", "WRITING", 20,
+     "Escribir una carta o mensaje largo a la familia, para enviarlo por el canal Conexión con Tierra.",
+     ["Piensa en una anécdota del día", "Escribe como si hablaras en persona", "Adjunta una foto si quieres"],
+     "SOLO", NASA_HRP_SOURCE),
+    ("STRETCH_BREAK", "Estiramientos suaves", "MOVEMENT", 10,
+     "Pausa de estiramientos suaves autorizados para soltar tensión (no sustituye al ejercicio prescrito).",
+     ["Asegura los pies en los anclajes", "Estira cuello, hombros y espalda despacio", "Respira profundamente en cada postura"],
+     "SOLO", NASA_HRP_SOURCE),
+    ("DANCE_BREAK", "Pausa de baile", "MOVEMENT", 5,
+     "Una canción para moverse libremente y cambiar de energía.",
+     ["Elige una canción animada", "Muévete con seguridad en el espacio disponible", "Invita a alguien si te apetece"],
+     "BOTH", NASA_HRP_SOURCE),
+]
+
+# (code, title, description, minutes, category)
+CREW_ACTIVITY_TEMPLATES_DATA = [
+    ("SHARED_MEAL", "Comida compartida", "Comer juntos sin pantallas de trabajo: conversar, compartir comida y celebrar el día.", 45, "MEAL"),
+    ("MOVIE_NIGHT", "Noche de película", "Ver juntos una película o serie elegida por votación de la tripulación.", 120, "MOVIE"),
+    ("GROUP_GARDEN", "Huerto en grupo", "Cuidar juntos el huerto del hábitat: riego, poda y cosecha compartida.", 30, "GARDEN"),
+    ("BOARD_GAME", "Juego de mesa", "Partida de un juego de mesa o de cartas en equipo.", 45, "GAME"),
+    ("EARTH_OBSERVATION", "Observación de la Tierra", "Reunirse junto a la ventana para observar y fotografiar la Tierra.", 20, "OBSERVATION"),
+    ("CELEBRATION", "Celebración de la tripulación", "Celebrar un cumpleaños, un hito de misión o una fiesta de casa.", 60, "CELEBRATION"),
+]
+
+# Misiones de XP del módulo (inactivas: no aparecen en la lista de misiones diarias)
+ISOLATION_XP_MISSIONS_DATA = [
+    ("LEISURE_BREAK", "Tiempo libre registrado", "WELLNESS",
+     "Registrar una actividad breve de tiempo libre.", 10,
+     "El ocio planificado ayuda a mantener el bienestar en aislamiento y confinamiento."),
+    ("CREW_INTEGRATION", "Actividad de integración de la tripulación", "WELLNESS",
+     "Asistir a una actividad de integración que alcanzó el quórum.", 25,
+     "La cohesión de la tripulación es un factor protector frente al aislamiento (NASA HRP)."),
+]
+
+FAMILY_ROLE_DESC = (
+    "Familiar autorizado (Conexión con Tierra)",
+    "Solo puede usar su conversación privada con el astronauta vinculado y sus adjuntos. Sin acceso a salud, alertas ni misiones.",
+)
+
+
+def apply_lightweight_migrations(db: Session) -> None:
+    """
+    Migración ligera e idempotente para BD existentes (create_all no altera tablas ya creadas):
+    - conversations.channel (MISSION por defecto).
+    - message_attachments: message_id pasa a admitir nulos (adjuntos huérfanos) y se añaden
+      uploader_id, storage_key, kind y duration_seconds. En SQLite se reconstruye la tabla
+      copiando los datos existentes (SQLite no permite cambiar NOT NULL con ALTER TABLE).
+    - message_attachments en SQLite: si el id no es AUTOINCREMENT, misma reconstrucción (conserva
+      filas e ids, FKs e índices) para que los ids borrados no se reutilicen.
+    """
+    from sqlalchemy import inspect, text
+
+    bind = db.get_bind()
+    insp = inspect(bind)
+    tables = set(insp.get_table_names())
+    dialect = bind.dialect.name
+
+    if "conversations" in tables:
+        cols = {c["name"] for c in insp.get_columns("conversations")}
+        if "channel" not in cols:
+            db.execute(text("ALTER TABLE conversations ADD COLUMN channel VARCHAR(20) NOT NULL DEFAULT 'MISSION'"))
+            db.execute(text("CREATE INDEX IF NOT EXISTS ix_conversations_channel ON conversations (channel)"))
+            db.commit()
+
+    if "message_attachments" in tables:
+        cols = {c["name"]: c for c in insp.get_columns("message_attachments")}
+        new_cols = {"uploader_id", "storage_key", "kind", "duration_seconds"}
+        needs_nullable = not cols.get("message_id", {}).get("nullable", True)
+        missing = new_cols - set(cols)
+        needs_autoincrement = False
+        if dialect == "sqlite":
+            # Sin AUTOINCREMENT, SQLite reutiliza el id más alto borrado (p. ej. un huérfano purgado)
+            table_sql = db.execute(
+                text("SELECT sql FROM sqlite_master WHERE type='table' AND name='message_attachments'")
+            ).scalar() or ""
+            needs_autoincrement = "AUTOINCREMENT" not in table_sql.upper()
+        if needs_nullable or missing or needs_autoincrement:
+            if dialect == "sqlite":
+                old_cols = [c for c in cols if c in MessageAttachment.__table__.columns]
+                col_list = ", ".join(old_cols)
+                # Índices explícitos actuales (los del modelo se recrean con la tabla; el resto se restaura)
+                idx_rows = db.execute(
+                    text(
+                        "SELECT name, sql FROM sqlite_master WHERE type='index' "
+                        "AND tbl_name='message_attachments' AND sql IS NOT NULL"
+                    )
+                ).fetchall()
+                db.execute(text("ALTER TABLE message_attachments RENAME TO _message_attachments_old"))
+                for idx_name, _ in idx_rows:
+                    db.execute(text('DROP INDEX IF EXISTS "%s"' % idx_name.replace('"', "")))
+                db.commit()
+                # Tabla nueva según el modelo: id AUTOINCREMENT, FKs a messages/users e índices del modelo
+                MessageAttachment.__table__.create(bind=db.get_bind())
+                # Ids explícitos: se conservan y sqlite_sequence arranca en el máximo existente
+                db.execute(
+                    text(
+                        "INSERT INTO message_attachments (%s) SELECT %s FROM _message_attachments_old"
+                        % (col_list, col_list)
+                    )
+                )
+                db.execute(text("DROP TABLE _message_attachments_old"))
+                existing_idx = {
+                    name
+                    for (name,) in db.execute(
+                        text("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='message_attachments'")
+                    ).fetchall()
+                }
+                for idx_name, idx_sql in idx_rows:
+                    if idx_name not in existing_idx:
+                        db.execute(text(idx_sql))
+                db.commit()
+            else:
+                if needs_nullable:
+                    db.execute(text("ALTER TABLE message_attachments ALTER COLUMN message_id DROP NOT NULL"))
+                for col_name, ddl in (
+                    ("uploader_id", "INTEGER"),
+                    ("storage_key", "VARCHAR(64)"),
+                    ("kind", "VARCHAR(10)"),
+                    ("duration_seconds", "FLOAT"),
+                ):
+                    if col_name in missing:
+                        db.execute(text("ALTER TABLE message_attachments ADD COLUMN %s %s" % (col_name, ddl)))
+                db.commit()
+
+
+def seed_isolation_module(db: Session, include_demo_accounts: Optional[bool] = None) -> None:
+    """
+    Catálogos, rol FAMILY_MEMBER y familiares demo. Idempotente: se ejecuta en cada arranque.
+    Las cuentas demo de familiares solo se crean si SEED_DEMO_DATA=true (o include_demo_accounts=True).
+    """
+    if include_demo_accounts is None:
+        include_demo_accounts = settings.SEED_DEMO_DATA
+    # Rol y permiso del canal familiar
+    perm = db.query(Permission).filter(Permission.code == "USE_FAMILY_CHANNEL").first()
+    if not perm:
+        perm = Permission(
+            code="USE_FAMILY_CHANNEL",
+            description="Usar el canal privado Conexión con Tierra con el astronauta vinculado",
+        )
+        db.add(perm)
+        db.flush()
+    fam_role = db.query(Role).filter(Role.code == "FAMILY_MEMBER").first()
+    if not fam_role:
+        fam_role = Role(code="FAMILY_MEMBER", name=FAMILY_ROLE_DESC[0], description=FAMILY_ROLE_DESC[1])
+        db.add(fam_role)
+        db.flush()
+    if not (
+        db.query(RolePermission)
+        .filter(RolePermission.role_id == fam_role.id, RolePermission.permission_id == perm.id)
+        .first()
+    ):
+        db.add(RolePermission(role_id=fam_role.id, permission_id=perm.id))
+
+    # Catálogo de tiempo libre
+    for code, title, cat, minutes, desc, how_to, mode, (src_title, src_url) in LEISURE_ACTIVITIES_DATA:
+        if not db.query(LeisureActivity).filter(LeisureActivity.code == code).first():
+            db.add(
+                LeisureActivity(
+                    code=code,
+                    title=title,
+                    category=cat,
+                    duration_minutes=minutes,
+                    description=desc,
+                    how_to_json=json.dumps(how_to, ensure_ascii=False),
+                    solo_or_group=mode,
+                    source_title=src_title,
+                    source_url=src_url,
+                    is_active=True,
+                )
+            )
+
+    # Plantillas de integración de la tripulación
+    for code, title, desc, minutes, cat in CREW_ACTIVITY_TEMPLATES_DATA:
+        if not db.query(CrewActivityTemplate).filter(CrewActivityTemplate.code == code).first():
+            db.add(
+                CrewActivityTemplate(
+                    code=code, title=title, description=desc, duration_minutes=minutes, category=cat, is_active=True
+                )
+            )
+
+    for code, title, cat, desc, xp, edu in ISOLATION_XP_MISSIONS_DATA:
+        if not db.query(DailyMission).filter(DailyMission.code == code).first():
+            db.add(
+                DailyMission(
+                    code=code,
+                    title=title,
+                    category=cat,
+                    description=desc,
+                    xp_reward=xp,
+                    compatible_environments_csv="ALL",
+                    contraindicated_on_critical_alert=False,
+                    educational_content=edu,
+                    is_active=False,
+                )
+            )
+    db.flush()
+
+    # Familiares demo del astronauta 1 (Elena): solo con SEED_DEMO_DATA (contraseñas públicas)
+    elena = (
+        db.query(User).filter(User.email == settings.DEMO_ASTRONAUT1_EMAIL).first()
+        if include_demo_accounts
+        else None
+    )
+    if elena:
+        for crew_code, email, name, pwd, relation in (
+            ("FAM-201A", settings.DEMO_FAMILY1_EMAIL, "Ana Rostova", settings.DEMO_FAMILY1_PASSWORD, "Pareja"),
+            ("FAM-201B", settings.DEMO_FAMILY2_EMAIL, "Sofía Rostova", settings.DEMO_FAMILY2_PASSWORD, "Hija"),
+        ):
+            fam_user = db.query(User).filter(User.email == email).first()
+            if not fam_user:
+                if db.query(User).filter(User.crew_code == crew_code).first():
+                    continue
+                fam_user = User(
+                    crew_code=crew_code,
+                    email=email,
+                    full_name=name,
+                    password_hash=hash_password(pwd),
+                    role_id=fam_role.id,
+                    status="ACTIVE",
+                    preferred_theme="space-dark",
+                    share_wellness_signals_with_leader=False,
+                    share_detailed_wellness_with_medical=False,
+                )
+                db.add(fam_user)
+                db.flush()
+            if fam_user.role_id != fam_role.id:
+                continue  # nunca convertir en familiar una cuenta existente con otro rol
+            exists_link = (
+                db.query(FamilyContact)
+                .filter(FamilyContact.astronaut_id == elena.id, FamilyContact.user_id == fam_user.id)
+                .first()
+            )
+            if not exists_link:
+                db.add(
+                    FamilyContact(
+                        astronaut_id=elena.id, user_id=fam_user.id, relationship_label=relation, is_active=True
+                    )
+                )
+    db.commit()

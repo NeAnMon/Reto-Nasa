@@ -29,6 +29,9 @@
 8. **Mission Analytics e Informes Descargables**: Gráficos longitudinales interactivos (Chart.js) con representación explícita de discontinuidades temporales, comparación por fases de misión y exportación auditada en **PDF, CSV y JSON**.
 9. **Simulador Reproducible de Telemetría (9 Escenarios DEMO)**: Todos los datos sintéticos se etiquetan como **SIMULADO** e incluye reinicio seguro de datos de demostración.
 10. **Seguridad, RBAC y Auditoría**: Tres roles (`ASTRONAUT`, `MISSION_LEADER`, `ADMINISTRATOR`), contraseñas con hash `PBKDF2-HMAC-SHA256`, bloqueo temporal por intentos fallidos, revocación de sesiones, protección frente a escalamiento horizontal y bitácora de auditoría (`audit_events`).
+11. **Módulo 1 — Communication Center**: Centro de mensajería directa, privada y 1 a 1 entre cada astronauta y el líder en tierra asignado, con 8 categorías operativas (`GENERAL`, `HEALTH_UPDATE`, `COGNITIVE_SUPPORT`, `EMOTIONAL_SUPPORT`, `MISSION_COORDINATION`, `TECHNICAL_ISSUE`, `REQUEST_FOR_ASSISTANCE`, `URGENT_COMMUNICATION`), respuesta a mensajes específicos, cola sin conexión sin falsificar entrega antes de confirmación del servidor, bloqueo de lectura silenciosa por administradores sin auditoría y sistema estructurado de **Solicitudes de Apoyo** (`REQUESTED`, `RECEIVED`, `IN_REVIEW`, `RESPONDED`, `ESCALATED`, `CLOSED`) con integración directa desde alertas.
+12. **Módulo 2 — Cognitive Performance Center**: Evaluación interactiva y seguimiento longitudinal en **9 dominios cognitivos independientes** (`VISUAL_LEARNING`, `MEMORY`, `ATTENTION`, `ABSTRACTION`, `SPATIAL_ORIENTATION`, `EMOTION_RECOGNITION`, `ABSTRACT_REASONING`, `COMPLEX_EXPLORATION`, `VISUAL_TRACKING`) con 3 niveles de dificultad (`BASIC`, `INTERMEDIATE`, `ADVANCED`), verificación previa de descanso/fatiga/estrés con opción de posponer sin penalización, comparación frente a la línea base personal únicamente bajo dominio/dificultad/versión equivalentes considerando el efecto de práctica, sin generar puntajes globales de CI ni diagnósticos neurológicos, e integrado con 8 insignias cognitivas no competitivas.
+13. **Módulo 3 — Emotional Assessment Center**: Sistema dual de **Emotional Assessment Management** (para que el `ADMINISTRATOR` solicite cuestionarios emocionales a uno o varios astronautas y supervise exclusivamente el estado administrativo de cumplimiento `DRAFT` a `COMPLETED`) y **My Emotional Check-In** (para que el `ASTRONAUT` responda 12 dimensiones emocionales y 6 preguntas abiertas opcionales con soporte para *"Prefiero no responder"*), impulsado por el motor determinista `EmotionalWellnessEngine` con separación estricta de privacidad y protocolo inmediato de apoyo urgente.
 
 ---
 
@@ -116,6 +119,34 @@ La aplicación inicializa y siembra automáticamente la base de datos SQLite (`a
 | **Astronauta 3** | Spec. Kenji Takahashi | `kenji.takahashi@astrovital.demo` | `AstroCrew!2026` | `ARES-PATHFINDER-DEMO` |
 | **Líder en Tierra** | Dir. Carlos Ibáñez | `leader@astrovital.demo` | `AstroLeader!2026` | `ARTEMIS-IV-DEMO` |
 | **Administradora** | Dra. Valeria Mendoza | `admin@astrovital.demo` | `AstroAdmin!2026` | Supervisión de Plataforma |
+| **Familiar (Pareja)** | Ana Rostova | `ana.rostova@astrovital.demo` | `AstroFamily!2026` | Solo canal *Conexión con Tierra* de Elena |
+| **Familiar (Hija)** | Sofía Rostova | `sofia.rostova@astrovital.demo` | `AstroFamily!2026` | Solo canal *Conexión con Tierra* de Elena |
+
+> Los familiares (rol `FAMILY_MEMBER`) solo pueden iniciar sesión, consultar `/auth/me` y usar su conversación privada FAMILY con el astronauta y sus adjuntos; cualquier otro módulo devuelve 403. Ni el líder ni la administración pueden leer ese canal. Los adjuntos (fotos y notas de voz, ≤ 5 MB, validados por *magic bytes*) se guardan con nombre aleatorio en `UPLOAD_DIR` (por defecto `./uploads`, ignorado por git; en Docker `/app/data/uploads`).
+
+> **Todas estas cuentas (incluidas las de familiares, configurables con `DEMO_FAMILY1_*` / `DEMO_FAMILY2_*`) solo se crean con `SEED_DEMO_DATA=true`.** Con `SEED_DEMO_DATA=false` no se crea ninguna cuenta demo, ni siquiera sobre una BD existente (los catálogos del módulo de aislamiento sí se mantienen al día). Desactívelo y cambie las contraseñas `DEMO_*` antes de cualquier despliegue accesible.
+
+> **Recuperación de contraseña:** `POST /api/v1/auth/password-recovery/request` nunca devuelve el token en la respuesta. Solo para una demo local aislada puede activarse `DEMO_EXPOSE_RECOVERY_TOKEN=true` (por defecto `false`; el arranque lo avisa en el log), que permitiría a cualquiera restablecer la contraseña de cualquier cuenta. `APP_ENV` es solo informativo.
+
+---
+
+## 5.1 Despliegue con Docker y proxy inverso
+
+```bash
+docker compose up -d --build
+```
+- Todo lo persistente vive en el volumen `astrovital_data` montado en `/app/data`: la BD SQLite (`/app/data/astrovital.db`) y los adjuntos (`UPLOAD_DIR=/app/data/uploads`, fijado en el `Dockerfile` y en `docker-compose.yml`). Recrear el contenedor no borra los adjuntos.
+- El contenedor arranca como root solo para crear `/app/data/uploads` y dar la propiedad de `/app/data` al usuario sin privilegios `astrovital` (permisos `0700` en `uploads`); después ejecuta uvicorn como `astrovital`. Funciona también con volúmenes creados por versiones anteriores (propiedad de root).
+- `docker-compose.yml` usa `.env.example` (valores de demostración). Para producción use su propio `.env` con `SECRET_KEY` aleatoria, `SEED_DEMO_DATA=false` y `DEMO_EXPOSE_RECOVERY_TOKEN=false`; si no, el arranque registra avisos `CONFIGURACIÓN INSEGURA`.
+- Variables de adjuntos: `UPLOAD_DIR`, `MAX_ATTACHMENT_BYTES` (5242880), `MAX_PENDING_ATTACHMENTS_PER_USER` (20), `ORPHAN_ATTACHMENT_TTL_HOURS` (24; los adjuntos subidos y nunca enviados se purgan pasado ese plazo).
+- **Proxy inverso (nginx):** la API rechaza con 413 las subidas mayores que 5 MB + 64 KB *antes* de parsear el cuerpo (y con 411 si falta `Content-Length`), pero el proxy debe dejar pasar las legítimas. nginx limita por defecto a 1 MB, así que configure al menos:
+  ```nginx
+  location /api/v1/attachments {
+      client_max_body_size 6m;   # ≥ MAX_ATTACHMENT_BYTES + margen multipart
+      proxy_pass http://127.0.0.1:8000;
+  }
+  ```
+  (o `client_max_body_size 6m;` en el `server`). Si sube `MAX_ATTACHMENT_BYTES`, suba también este valor.
 
 ---
 

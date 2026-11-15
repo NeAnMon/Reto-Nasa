@@ -128,14 +128,59 @@ def evaluate_and_award_badges(
         try_award("SLEEP_ROUTINE_COMPLETED", "Registraste tu rutina de descanso y sueño.")
     if mission_code == "LEARNING_MISSION" or profile.learning_modules_completed >= 1:
         try_award("LEARNING_EXPLORER", "Exploraste contenido educativo sobre fisiología espacial.")
-    if profile.routines_completed_count >= 4 or mission_code in ("HYDRATION_ROUTINE", "MIND_CHECK", "MOVE_SAFELY"):
+    if profile.routines_completed_count >= 4 or mission_code in ("HYDRATION_ROUTINE", "MIND_CHECK", "MOVE_SAFELY", "COMPLETE_EMOTIONAL_CHECKIN"):
         try_award("SELF_CARE_COMMITMENT", "Demostraste compromiso con el autocuidado integral.")
-    if mission_code == "FOLLOW_UP_MISSION" or profile.followups_completed >= 1:
-        try_award("FOLLOW_UP_COMPLETED", "Completaste un seguimiento preventivo recomendado por el protocolo.")
+    if mission_code in ("FOLLOW_UP_MISSION", "REVIEW_MISSION_MESSAGES", "RESPOND_SUPPORT_REQUEST") or profile.followups_completed >= 1:
+        try_award("FOLLOW_UP_COMPLETED", "Completaste un seguimiento preventivo o comunicación recomendada.")
+    if mission_code in ("COMPLETE_COGNITIVE_CHECK", "MEMORY_TRAINING_ACTIVITY", "VISUAL_ATTENTION_ACTIVITY"):
+        try_award("COGNITIVE_MISSION_COMPLETED", "Completaste una actividad cognitiva interactiva.")
+    if mission_code == "MEMORY_TRAINING_ACTIVITY":
+        try_award("MEMORY_EXPLORER", "Participaste en entrenamiento de memoria de trabajo.")
+    if mission_code == "VISUAL_ATTENTION_ACTIVITY":
+        try_award("ATTENTION_SPECIALIST", "Participaste en entrenamiento de atención selectiva.")
     if profile.total_xp >= 150:
         try_award("MISSION_MILESTONE", "Alcanzaste un hito de participación y aprendizaje en la misión.")
 
     return newly_awarded
+
+
+def award_badge_for_cognitive_domain(db: Session, user_id: int, badge_code: Optional[str], domain_code: str) -> List[Dict[str, str]]:
+    if not badge_code:
+        return []
+    existing_codes = {
+        r[0]
+        for r in db.query(UserBadge.badge_code)
+        .filter(UserBadge.user_id == user_id)
+        .all()
+    }
+    awarded: List[Dict[str, str]] = []
+    for code, reason in [
+        (badge_code, f"Completaste una sesión interactiva del dominio {domain_code}."),
+        ("COGNITIVE_MISSION_COMPLETED", "Participación activa en el Cognitive Assessment Center."),
+    ]:
+        if code in existing_codes:
+            continue
+        badge = db.query(Badge).filter(Badge.code == code).first()
+        if not badge:
+            continue
+        db.add(
+            UserBadge(
+                user_id=user_id,
+                badge_code=code,
+                awarded_reason=reason,
+                awarded_at=utcnow(),
+            )
+        )
+        existing_codes.add(code)
+        awarded.append(
+            {
+                "code": badge.code,
+                "name": badge.name,
+                "icon_name": badge.icon_name,
+                "reason": reason,
+            }
+        )
+    return awarded
 
 
 def record_gamification_mission(
@@ -235,3 +280,54 @@ def record_gamification_mission(
         "newly_awarded_badges": new_badges,
     }
 
+
+
+def award_activity_xp(
+    db: Session,
+    user_id: int,
+    activity_code: str,
+    reflection_note: Optional[str] = None,
+    once_per_day: bool = True,
+    is_simulated: bool = False,
+) -> int:
+    """
+    XP de actividades del módulo de aislamiento (tiempo libre, integración de tripulación).
+    Usa entradas del catálogo DailyMission marcadas como inactivas (no aparecen como misión diaria),
+    de modo que el valor de XP lo decide siempre el servidor. No hace commit: lo hace quien llama.
+    Devuelve los XP otorgados (0 si el código no existe o ya se otorgó hoy con once_per_day).
+    """
+    dm = db.query(DailyMission).filter(DailyMission.code == activity_code).first()
+    if not dm:
+        return 0
+    today_str = utcnow().strftime("%Y-%m-%d")
+    if once_per_day:
+        already = (
+            db.query(GamificationEvent)
+            .filter(
+                GamificationEvent.user_id == user_id,
+                GamificationEvent.daily_mission_code == activity_code,
+                GamificationEvent.event_date_str == today_str,
+            )
+            .first()
+        )
+        if already:
+            return 0
+    profile = ensure_gamification_profile(db, user_id)
+    xp = int(dm.xp_reward)
+    profile.total_xp += xp
+    profile.routines_completed_count += 1
+    profile.current_level = str(compute_level(profile.total_xp)["current_level"])
+    db.add(
+        GamificationEvent(
+            user_id=user_id,
+            daily_mission_code=activity_code,
+            event_date_str=today_str,
+            status="COMPLETED",
+            xp_awarded=xp,
+            reinforcement_message=POSITIVE_MESSAGES[profile.routines_completed_count % len(POSITIVE_MESSAGES)],
+            reflection_note=reflection_note,
+            is_simulated=is_simulated,
+            completed_at=utcnow(),
+        )
+    )
+    return xp

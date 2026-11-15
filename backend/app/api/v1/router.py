@@ -94,6 +94,10 @@ from backend.app.services.gamification import (
     record_gamification_mission,
 )
 from backend.app.services.simulator import DEMO_SCENARIOS, execute_demo_scenario
+from backend.app.api.v1.expansion_router import (
+    build_expansion_cards_for_summary,
+    expansion_router,
+)
 
 router = APIRouter(prefix="/api/v1")
 
@@ -417,10 +421,13 @@ def request_password_recovery(payload: PasswordRecoveryRequest, db: Session = De
             actor=user,
             details="Token temporal de recuperación generado.",
         )
-        return {
-            "message": "Si el correo está registrado, se ha generado el token de recuperación.",
-            "demo_recovery_token": user.recovery_token if settings.APP_ENV == "development" else None,
-        }
+        if settings.DEMO_EXPOSE_RECOVERY_TOKEN:
+            # Solo demo local con opt-in explícito (DEMO_EXPOSE_RECOVERY_TOKEN=true); nunca por APP_ENV
+            return {
+                "message": "Si el correo está registrado, se ha generado el token de recuperación.",
+                "demo_recovery_token": user.recovery_token,
+            }
+    # Misma respuesta exista o no la cuenta (no revela qué correos están registrados)
     return {"message": "Si el correo está registrado, se ha generado el token de recuperación."}
 
 
@@ -1148,7 +1155,9 @@ def _build_astronaut_health_summary(
             )
             continue
 
-        latest = recent[0]
+        # Un dato INVALID (fuera de rango físico) se conserva para auditoría, pero no tapa
+        # la última lectura válida: una lectura W/C no puede quedar oculta por un error de entrada.
+        latest = next((r for r in recent if r.calculated_state != "INVALID"), recent[0])
         meas_dt = ensure_aware(latest.measured_at) or now
         age_hours = round((now - meas_dt).total_seconds() / 3600.0, 1)
         state = latest.calculated_state
@@ -1325,6 +1334,7 @@ def _build_astronaut_health_summary(
             }
             for s in sensors
         ],
+        "expansion_cards": build_expansion_cards_for_summary(db, target_user, mission),
     }
 
 
@@ -2451,6 +2461,36 @@ def complete_daily_mission_endpoint(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    # Bloqueo de seguridad: una contramedida contraindicada con alerta C/W activa no se puede
+    # completar (solo excusar por restricción operativa), igual que muestra /gamification/missions.
+    mission_def = (
+        db.query(DailyMission)
+        .filter(DailyMission.code == (payload.daily_mission_code or "").strip())
+        .first()
+    )
+    if (
+        mission_def
+        and mission_def.contraindicated_on_critical_alert
+        and (payload.status_mode or "COMPLETED").strip().upper() != "EXCUSED_OPERATIONAL_RESTRICTION"
+    ):
+        has_critical_alert = (
+            db.query(Alert)
+            .filter(
+                Alert.astronaut_id == user.id,
+                Alert.status.in_(["NEW", "ACKNOWLEDGED", "IN_FOLLOWUP", "ESCALATED"]),
+                Alert.operational_state.in_(["WARNING", "CRITICAL"]),
+            )
+            .count()
+            > 0
+        )
+        if has_critical_alert:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Contramedida en pausa por seguridad: hay una alerta de precaución o aviso activa. "
+                    "Resuélvela con tu líder o regístrala como excusada por restricción operativa."
+                ),
+            )
     try:
         result = record_gamification_mission(
             db=db,
@@ -3088,3 +3128,12 @@ def list_audit_events(
         ]
     }
 
+
+router.include_router(expansion_router)
+
+
+
+# Módulo de aislamiento y confinamiento (docs/CONTRATO_AISLAMIENTO.md)
+from backend.app.api.v1.isolation_router import isolation_router  # noqa: E402
+
+router.include_router(isolation_router)
