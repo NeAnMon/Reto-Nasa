@@ -89,6 +89,41 @@ class HealthMeasurementCreate(BaseModel):
     dedup_key: Optional[str] = Field(default=None, max_length=120)
 
 
+class DosimeterReadingCreate(BaseModel):
+    """Lectura manual del dosímetro activo de tripulación (CAD)."""
+
+    astronaut_id: Optional[int] = None
+    mission_id: Optional[int] = None
+    device: str = Field(..., min_length=1, max_length=32)
+    measured_at: datetime
+    dose_mgy: float = Field(..., ge=0, le=100000)
+    rate_ugy_h: Optional[float] = Field(default=None, ge=0, le=1000000)
+    location: str = Field(default="", max_length=60)
+    notes: Optional[str] = Field(default=None, max_length=140)
+    dedup_key: Optional[str] = Field(default=None, max_length=120)
+
+    @field_validator("device")
+    @classmethod
+    def _device_not_blank(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("El identificador del dosímetro no puede estar vacío.")
+        return v
+
+    @field_validator("location")
+    @classmethod
+    def _strip_location(cls, v: str) -> str:
+        return (v or "").strip()
+
+    @field_validator("notes", "dedup_key")
+    @classmethod
+    def _blank_to_none(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        v = v.strip()
+        return v or None
+
+
 class BulkImportRequest(BaseModel):
     astronaut_id: Optional[int] = None
     mission_id: Optional[int] = None

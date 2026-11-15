@@ -22,6 +22,7 @@ from backend.app.models.models import (
     DailyMission,
     DataQualityEvent,
     DataSource,
+    DosimeterReading,
     EnvironmentalMeasurement,
     EnvironmentProfile,
     FollowUpAction,
@@ -57,6 +58,7 @@ from backend.app.schemas.schemas import (
     AlertFollowUpRequest,
     BulkImportRequest,
     ContextUpdateRequest,
+    DosimeterReadingCreate,
     EnvironmentalMeasurementCreate,
     GamificationCompleteRequest,
     HealthMeasurementCreate,
@@ -1597,6 +1599,102 @@ def create_health_measurement(
         ),
         "gamification_update": gamification_bonus,
     }
+
+
+# ----------------------------------------------------------------------------
+# Dosímetro activo de tripulación (CAD): lecturas manuales por astronauta y misión.
+# Mismo modelo de permisos que /health/measurements: el objetivo se resuelve con
+# _resolve_target_astronaut_and_mission (verify_astronaut_access) y un ASTRONAUT
+# solo puede registrar sus propias lecturas.
+# ----------------------------------------------------------------------------
+
+def _serialize_dosimeter_reading(r: DosimeterReading) -> Dict[str, object]:
+    return {
+        "id": r.id,
+        "astronaut_id": r.astronaut_id,
+        "mission_id": r.mission_id,
+        "device": r.device,
+        "measured_at": ensure_aware(r.measured_at).isoformat(),
+        "dose_mgy": r.dose_mgy,
+        "rate_ugy_h": r.rate_ugy_h,
+        "location": r.location,
+        "notes": r.notes,
+        "recorded_by_user_id": r.recorded_by_user_id,
+        "created_at": ensure_aware(r.created_at).isoformat() if r.created_at else None,
+        "dedup_key": r.dedup_key,
+    }
+
+
+@router.get("/radiation/dosimeter-readings")
+def list_dosimeter_readings(
+    astronaut_id: Optional[int] = None,
+    mission_id: Optional[int] = None,
+    limit: int = Query(default=50, ge=1, le=500),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Últimas `limit` lecturas del astronauta en la misión resuelta, en orden
+    cronológico ASCENDENTE (la más reciente al final), listo para la vista."""
+    target_user, mission = _resolve_target_astronaut_and_mission(db, user, astronaut_id, mission_id)
+    rows = (
+        db.query(DosimeterReading)
+        .filter(
+            DosimeterReading.astronaut_id == target_user.id,
+            DosimeterReading.mission_id == mission.id,
+        )
+        .order_by(DosimeterReading.measured_at.desc(), DosimeterReading.id.desc())
+        .limit(limit)
+        .all()
+    )
+    rows.reverse()
+    return {
+        "astronaut_id": target_user.id,
+        "mission_id": mission.id,
+        "readings": [_serialize_dosimeter_reading(r) for r in rows],
+    }
+
+
+@router.post("/radiation/dosimeter-readings", status_code=status.HTTP_201_CREATED)
+def create_dosimeter_reading(
+    payload: DosimeterReadingCreate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    target_user, mission = _resolve_target_astronaut_and_mission(
+        db, user, payload.astronaut_id, payload.mission_id
+    )
+    if user.role.code == "ASTRONAUT" and target_user.id != user.id:
+        raise HTTPException(status_code=403, detail="Solo puede registrar sus propias lecturas de dosímetro.")
+
+    if payload.dedup_key:
+        existing = (
+            db.query(DosimeterReading)
+            .filter(DosimeterReading.dedup_key == payload.dedup_key)
+            .first()
+        )
+        if existing:
+            return {
+                "duplicate_prevented": True,
+                "reading": _serialize_dosimeter_reading(existing),
+            }
+
+    r = DosimeterReading(
+        astronaut_id=target_user.id,
+        mission_id=mission.id,
+        device=payload.device,
+        measured_at=ensure_aware(payload.measured_at),
+        dose_mgy=payload.dose_mgy,
+        rate_ugy_h=payload.rate_ugy_h,
+        location=payload.location or "",
+        notes=payload.notes,
+        recorded_by_user_id=user.id,
+        created_at=utcnow(),
+        dedup_key=payload.dedup_key,
+    )
+    db.add(r)
+    db.commit()
+    db.refresh(r)
+    return {"duplicate_prevented": False, "reading": _serialize_dosimeter_reading(r)}
 
 
 @router.post("/health/measurements/import")

@@ -325,7 +325,7 @@ const DICT = {
     location: "Ubicación",
     notes: "Notas",
     saveReading: "Guardar lectura",
-    cadNote: "CAD = dosímetro activo de tripulación (muestra dosis total y tasa). El CPD pasivo solo se lee al volver a Tierra. Las lecturas se guardan en este dispositivo hasta que el backend tenga su propio registro.",
+    cadNote: "CAD = dosímetro activo de tripulación (muestra dosis total y tasa). El CPD pasivo solo se lee al volver a Tierra.",
     lastReading: "Última lectura",
     over24: "Más de 24 h sin lectura",
     over24Note: " · más de 24 h: registra una nueva",
@@ -351,7 +351,6 @@ const DICT = {
     hydNoteApi: "+{ml} mL registrados desde el procedimiento guiado",
     measureNoteApi: "Registrado desde el procedimiento guiado",
     badDose: "dosis no válida",
-    saveLocalFailed: "no se pudo guardar en este dispositivo",
     toastCadSaved: "Lectura del dosímetro guardada.",
     saveFailed: "No se pudo guardar: {msg}",
     queuedOffline: "Sin enlace: medición en cola ({n}). Se enviará al reconectar.",
@@ -618,7 +617,7 @@ const DICT = {
     location: "Location",
     notes: "Notes",
     saveReading: "Save reading",
-    cadNote: "CAD = crew active dosimeter (shows total dose and rate). The passive CPD is read only after return to Earth. Readings are stored on this device until the backend has its own log.",
+    cadNote: "CAD = crew active dosimeter (shows total dose and rate). The passive CPD is read only after return to Earth.",
     lastReading: "Last reading",
     over24: "More than 24 h without a reading",
     over24Note: " · over 24 h: log a new one",
@@ -643,7 +642,6 @@ const DICT = {
     hydNoteApi: "+{ml} mL logged from the guided procedure",
     measureNoteApi: "Logged from the guided procedure",
     badDose: "invalid dose",
-    saveLocalFailed: "could not be saved on this device",
     toastCadSaved: "Dosimeter reading saved.",
     saveFailed: "Could not save: {msg}",
     queuedOffline: "No link: measurement queued ({n}). It will be sent on reconnection.",
@@ -1384,7 +1382,13 @@ export async function renderConsole(container, appState, helpers, opts = {}) {
   container.innerHTML = `<div class="av-console" ${ROOT_ATTR}><div style="padding:24px" class="av-sub">${esc(tt().loadingConsole)}</div></div>`;
   bindOnce(container, appState, helpers);
   try {
-    await getConsoleData(appState);
+    // Radiación: las lecturas del dosímetro se piden de nuevo cada vez que se abre la vista
+    // (nunca lanza: en error deja la lista vacía) y se esperan junto a la caché de la consola
+    if (consoleState.view === "radiation") invalidateCad();
+    await Promise.all([
+      getConsoleData(appState),
+      consoleState.view === "radiation" ? loadCad(appState) : null,
+    ]);
   } catch (e) {
     container.innerHTML = `<div class="av-console" ${ROOT_ATTR}><div class="av-panel" style="margin:12px;padding:16px">${esc(fmt(tt().loadFailed, { msg: bt(e.message) }))}</div></div>`;
     return;
@@ -1422,8 +1426,10 @@ function paint(container, appState) {
   const alerts = buildAlerts(d, data);
   let body = "";
   if (consoleState.view === "indicator" && consoleState.indicator) body = indicatorHTML(appState, d, alerts);
-  else if (consoleState.view === "radiation") body = radiationHTML(appState, d);
-  else body = summaryHTML(appState, d, data, alerts);
+  else if (consoleState.view === "radiation") {
+    body = radiationHTML(appState, d);
+    if (!cadReady(appState)) ensureCadThenRepaint(container, appState);
+  } else body = summaryHTML(appState, d, data, alerts);
   // la barra de estado, la de alarma y las pestañas viven en el encabezado global (#av-chrome)
   container.innerHTML = `<div class="av-console" ${ROOT_ATTR}>${body}</div>`;
   if (consoleState.view === "indicator") loadIndicatorExtras(container, appState);
@@ -2811,12 +2817,129 @@ function trendSVG(appState, code, ts) {
 
 /* ───────────────────────── radiación ───────────────────────── */
 
-const CAD_KEY = (aid) => `av_cad_entries_${aid}`;
-function cadEntries(aid) {
-  try { return JSON.parse(localStorage.getItem(CAD_KEY(aid)) || "[]"); } catch (e) { return []; }
+/* Lecturas del dosímetro activo de tripulación (CAD): viven en la base de datos
+ * (GET/POST /radiation/dosimeter-readings), por astronauta y misión seleccionados.
+ * Caché propia con la misma clave `${aid}|${mid}` que la de la consola; radiationHTML la lee
+ * de forma síncrona (cadEntries) y renderConsole / paint la cargan (loadCad) antes de pintar.
+ * `gen` descarta respuestas que llegan después de invalidar la caché (p. ej. tras guardar). */
+const cadCache = { key: null, rows: null, gen: 0, pending: null, pendingKey: null };
+
+/* Fila de la API → forma que usa radiationHTML (la misma que tenían las entradas locales) */
+function cadFromApi(r) {
+  return {
+    device: r.device || "",
+    utc: r.measured_at,
+    mgy: Number(r.dose_mgy),
+    rate: r.rate_ugy_h === null || r.rate_ugy_h === undefined ? null : Number(r.rate_ugy_h),
+    loc: r.location || "",
+    notes: r.notes || "",
+  };
 }
-function saveCad(aid, list) {
-  try { localStorage.setItem(CAD_KEY(aid), JSON.stringify(list.slice(-50))); return true; } catch (e) { return false; }
+
+/* Lecturas en caché para el tripulante/misión actuales, en orden cronológico (última al final) */
+function cadEntries(appState) {
+  return cadReady(appState) ? cadCache.rows : [];
+}
+function cadReady(appState) {
+  return cadCache.rows !== null && cadCache.key === cacheKey(appState);
+}
+function invalidateCad() {
+  cadCache.gen += 1;
+  cadCache.key = null;
+  cadCache.rows = null;
+  cadCache.pending = null;
+  cadCache.pendingKey = null;
+}
+
+/* Migración única de las lecturas que versiones anteriores guardaban solo en el navegador
+ * (localStorage `av_cad_entries_<aid>`): se suben con dedup_key estable (aid + hora + dosis)
+ * para que un reintento no duplique, y la clave se borra solo si TODAS se han subido. Silenciosa. */
+const LEGACY_CAD_KEY = (aid) => `av_cad_entries_${aid}`;
+const cadMigrating = new Map(); // aid → promesa en curso
+function migrateLegacyCad(aid, mid) {
+  if (!aid) return Promise.resolve();
+  let raw = null;
+  try { raw = localStorage.getItem(LEGACY_CAD_KEY(aid)); } catch { return Promise.resolve(); }
+  if (raw === null) return Promise.resolve();
+  if (cadMigrating.has(aid)) return cadMigrating.get(aid);
+  const p = (async () => {
+    let list = null;
+    try { list = JSON.parse(raw); } catch { list = null; }
+    let allOk = true;
+    for (const e of Array.isArray(list) ? list : []) {
+      const mgy = Number(e && e.mgy);
+      const t = new Date(e && e.utc);
+      // entradas ilegibles: no se pueden subir nunca, se descartan
+      if (!e || !Number.isFinite(mgy) || mgy < 0 || Number.isNaN(t.getTime())) continue;
+      const utc = t.toISOString();
+      const rate = e.rate === null || e.rate === undefined || e.rate === "" ? null : Number(e.rate);
+      const notes = String(e.notes || "").trim().slice(0, 140);
+      try {
+        await apiService.createDosimeterReading({
+          astronaut_id: aid,
+          mission_id: mid ?? null,
+          device: String(e.device || "CAD").trim().slice(0, 32) || "CAD",
+          measured_at: utc,
+          dose_mgy: mgy,
+          rate_ugy_h: Number.isFinite(rate) && rate >= 0 ? rate : null,
+          location: String(e.loc || "").slice(0, 60),
+          notes: notes || null,
+          dedup_key: `cad-legacy-${aid}-${utc}-${mgy}`.slice(0, 120),
+        });
+      } catch {
+        allOk = false; // se reintentará en la próxima carga (dedup_key evita duplicados)
+      }
+    }
+    if (allOk) {
+      try { localStorage.removeItem(LEGACY_CAD_KEY(aid)); } catch { /* sin almacenamiento */ }
+    }
+  })().finally(() => cadMigrating.delete(aid));
+  cadMigrating.set(aid, p);
+  return p;
+}
+
+/* Carga (migración previa incluida) las lecturas del tripulante/misión actuales y las deja en caché.
+ * Si la petición falla se guarda una lista vacía para no reintentar en bucle desde paint;
+ * renderConsole vuelve a pedirlas cada vez que se abre la vista Radiación. */
+function loadCad(appState) {
+  const key = cacheKey(appState);
+  if (cadCache.pending && cadCache.pendingKey === key) return cadCache.pending;
+  const aid = appState.selectedAstronautId;
+  const mid = appState.selectedMissionId;
+  const gen = ++cadCache.gen;
+  const p = migrateLegacyCad(aid, mid)
+    .catch(() => { /* la migración nunca bloquea la carga */ })
+    .then(() => apiService.getDosimeterReadings(aid, mid))
+    .then((res) => (res && Array.isArray(res.readings) ? res.readings : []).map(cadFromApi))
+    .catch((e) => {
+      console.warn("No se pudieron cargar las lecturas del dosímetro:", e && e.message);
+      return [];
+    })
+    .then((rows) => {
+      if (cadCache.gen === gen) {
+        cadCache.key = key;
+        cadCache.rows = rows;
+      }
+      if (cadCache.pending === p) {
+        cadCache.pending = null;
+        cadCache.pendingKey = null;
+      }
+      return rows;
+    });
+  cadCache.pending = p;
+  cadCache.pendingKey = key;
+  return p;
+}
+
+/* paint sin lecturas en caché (cambio de tripulante, repintado desde el encabezado): se piden
+ * y se repinta al llegar, si la vista Radiación del mismo tripulante/misión sigue abierta. */
+function ensureCadThenRepaint(container, appState) {
+  const key = cacheKey(appState);
+  loadCad(appState).then(() => {
+    if (!document.body.contains(container) || !container.querySelector(ROOT_SEL)) return;
+    if (consoleState.view !== "radiation" || cacheKey(appState) !== key || !cadReady(appState)) return;
+    paint(container, appState);
+  });
 }
 
 function meterHTML(title, value, limit, unit, note, marks = []) {
@@ -3027,8 +3150,7 @@ function radiationHTML(appState, d) {
   const cur = heraCurrent();
   const lvl = hera.level;
   const lvlLetter = HERA_LETTER[lvl];
-  const aid = appState.selectedAstronautId;
-  const entries = cadEntries(aid);
+  const entries = cadEntries(appState); // cargadas desde la API antes de pintar (loadCad)
   const lastCad = entries[entries.length - 1];
   const cadAgeH = lastCad ? (Date.now() - new Date(lastCad.utc).getTime()) / 3600000 : null;
   const discrepancy = lastCad && lastCad.rate ? Math.abs(lastCad.rate / 60 - cur.v) / Math.max(cur.v, 0.01) : null; // µGy/h → µGy/min
@@ -3268,21 +3390,36 @@ function bindOnce(container, appState, helpers) {
         if (fd.get("secondary")) payload.secondary_value = Number(fd.get("secondary"));
         await submitMeasurement(container, st, hp, payload);
       } else if (form.getAttribute("data-form") === "cad") {
-        const entry = {
-          device: String(fd.get("device") || "").slice(0, 32),
-          utc: new Date(`${fd.get("utc")}:00Z`).toISOString(),
-          mgy: Number(fd.get("mgy")),
-          rate: fd.get("rate") ? Number(fd.get("rate")) : null,
-          loc: String(fd.get("loc") || ""),
-          notes: String(fd.get("notes") || "").slice(0, 140),
-          savedAt: new Date().toISOString(),
-        };
-        if (!Number.isFinite(entry.mgy) || entry.mgy < 0) throw new Error(tt().badDose);
-        const list = cadEntries(st.selectedAstronautId);
-        list.push(entry);
-        list.sort((a, b) => new Date(a.utc) - new Date(b.utc));
-        if (!saveCad(st.selectedAstronautId, list)) throw new Error(tt().saveLocalFailed);
+        // siempre el tripulante y la misión elegidos en el selector (el líder registra para su tripulación)
+        const aid = st.selectedAstronautId;
+        const mid = st.selectedMissionId;
+        const measuredAt = new Date(`${fd.get("utc")}:00Z`).toISOString();
+        const mgy = Number(fd.get("mgy"));
+        if (!Number.isFinite(mgy) || mgy < 0) throw new Error(tt().badDose);
+        const rate = fd.get("rate") ? Number(fd.get("rate")) : null;
+        const notes = String(fd.get("notes") || "").trim().slice(0, 140);
+        const device = String(fd.get("device") || "").trim().slice(0, 32);
+        const submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn) submitBtn.disabled = true;
+        try {
+          await apiService.createDosimeterReading({
+            astronaut_id: aid,
+            mission_id: mid,
+            device,
+            measured_at: measuredAt,
+            dose_mgy: mgy,
+            rate_ugy_h: rate,
+            location: String(fd.get("loc") || "").slice(0, 60),
+            notes: notes || null,
+            // misma lectura (tripulante, misión, dispositivo, hora y dosis) enviada dos veces → una sola fila
+            dedup_key: `cad-${aid}-${mid ?? ""}-${measuredAt}-${mgy}-${device}`.slice(0, 120),
+          });
+        } finally {
+          if (submitBtn) submitBtn.disabled = false;
+        }
         hp.showToast(tt().toastCadSaved);
+        invalidateCad();
+        await loadCad(st);
         paint(container, st);
       }
     } catch (e) {
