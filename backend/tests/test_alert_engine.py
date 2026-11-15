@@ -360,6 +360,8 @@ def test_every_site_that_creates_an_alert_passes_a_recommendation():
     assert set(sites) == {
         "rules/engine.py",              # motor: catálogo por indicador × dirección × nivel
         "rules/early_warnings.py",      # alerta temprana "Contacto con Tierra"
+        "rules/prediction_alerts.py",   # alerta temprana del pronóstico (issue #30)
+        "rules/environment_alerts.py",  # entorno y radiación ambiental de la misión (issue #30)
         "services/emotional_engine.py",
         "services/cognitive_engine.py",
         "api/v1/expansion_router.py",   # solicitud de apoyo urgente

@@ -10,6 +10,8 @@
  * - Nota de procedencia de los datos (simulados frente a entrada manual).
  * - "Seguimiento periódico" (masa, visión, medicación, polvo, ánimo y riesgos NASA IMM)
  *   del tripulante seleccionado: logbook-followup.js, montado en #av-log-followup.
+ * - "Gráficas por motor" (predicción, reglas/alertas, cognitivo, emocional, aislamiento,
+ *   radiación): logbook-engines.js, montado en #av-log-engines (issue #30).
  *
  * Los listeners se enlazan a la raíz propia (.av-log-root), que se crea de nuevo
  * en cada render: no se acumulan en el contenedor compartido. No se usan los
@@ -25,6 +27,7 @@ import { tr, fmt, fmtNum, getLang } from "../../i18n/i18n.js";
 import { bt } from "/src/i18n/backend.js";
 import { renderLogbookTrends } from "./logbook-trends.js"; // tendencias por indicador, antes columna del Resumen
 import { mountFollowup } from "./logbook-followup.js"; // "Seguimiento periódico" (NASA IMM), antes en el Resumen
+import { renderLogbookEngines, refreshLogbookEngines } from "./logbook-engines.js"; // gráficas por motor del backend (issue #30)
 
 const esc = escapeHtml;
 
@@ -897,6 +900,7 @@ function paint(root, ctx) {
   <div class="av-grid">
     <div class="av-col-b">
       <div id="av-log-trends"></div>
+      <div id="av-log-engines"></div>
       <section class="av-panel" aria-labelledby="av-log-h">
         <div class="av-panel-head">
           <div>
@@ -1106,6 +1110,7 @@ function bind(root, ctx) {
     } else if (act === "reload") {
       btn.disabled = true;
       setResultsLoading(root, tr(DICT).refreshing);
+      refreshLogbookEngines();
       const fresh = await loadAll(ctx);
       btn.disabled = false;
       if (!fresh || !root.isConnected) return;
@@ -1184,5 +1189,9 @@ export async function renderLogbookView(container, appState, helpers) {
   // tendencias por indicador (módulo propio; sus listeners viven en #av-log-trends)
   renderLogbookTrends(root.querySelector("#av-log-trends"), {
     appState, summary: ctx.summary, aid: ctx.aid, mid: ctx.mid, texts: () => tr(DICT).trends,
+  });
+  // gráficas por motor (predicción, reglas, cognitivo, emocional, aislamiento, radiación)
+  renderLogbookEngines(root.querySelector("#av-log-engines"), {
+    appState, summary: ctx.summary, aid: ctx.aid, mid: ctx.mid,
   });
 }
