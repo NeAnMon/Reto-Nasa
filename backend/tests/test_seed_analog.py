@@ -231,3 +231,55 @@ def test_analog_astronaut_can_log_in_and_read_own_data(session_factory):
             app.dependency_overrides.pop(get_db, None)
         else:
             app.dependency_overrides[get_db] = previous
+
+
+def test_logged_measurement_continues_the_forecast_segment(session_factory):
+    """Una lectura registrada desde la app en la misión análoga (que no tiene contexto operativo
+    confirmado) se guarda con la fase vigente de la misión y continúa la serie. Antes quedaba con fase
+    UNKNOWN, abría un segmento de un solo día y dejaba el pronóstico en datos insuficientes."""
+    def override():
+        session = session_factory()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    session = session_factory()
+    mission_id = _mission(session).id
+    session.close()
+    previous = app.dependency_overrides.get(get_db)
+    app.dependency_overrides[get_db] = override
+    try:
+        with TestClient(app) as client:
+            resp = client.post("/api/v1/auth/login", json={
+                "email": "hdbr01@semsa.demo", "password": settings.DEMO_ANALOG_PASSWORD,
+            })
+            assert resp.status_code == 200, resp.text
+            headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
+            params = {"mission_id": mission_id, "horizon_days": 7}
+            before = client.get("/api/v1/predictions/indicators/HEART_RATE", params=params, headers=headers)
+            assert before.status_code == 200, before.text
+            assert before.json()["status"] == "ok"
+
+            created = client.post("/api/v1/health/measurements", headers=headers, json={
+                "mission_id": mission_id, "indicator_code": "HEART_RATE", "value": 72,
+            })
+            assert created.status_code == 201, created.text
+            session = session_factory()
+            try:
+                row = session.get(HealthMeasurement, created.json()["measurement"]["id"])
+                assert (row.phase_code, row.environment_code) == (sa.BED_REST_PHASE, sa.BED_REST_ENV)
+            finally:
+                session.close()
+
+            after = client.get("/api/v1/predictions/indicators/HEART_RATE", params=params, headers=headers)
+            assert after.status_code == 200, after.text
+            body = after.json()
+            assert body["status"] == "ok"
+            assert body["phase_code"] == sa.BED_REST_PHASE
+            assert body["n_days"] >= before.json()["n_days"]
+    finally:
+        if previous is None:
+            app.dependency_overrides.pop(get_db, None)
+        else:
+            app.dependency_overrides[get_db] = previous
