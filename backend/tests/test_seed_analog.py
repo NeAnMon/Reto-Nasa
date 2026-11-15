@@ -24,6 +24,10 @@ from backend.app.models.models import (
     MissionAssignment,
     User,
 )
+from backend.app.rules.calibration import CALIBRATION_VERSION
+from backend.app.rules.engine import baseline_from_row, get_active_rule_version
+from backend.app.rules.evaluation import PreviousReading, Thresholds, evaluate_reading
+from backend.app.rules.recommendations import get_recommendation
 from backend.app.services.prediction_service import predict_indicator
 
 
@@ -133,6 +137,36 @@ def test_third_subject_is_forecast_without_extrapolating_noise(db):
     assert len({p["value"] for p in bp.forecast}) == 1
     assert all(p["lower_95"] < p["lower_80"] < p["value"] < p["upper_80"] < p["upper_95"] for p in bp.forecast)
     assert bp.empirical_validation["validated_with_real_data"] is True
+
+
+@pytest.mark.parametrize("crew_code", ["HDBR-01", "HDBR-02", "HDBR-03"])
+def test_projection_matches_the_calibrated_alert_engine(db, crew_code):
+    """Con las reglas y las líneas base sembradas, el estado proyectado de cada día es el que daría el
+    motor de alertas (`evaluate_reading`) a ese nivel, y la recomendación sale del catálogo de alertas."""
+    user = _astronaut(db, crew_code)
+    mission_id = _mission(db).id
+    for code in sa.INDICATOR_COLUMNS:
+        result = predict_indicator(db, user.id, mission_id, code, 7)
+        _, version = get_active_rule_version(db, code)
+        projection = result.threshold_projection
+        assert projection["rule_version"] == version.version_number == CALIBRATION_VERSION, code
+        baseline = baseline_from_row(db.query(HealthBaseline).filter(
+            HealthBaseline.astronaut_id == user.id, HealthBaseline.indicator_code == code
+        ).first())
+        for point in result.forecast:
+            expected = evaluate_reading(
+                code, point["value"], None, Thresholds.from_version(version), unit=result.unit,
+                baseline=baseline, previous=PreviousReading(value=point["value"]),
+            )
+            assert point["projected_state"] == expected.state, (code, point["date"])
+        # con línea base real el pronóstico publica el mismo z que usa el motor
+        assert result.baseline_status == "available_unverified" and result.z_score is not None, code
+        rec = result.recommendation
+        if rec["basis"] == "none":
+            assert rec["text"] is None
+        elif rec["alert_direction"]:
+            assert rec["source"] == "alert_recommendation_catalog"
+            assert rec["text"] == get_recommendation(code, rec["alert_direction"]).followup, code
 
 
 def test_reseed_is_idempotent_and_reanchors_to_new_today(db):

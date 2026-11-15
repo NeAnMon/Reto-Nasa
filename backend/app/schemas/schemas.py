@@ -479,34 +479,42 @@ class ThresholdCrossing(BaseModel):
     date: Optional[str] = None
     days_ahead: Optional[int] = None
     state: str
-    direction: str  # above / below / both
+    direction: Optional[str] = None  # above / below / both
     threshold: Optional[float] = None
+    reference: Optional[str] = None  # absolute_range / personal_baseline: de dónde sale el umbral
+    alert_direction: Optional[str] = None  # dirección del motor de alertas: HIGH / LOW / PERSONAL
     basis: str  # expected_value / interval_80
 
 
 class ThresholdProjection(BaseModel):
-    """Pronóstico frente a los rangos de la versión vigente de la regla del indicador."""
+    """Pronóstico frente al motor de alertas (rangos de la regla vigente + desvío frente a la persona)."""
 
     rule_code: str
     rule_version: str
     protocol_source: Optional[str] = None
-    ranges: Dict[str, List[float]]
+    # normal / monitor / warning: rangos absolutos de la regla. personal_yellow / personal_red: banda
+    # personal (media ± 2·DE y ± 3·DE); un extremo None significa que ese lado no genera alerta.
+    ranges: Dict[str, List[Optional[float]]]
     current_state: str
     first_expected_crossing: Optional[ThresholdCrossing] = None
     first_possible_crossing: Optional[ThresholdCrossing] = None
 
 
 class PredictionRecommendation(BaseModel):
-    """Recomendación preventiva tomada de la versión de regla vigente (no es un diagnóstico)."""
+    """Recomendación preventiva del catálogo de alertas para el cruce previsto (no es un diagnóstico)."""
 
     basis: str  # none / possible_crossing / expected_crossing / currently_out_of_range
     state: Optional[str] = None
     direction: Optional[str] = None
     threshold: Optional[float] = None
+    reference: Optional[str] = None
+    alert_direction: Optional[str] = None
     date: Optional[str] = None
     days_ahead: Optional[int] = None
-    text: Optional[str] = None
-    source: str
+    text: Optional[str] = None  # cómo mejorar el indicador en los próximos días (con su fuente)
+    immediate_action: Optional[str] = None  # solo si el último valor ya está fuera de rango
+    source: Optional[str] = None  # alert_recommendation_catalog / clinical_rule_followup_instructions
+    source_detail: Optional[str] = None
     rule_code: str
     rule_version: str
 

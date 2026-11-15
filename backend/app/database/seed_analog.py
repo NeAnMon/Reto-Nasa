@@ -67,9 +67,11 @@ MEASUREMENT_HOUR_UTC = 8
 
 # Sujeto del dataset -> cuenta demo de la misión análoga. Elegidos porque, al día 45, el servicio
 # de predicción da resultados distintos con sus datos reales:
-# - UTMB-17: `ok` en los 4 indicadores; el pulso sube ~0,33 lpm/día durante el reposo.
-# - UTMB-03: `ok` en los 4 indicadores.
-# - UTMB-29: pulso `ok` (~+0,27 lpm/día) y presión arterial `model_not_reliable`.
+# - UTMB-17: `ok` en los 4 indicadores; el pulso sube ~0,33 lpm/día durante el reposo (tendencia significativa).
+# - UTMB-03: `ok` en los 4 indicadores; tendencia significativa pequeña en pulso y temperatura.
+# - UTMB-29: `ok` en los 4 indicadores; pulso con tendencia significativa (~+0,27 lpm/día) y presión
+#   arterial sin tendencia (pronóstico plano con bandas). Con el pronóstico calibrado ya no hay
+#   ningún `model_not_reliable` en estas series: ese estado lo cubre test_prediction_service.py.
 SUBJECTS: Dict[str, Dict[str, str]] = {
     "UTMB-17": {"crew_code": "HDBR-01", "email": "hdbr01@semsa.demo", "callsign": "Analog-1"},
     "UTMB-03": {"crew_code": "HDBR-02", "email": "hdbr02@semsa.demo", "callsign": "Analog-2"},

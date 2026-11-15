@@ -18,6 +18,13 @@ from backend.app.models.models import (
     HealthBaseline, HealthIndicatorDefinition, HealthMeasurement,
     MissionAssignment, Mission, Role, User,
 )
+from backend.app.rules import recommendations as alert_rec
+from backend.app.rules.calibration import CALIBRATION, Z_RED, Z_YELLOW
+from backend.app.rules.engine import baseline_from_row, evaluate_measurement
+from backend.app.rules.evaluation import (
+    PersonalBaseline, PreviousReading, RollingWindow, Thresholds, evaluate_reading,
+)
+from backend.app.services import prediction_service as ps
 from backend.app.services.prediction_service import predict_indicator
 
 START = datetime(2025, 1, 1, 12, tzinfo=timezone.utc)
@@ -356,32 +363,120 @@ def test_baseline_placeholder_std_dev_default_is_not_published_as_z(db, setup):
     assert r.forecast[0]["baseline_delta"] == pytest.approx(24)
 
 
-def test_baseline_same_std_dev_across_units_is_placeholder(db, setup):
-    """La misma desviación (4.0) para lpm, grados y porcentaje a la vez es un relleno, como en las cuentas demo."""
+def test_baseline_placeholder_matches_the_alert_engine(db, setup):
+    """Misma detección de relleno que el motor de alertas: 4.0 solo es relleno en una línea base
+    simulada (seed demo anterior); con una DE real hay Z, calculado con el piso de DE del motor."""
     add_series(db)
-    for code, unit in (("BODY_TEMP", "C"), ("SPO2", "pct")):
-        db.add(HealthIndicatorDefinition(
-            code=code, name=code, category="TEST", body_region_code="CHEST", unit=unit,
-            min_valid_value=0, max_valid_value=200, step_by_step_instructions="test",
-            educational_summary="test", spaceflight_risk_explanation="test",
-        ))
-    db.flush()
-    for code, value in (("HEART_RATE", 70), ("BODY_TEMP", 36.6), ("SPO2", 98)):
-        db.add(HealthBaseline(astronaut_id=1, indicator_code=code, baseline_value=value, std_dev=4.0))
+    row = HealthBaseline(astronaut_id=1, indicator_code="HEART_RATE", baseline_value=70, std_dev=4.0, is_simulated=True)
+    db.add(row)
     db.commit()
     r = run(db)
     assert r.baseline_status == "placeholder_std_dev"
     assert r.z_score is None and all(p["z_score"] is None for p in r.forecast)
-    # Con desviaciones distintas por indicador la misma línea base sí se acepta
-    db.query(HealthBaseline).filter(HealthBaseline.indicator_code == "BODY_TEMP").update({"std_dev": 0.3})
+    row.is_simulated = False
     db.commit()
     r = run(db)
     assert r.baseline_status == "available_unverified"
-    assert r.z_score is not None
+    # el motor usa una DE mínima de 6 lpm para el pulso: z no se infla con una DE de 4.0
+    assert r.z_score == pytest.approx((r.forecast[-1]["value"] - 70) / 6.0)
+
+
+def test_personal_scale_matches_the_alert_engine():
+    """La media y la DE efectiva del pronóstico son las del motor: mismo z con piso de DE y con media móvil."""
+    for code, mean, sd, value in (
+        ("HEART_RATE", 62.0, 3.0, 75.0),       # DE por debajo del piso (6 lpm)
+        ("BODY_TEMP", 36.5, 0.45, 37.4),
+        ("SLEEP_DURATION", 7.2, 0.52, 6.4),    # regla sobre la media de 7 noches
+        ("MOOD_WELLNESS", 7.5, 0.56, 6.0),
+    ):
+        baseline = PersonalBaseline(mean=mean, sd=sd)
+        ctx = ps.ProjectionContext(code, "u", Thresholds.from_calibration(CALIBRATION[code]), baseline)
+        ev = ps.evaluate_level(ctx, value)
+        scale = ps.personal_scale(code, baseline)
+        assert ev.baseline_valid and ev.z == pytest.approx((value - scale[0]) / scale[1]), code
+    # sin una DE real no hay escala, igual que en el motor (ausente, 0, de relleno)
+    for sd, simulated in ((None, False), (0.0, False), (5.0, False), (4.0, True)):
+        baseline = PersonalBaseline(mean=70.0, sd=sd, is_simulated=simulated)
+        assert ps.personal_scale("HEART_RATE", baseline) is None
+        ctx = ps.ProjectionContext("HEART_RATE", "lpm", Thresholds.from_calibration(CALIBRATION["HEART_RATE"]), baseline)
+        assert ps.evaluate_level(ctx, 80.0).baseline_valid is False
+
+
+CALIBRATED_HR = {"normal": (51, 99), "monitor": (51, 99), "warning": (41, 119)}  # rangos de rules/calibration.py
+
+
+def test_projected_state_is_the_alert_engine_state(db, setup):
+    """Una sola fuente de verdad: el estado proyectado de cada día es el que da `evaluate_reading`
+    (y el motor con BD al registrar esa lectura) para los mismos datos."""
+    add_series(db)  # 70 … 92; pronóstico 94 … 106
+    add_rule(db, **CALIBRATED_HR)
+    row = HealthBaseline(astronaut_id=1, indicator_code="HEART_RATE", baseline_value=62, std_dev=6.5, is_simulated=False)
+    db.add(row)
+    db.commit()
+    r = run(db)
+    assert r.status == "ok"
+    thresholds = Thresholds(51, 99, 51, 99, 41, 119)
+    baseline = baseline_from_row(row)
+
+    def engine_state(value):
+        return evaluate_reading(
+            "HEART_RATE", value, None, thresholds, unit="bpm", baseline=baseline, previous=PreviousReading(value=value)
+        ).state
+
+    rank = {"NORMAL": 0, "MONITOR": 1, "WARNING": 2, "CRITICAL": 3}
+    for p in r.forecast:
+        assert p["projected_state"] == engine_state(p["value"])
+        for level in (80, 95):
+            worst = max(engine_state(p[f"lower_{level}"]), engine_state(p[f"upper_{level}"]), key=rank.get)
+            assert p[f"worst_state_{level}"] == worst
+    # dentro del rango absoluto (≤ 99) pero a más de 3 DE de la persona: WARNING por desvío personal
+    assert r.forecast[0]["value"] == pytest.approx(94) and r.forecast[0]["projected_state"] == "WARNING"
+    # y el motor con BD, al registrar esa misma lectura al día siguiente, da el mismo estado
+    stored = evaluate_measurement(db, setup, 1, 1, r.forecast[0]["value"], None, START + timedelta(days=12), "MANUAL_ENTRY")
+    assert stored.state == r.forecast[0]["projected_state"]
+
+    # la envoltura no añade criterio propio: coincide con evaluate_reading en todo el rango, con y sin línea base
+    for personal in (None, baseline, PersonalBaseline(mean=62.0, sd=5.0), PersonalBaseline(mean=62.0, sd=0.0)):
+        ctx = ps.ProjectionContext("HEART_RATE", "bpm", thresholds, personal)
+        for value in range(30, 131):
+            direct = evaluate_reading(
+                "HEART_RATE", float(value), None, thresholds, unit="bpm", baseline=personal,
+                previous=PreviousReading(value=float(value)),
+            )
+            wrapped = ps.evaluate_level(ctx, float(value))
+            assert (wrapped.state, wrapped.direction, wrapped.z) == (direct.state, direct.direction, direct.z)
+
+
+def test_rolling_mean_indicator_is_projected_with_a_full_window(db, setup):
+    """Sueño: la regla usa la media de 7 noches, así que el nivel pronosticado se evalúa como ventana completa."""
+    db.add(HealthIndicatorDefinition(
+        code="SLEEP_DURATION", name="Sueño", category="TEST", body_region_code="HEAD", unit="horas",
+        min_valid_value=0, max_valid_value=16, step_by_step_instructions="test",
+        educational_summary="test", spaceflight_risk_explanation="test",
+    ))
+    db.commit()
+    add_values(db, [5.8, 6.0, 5.6, 5.9, 5.7, 6.0, 5.5, 5.9, 5.8, 5.6, 6.0, 5.8], code="SLEEP_DURATION", unit="horas")
+    add_rule(db, normal=(6.0, 16.0), monitor=(6.0, 16.0), warning=(5.5, 16.0), code="SLEEP_DURATION")
+    r = predict_indicator(db, 1, 1, "SLEEP_DURATION", 7)
+    assert r.status == "ok"
+    level = r.forecast[0]["value"]
+    assert 5.5 <= level < 6.0
+    thresholds = Thresholds(6.0, 16.0, 6.0, 16.0, 5.5, 16.0)
+    with_window = evaluate_reading(
+        "SLEEP_DURATION", level, None, thresholds, unit="horas", previous=PreviousReading(value=level),
+        window=RollingWindow(mean=level, count=CALIBRATION["SLEEP_DURATION"].rolling_days),
+    )
+    assert with_window.state == "WARNING"  # media por debajo de 6,0 h y sin línea base personal
+    assert all(p["projected_state"] == with_window.state for p in r.forecast)
+    # sin la ventana el motor trataría el nivel como una noche aislada y no alertaría
+    assert evaluate_reading("SLEEP_DURATION", level, None, thresholds, unit="horas").state == "NORMAL"
+    rec = r.recommendation
+    assert rec["alert_direction"] == "LOW" and rec["direction"] == "below" and rec["threshold"] == 6.0
+    assert rec["text"] == alert_rec.get_recommendation("SLEEP_DURATION", "LOW").followup
 
 
 def test_threshold_projection_expected_crossing_and_recommendation(db, setup):
-    """El valor esperado cruza el rango normal: fecha, nivel, dirección y recomendación de la regla."""
+    """El valor esperado sale del rango normal: fecha, nivel, dirección, umbral y recomendación del catálogo."""
     add_series(db)  # 70, 72, ... 92; pronóstico 94, 96, 98, 100, 102, 104, 106
     add_rule(db)
     r = run(db)
@@ -389,16 +484,20 @@ def test_threshold_projection_expected_crossing_and_recommendation(db, setup):
     assert [p["projected_state"] for p in r.forecast] == ["NORMAL"] * 4 + ["MONITOR"] * 3
     tp = r.threshold_projection
     assert tp["rule_code"] == "RULE_HEART_RATE_TEST" and tp["rule_version"] == "1.0-TEST"
-    assert tp["ranges"] == {"normal": [60, 100], "monitor": [50, 110], "warning": [40, 130]}
+    assert tp["ranges"] == {"normal": [60, 100], "monitor": [50, 110], "warning": [40, 130]}  # sin línea base: sin banda personal
     assert tp["current_state"] == "NORMAL"
     crossing = tp["first_expected_crossing"]
     assert crossing["days_ahead"] == 5 and crossing["date"] == r.forecast[4]["date"]
     assert crossing["state"] == "MONITOR" and crossing["direction"] == "above" and crossing["threshold"] == 100
+    assert crossing["reference"] == "absolute_range" and crossing["alert_direction"] == "HIGH"
     assert crossing["basis"] == "expected_value"
     rec = r.recommendation
     assert rec["basis"] == "expected_crossing" and rec["state"] == "MONITOR" and rec["days_ahead"] == 5
-    assert rec["text"] == "Registrar medición de seguimiento (texto de la regla)."
-    assert rec["source"] == "clinical_rule_followup_instructions"
+    # recomendación específica del indicador y la dirección, con su fuente; no el texto genérico de la regla
+    catalog = alert_rec.get_recommendation("HEART_RATE", "HIGH")
+    assert rec["text"] == catalog.followup and "Fuente:" in rec["text"]
+    assert rec["source"] == "alert_recommendation_catalog" and rec["source_detail"] == catalog.source
+    assert rec["immediate_action"] is None  # todavía no está fuera de rango: solo la pauta preventiva
     # El pronóstico nunca crea alertas
     assert db.query(Alert).count() == 0
 
@@ -417,7 +516,7 @@ def test_threshold_projection_band_touches_threshold(db, setup):
     assert possible["days_ahead"] == 1 and possible["basis"] == "interval_80"
     assert possible["state"] == "MONITOR" and possible["direction"] == "above" and possible["threshold"] == 99
     assert r.recommendation["basis"] == "possible_crossing"
-    assert r.recommendation["text"] == "Registrar medición de seguimiento (texto de la regla)."
+    assert r.recommendation["text"] == alert_rec.get_recommendation("HEART_RATE", "HIGH").followup
 
 
 def test_threshold_projection_far_from_limits_gives_no_recommendation(db, setup):
@@ -429,7 +528,8 @@ def test_threshold_projection_far_from_limits_gives_no_recommendation(db, setup)
     assert not any(p["interval_touches_threshold"] for p in r.forecast)
     assert r.threshold_projection["first_expected_crossing"] is None
     assert r.threshold_projection["first_possible_crossing"] is None
-    assert r.recommendation["basis"] == "none" and r.recommendation["text"] is None
+    rec = r.recommendation
+    assert rec["basis"] == "none" and rec["text"] is None and rec["immediate_action"] is None and rec["source"] is None
 
 
 def test_threshold_projection_when_already_out_of_range(db, setup):
@@ -437,28 +537,92 @@ def test_threshold_projection_when_already_out_of_range(db, setup):
     add_rule(db, normal=(60, 90))
     r = run(db)
     assert r.threshold_projection["current_state"] == "MONITOR"
-    assert r.recommendation["basis"] == "currently_out_of_range"
-    assert r.recommendation["direction"] == "above" and r.recommendation["threshold"] == 90
-    assert r.recommendation["days_ahead"] == 0
-    assert r.recommendation["text"]
+    rec = r.recommendation
+    assert rec["basis"] == "currently_out_of_range"
+    assert rec["direction"] == "above" and rec["threshold"] == 90 and rec["days_ahead"] == 0
+    # ya fuera de rango: además de la pauta, la acción inmediata del catálogo para ese nivel
+    assert rec["text"] == alert_rec.get_recommendation("HEART_RATE", "HIGH").followup
+    assert rec["immediate_action"] == alert_rec.build_alert_texts("HEART_RATE", "HIGH", "MONITOR")[0]
 
 
-def test_threshold_projection_applies_baseline_delta_like_the_rules_engine(db, setup):
-    """Igual que el motor de reglas: dentro del rango normal, pero lejos de la línea base, es MONITOR."""
-    add_values(db, STABLE)  # nivel cercano a 70, último valor 70
-    add_rule(db, normal=(40, 120), monitor=(35, 140), warning=(30, 160), baseline_delta=8)
-    db.add(HealthBaseline(astronaut_id=1, indicator_code="HEART_RATE", baseline_value=60, std_dev=3.0))
+def test_threshold_projection_uses_personal_deviation_like_the_alert_engine(db, setup):
+    """Como el motor: dentro del rango absoluto, pero a 3 DE o más de la línea base personal, es WARNING
+    por desvío personal; el umbral cruzado es media + 3·DE y los rangos traen la banda personal."""
+    add_values(db, STABLE)  # nivel cercano a 70, último valor 70, anterior 72
+    add_rule(db, **CALIBRATED_HR)
+    db.add(HealthBaseline(astronaut_id=1, indicator_code="HEART_RATE", baseline_value=48, std_dev=6.5, is_simulated=False))
     db.commit()
     r = run(db)
     assert r.status == "ok"
-    assert all(p["projected_state"] == "MONITOR" for p in r.forecast)
+    assert all(p["projected_state"] == "WARNING" for p in r.forecast)
     tp = r.threshold_projection
-    assert tp["ranges"]["baseline_delta"] == [52, 68]
-    assert tp["current_state"] == "MONITOR"
+    assert "baseline_delta" not in tp["ranges"]
+    assert tp["ranges"]["normal"] == [51, 99] and tp["ranges"]["warning"] == [41, 119]
+    assert tp["ranges"]["personal_yellow"] == pytest.approx([48 - Z_YELLOW * 6.5, 48 + Z_YELLOW * 6.5])
+    assert tp["ranges"]["personal_red"] == pytest.approx([48 - Z_RED * 6.5, 48 + Z_RED * 6.5])
+    assert tp["current_state"] == "WARNING"
     crossing = tp["first_expected_crossing"]
-    assert crossing["days_ahead"] == 1 and crossing["state"] == "MONITOR"
-    assert crossing["direction"] == "above" and crossing["threshold"] == 68
-    assert r.recommendation["basis"] == "currently_out_of_range" and r.recommendation["threshold"] == 68
+    assert crossing["days_ahead"] == 1 and crossing["state"] == "WARNING"
+    assert crossing["direction"] == "above" and crossing["threshold"] == pytest.approx(67.5)
+    assert crossing["reference"] == "personal_baseline" and crossing["alert_direction"] == "PERSONAL"
+    rec = r.recommendation
+    assert rec["basis"] == "currently_out_of_range" and rec["threshold"] == pytest.approx(67.5)
+    assert rec["text"] == alert_rec.get_recommendation("HEART_RATE", "PERSONAL").followup
+    assert rec["immediate_action"] == alert_rec.build_alert_texts("HEART_RATE", "PERSONAL", "WARNING")[0]
+    # z publicado = z del motor
+    assert r.z_score == pytest.approx((r.forecast[-1]["value"] - 48) / 6.5)
+
+
+@pytest.mark.parametrize("baseline, expected", [
+    (None, "WARNING"),                # sin línea base: solo el umbral absoluto
+    ((100, 6.5, False), "MONITOR"),   # habitual para la persona: queda en observación
+    ((80, 6.5, False), "WARNING"),    # además se aleja de la persona (z ≥ 2)
+    ((100, 5.0, False), "WARNING"),   # DE de relleno: no cuenta como línea base
+    ((100, 0.0, False), "WARNING"),   # DE no derivable (seed demo): tampoco
+])
+def test_absolute_yellow_is_warning_only_if_it_also_deviates_from_the_person(db, setup, baseline, expected):
+    add_values(db, [v + 6 for v in NEAR_LIMIT])  # nivel cercano a 104 lpm: zona amarilla absoluta (> 99)
+    add_rule(db, **CALIBRATED_HR)
+    if baseline:
+        mean, sd, simulated = baseline
+        db.add(HealthBaseline(astronaut_id=1, indicator_code="HEART_RATE", baseline_value=mean, std_dev=sd, is_simulated=simulated))
+        db.commit()
+    r = run(db)
+    assert r.status == "ok"
+    assert all(p["projected_state"] == expected for p in r.forecast)
+    crossing = r.threshold_projection["first_expected_crossing"]
+    assert crossing["direction"] == "above" and crossing["alert_direction"] == "HIGH"
+    assert crossing["threshold"] == 99 and crossing["reference"] == "absolute_range"
+    assert (r.z_score is not None) == (baseline is not None and baseline[1] == 6.5)
+
+
+def test_recommendation_falls_back_to_rule_text_without_catalog_entry(db, setup):
+    """Un indicador sin entrada propia en el catálogo usa las instrucciones de la versión de regla; si la
+    regla solo remite a la alerta, la entrada genérica del catálogo."""
+    db.add(HealthIndicatorDefinition(
+        code="CUSTOM_INDEX", name="Índice propio", category="TEST", body_region_code="CHEST", unit="pts",
+        min_valid_value=0, max_valid_value=200, step_by_step_instructions="test",
+        educational_summary="test", spaceflight_risk_explanation="test",
+    ))
+    db.commit()
+    add_values(db, STABLE, code="CUSTOM_INDEX", unit="pts")
+    add_rule(db, normal=(40, 65), monitor=(35, 140), warning=(30, 160), code="CUSTOM_INDEX")
+    r = predict_indicator(db, 1, 1, "CUSTOM_INDEX", 7)
+    assert r.status == "ok" and r.threshold_projection["current_state"] == "MONITOR"
+    rec = r.recommendation
+    assert rec["basis"] == "currently_out_of_range" and rec["direction"] == "above" and rec["threshold"] == 65
+    assert rec["text"] == "Registrar medición de seguimiento (texto de la regla)."
+    assert rec["immediate_action"] == "Instrucciones inmediatas de prueba."
+    assert rec["source"] == "clinical_rule_followup_instructions"
+
+    version = db.query(ClinicalRuleVersion).one()
+    version.followup_instructions = alert_rec.RULE_FOLLOWUP_INSTRUCTIONS
+    version.immediate_instructions = alert_rec.RULE_IMMEDIATE_INSTRUCTIONS
+    db.commit()
+    rec = predict_indicator(db, 1, 1, "CUSTOM_INDEX", 7).recommendation
+    generic = alert_rec.CATALOG[(alert_rec.GENERIC, alert_rec.HIGH)]
+    assert rec["text"] == generic.followup and rec["source"] == "alert_recommendation_catalog"
+    assert rec["immediate_action"] == f"{generic.now}\n{alert_rec.LEVEL_STEP['MONITOR']}"
 
 
 def test_no_rule_means_no_threshold_projection(db, setup):
