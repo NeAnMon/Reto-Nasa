@@ -258,19 +258,65 @@ textarea:focus-visible,
   z-index: 120;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  max-width: 390px;
+  gap: 0.75rem;
+  width: min(480px, calc(100vw - 2rem));
 }
 
+/* Issue #34: avisos más grandes y visibles, con el lenguaje del HUD de la consola:
+   bloque de icono sólido del color de estado, etiqueta mono, esquinas rectas, sin degradados.
+   info = cian (--av-s), error = rojo (--av-r). El color nunca va solo: lleva icono y etiqueta. */
 .toast {
-  background: var(--bg-surface-elevated);
-  border: 1px solid var(--accent-cyan);
-  border-left: 4px solid var(--accent-cyan);
-  color: var(--text-primary);
-  padding: 0.8rem 1rem;
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-soft);
-  font-size: 0.85rem;
+  --toast-accent: #4fc3f7;
+  --toast-on-accent: #0e1116;
+  --toast-label: #4fc3f7;
+  display: flex;
+  align-items: stretch;
+  background: #161b22;
+  border: 2px solid var(--toast-accent);
+  border-radius: 0;
+  color: #e6eaf0;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  overflow-wrap: anywhere;
+  animation: toast-in 0.2s ease-out;
+}
+.toast-error { --toast-accent: #d13438; --toast-on-accent: #fff; --toast-label: #ff8a8d; }
+.toast-icon {
+  flex: 0 0 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--toast-accent);
+  color: var(--toast-on-accent);
+}
+.toast-icon svg { width: 26px; height: 26px; }
+.toast-body { flex: 1 1 auto; min-width: 0; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; }
+.toast-label { font: 600 12px/1 "IBM Plex Mono", monospace; letter-spacing: .08em; text-transform: uppercase; color: var(--toast-label); }
+.toast-text { font-size: 16px; font-weight: 600; line-height: 1.4; }
+.toast-close {
+  flex: 0 0 44px; align-self: flex-start; height: 44px; margin: 4px; padding: 0;
+  border: 0; background: transparent; color: #a7b0bd; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.toast-close:hover { color: #e6eaf0; }
+.toast-close:focus-visible { outline: 2px solid #e6eaf0; outline-offset: -2px; }
+.toast-close svg { width: 18px; height: 18px; }
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+body[data-theme="daylight-clean"] .toast { --toast-accent: #0277bd; --toast-on-accent: #fff; --toast-label: #01579b; background: #fff; color: #141a22; box-shadow: 0 8px 24px rgba(20, 26, 34, 0.18); }
+body[data-theme="daylight-clean"] .toast-error { --toast-accent: #c62828; --toast-label: #b71c1c; }
+body[data-theme="daylight-clean"] .toast-close { color: #3d4753; }
+body[data-theme="daylight-clean"] .toast-close:hover { color: #141a22; }
+body[data-theme="high-contrast"] .toast { --toast-accent: #fff; --toast-on-accent: #000; --toast-label: #fff; background: #000; color: #fff; box-shadow: none; }
+body[data-theme="high-contrast"] .toast-error { --toast-accent: #ff5c5c; --toast-on-accent: #000; --toast-label: #ff8a8d; }
+body[data-theme="high-contrast"] .toast-close { color: #fff; }
+@media (max-width: 480px) {
+  .toast-container { right: 1rem; bottom: 1rem; }
+  .toast-icon { flex-basis: 48px; }
+  .toast-body { padding: 12px 12px; }
 }
 
 /* Selector de idioma ES | EN: interruptor segmentado con "thumb" deslizante

@@ -29,7 +29,10 @@
 .av-qz-done { display: flex; flex-direction: column; gap: 8px; }
 .av-qz-done:focus { outline: none; }
 .av-qz-recs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.av-qz-recs li { padding: 8px 10px; border: 1px solid var(--av-border); background: var(--av-bg); font-size: 13px; overflow-wrap: anywhere; }
+/* Issue #34: recomendaciones del test más grandes, con borde cian y fondo tintado sólido (sin degradados) */
+.av-qz-recs li { padding: 12px 14px; border: 1px solid var(--av-s); background: color-mix(in srgb, var(--av-s) 12%, var(--av-panel)); font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.av-qz-recs li strong { font-size: 16px; font-weight: 600; }
+.av-qz-recs li .av-sub { font-size: 14px; color: var(--av-text); }
 .av-qz-hist ul { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .av-qz-hist li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 13px; }
 
