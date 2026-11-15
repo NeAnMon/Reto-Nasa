@@ -1859,7 +1859,7 @@ function crewCellHTML(appState, sessionName) {
 }
 
 /* ---- Editar el nombre del tripulante (clic derecho sobre la celda TRIPULANTE o botón ✎) ----
- * El menú y el diálogo cuelgan de <body>: la barra de estado se repinta y los destruiría.
+ * El menú y el diálogo cuelgan de #av-chrome, fuera de la barra de estado: esta se repinta y los destruiría.
  * Guarda con PATCH /users/{id} (el backend permite: uno mismo, administración, o el líder de
  * misión sobre los astronautas de sus misiones, y a este solo el nombre). */
 function crewRenameTarget() {
@@ -1876,7 +1876,8 @@ function closeCrewPopups() {
 
 /* Coloca un panel flotante junto a (x, y) sin salirse de la ventana */
 function placeCrewPopup(pop, x, y) {
-  document.body.appendChild(pop);
+  // dentro de #av-chrome (.av-console): ahí se definen las variables de color --av-*; fuera de la barra de estado
+  (document.getElementById("av-chrome") || document.body).appendChild(pop);
   const r = pop.getBoundingClientRect();
   pop.style.left = `${Math.max(8, Math.min(x, window.innerWidth - r.width - 8))}px`;
   pop.style.top = `${Math.max(8, Math.min(y, window.innerHeight - r.height - 8))}px`;

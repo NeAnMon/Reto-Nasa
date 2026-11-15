@@ -522,10 +522,10 @@ body[data-theme="daylight-clean"] .av-env-banner-logo { content: url("../assets/
 /* Celda TRIPULANTE: selector del astronauta mostrado (mismo aspecto HUD que el de entorno).
  * Rótulo y selector en línea para no dar más alto a la barra; área táctil de 44 px;
  * la celda puede encogerse y un nombre largo se recorta con "…". */
-.av-status > .av-st-crew { flex-direction: row; align-items: center; gap: 8px; }
+.av-status > .av-st-crew { flex: 0 0 auto; flex-direction: row; align-items: center; gap: 8px; }
 .av-st-crew .av-lbl { cursor: pointer; flex: 0 0 auto; }
-.av-input.av-crew-select { flex: 1 1 auto; width: auto; min-width: 96px; max-width: 240px; min-height: 44px; text-overflow: ellipsis; }
-/* Editar nombre del tripulante: botón ✎ de la celda, menú de clic derecho y diálogo (cuelgan de <body>) */
+.av-input.av-crew-select { flex: 1 1 auto; width: auto; min-width: 170px; max-width: 240px; min-height: 44px; text-overflow: ellipsis; }
+/* Editar nombre del tripulante: botón ✎ de la celda, menú de clic derecho y diálogo (cuelgan de #av-chrome) */
 .av-crew-edit {
   flex: 0 0 auto; min-width: 44px; min-height: 44px; padding: 0; border: 1px solid transparent; border-radius: 0;
   background: transparent; color: var(--av-text2); font-size: 16px; line-height: 1; cursor: pointer;
