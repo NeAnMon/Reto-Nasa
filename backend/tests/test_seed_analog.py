@@ -116,11 +116,23 @@ def test_all_four_indicators_ok_for_full_subjects(db, crew_code):
         assert predict_indicator(db, user.id, _mission(db).id, code, 7).status == "ok", code
 
 
-def test_unreliable_model_is_also_represented(db):
+def test_third_subject_is_forecast_without_extrapolating_noise(db):
+    """Con la compuerta calibrada la presión de UTMB-29 ya no se rechaza: el rechazo de la antigua
+    validación de 3 días era ruido (ver test_prediction_calibration.py). Su pendiente no es
+    significativa, así que el pronóstico es plano con bandas; la del pulso sí lo es y se informa.
+    El estado `model_not_reliable` se prueba en test_prediction_service.py."""
     user = _astronaut(db, "HDBR-03")
     mission_id = _mission(db).id
-    assert predict_indicator(db, user.id, mission_id, "HEART_RATE", 7).status == "ok"
-    assert predict_indicator(db, user.id, mission_id, "BLOOD_PRESSURE", 7).status == "model_not_reliable"
+    hr = predict_indicator(db, user.id, mission_id, "HEART_RATE", 7)
+    assert hr.status == "ok"
+    assert hr.trend["direction"] == "rising" and hr.trend["significant"] is True
+    bp = predict_indicator(db, user.id, mission_id, "BLOOD_PRESSURE", 7)
+    assert bp.status == "ok"
+    assert bp.reliability["reliable"] is True and bp.reliability["skill_vs_naive"] > 0
+    assert bp.trend["significant"] is False and bp.beta1 == 0
+    assert len({p["value"] for p in bp.forecast}) == 1
+    assert all(p["lower_95"] < p["lower_80"] < p["value"] < p["upper_80"] < p["upper_95"] for p in bp.forecast)
+    assert bp.empirical_validation["validated_with_real_data"] is True
 
 
 def test_reseed_is_idempotent_and_reanchors_to_new_today(db):

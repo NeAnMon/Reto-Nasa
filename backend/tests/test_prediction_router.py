@@ -559,7 +559,145 @@ def test_prediction_response_schema(
         "baseline_status",
         "baseline_is_simulated",
         "disclaimer",
+        # Campos añadidos por el método calibrado (aditivos)
+        "baseline_value",
+        "method",
+        "trend",
+        "reliability",
+        "empirical_validation",
+        "threshold_projection",
+        "recommendation",
     ]
 
     for field in required_fields:
         assert field in data
+
+    # Los campos que ya consumía el frontend conservan su tipo
+    assert isinstance(data["beta1"], float)
+    assert isinstance(data["mae_ols"], float)
+    assert isinstance(data["mae_naive"], float)
+    assert isinstance(data["disclaimer"], str) and data["disclaimer"]
+
+    point = data["forecast"][0]
+    for field in (
+        "date", "t", "value", "out_of_valid_range", "z_score", "z_band", "direction",
+        "lower_80", "upper_80", "lower_95", "upper_95", "baseline_delta",
+        "projected_state", "worst_state_80", "worst_state_95", "interval_touches_threshold",
+    ):
+        assert field in point
+    assert "t_ahead" not in point
+
+
+# ============================================================
+# 12. CALIBRATED METHOD CONTRACT
+# ============================================================
+
+def test_prediction_exposes_method_trend_intervals_and_validation(
+    client,
+    app,
+    db,
+    setup_data,
+):
+
+    authenticate(
+        app,
+        setup_data["astronaut"],
+    )
+
+    values = [70, 73, 68, 71, 69, 74, 67, 72, 70, 66, 73, 69, 71, 68, 72, 70]
+
+    for i, value in enumerate(values):
+        db.add(HealthMeasurement(
+            astronaut_id=1,
+            mission_id=1,
+            indicator_code="HEART_RATE",
+            value=value,
+            unit="bpm",
+            measured_at=START + timedelta(days=i),
+            phase_code="ORBIT",
+            environment_code="LOW_EARTH_ORBIT",
+            data_quality="VALIDATED",
+            calculated_state="NORMAL",
+            is_simulated=False,
+        ))
+
+    db.commit()
+
+    response = request_prediction(client, horizon_days=14)
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["status"] == "ok"
+    assert data["method"]["code"] == "robust_level_v1"
+    assert data["method"]["model_used"] == "level"
+    assert data["method"]["description"]
+    assert data["method"]["interval_levels"] == [80, 95]
+
+    assert data["trend"]["direction"] == "stable"
+    assert data["trend"]["significant"] is False
+    assert data["trend"]["extrapolated"] is False
+    assert data["beta1"] == 0
+
+    assert data["reliability"]["reliable"] is True
+    assert data["reliability"]["criterion"] == "rolling_origin_skill_vs_last_value"
+    assert data["mae_ols"] < data["mae_naive"]
+
+    assert data["empirical_validation"]["validated_with_real_data"] is True
+    assert data["empirical_validation"]["is_spaceflight_data"] is False
+
+    assert len(data["forecast"]) == 14
+    widths = [p["upper_95"] - p["lower_95"] for p in data["forecast"]]
+    assert all(b > a for a, b in zip(widths, widths[1:]))
+    for p in data["forecast"]:
+        assert p["lower_95"] < p["lower_80"] < p["value"] < p["upper_80"] < p["upper_95"]
+
+    # Sin regla clínica para el indicador no hay proyección contra umbrales
+    assert data["threshold_projection"] is None
+    assert data["recommendation"] is None
+
+
+# ============================================================
+# 13. UNRELIABLE MODEL IS A 200 WITHOUT FORECAST
+# ============================================================
+
+def test_unreliable_model_returns_no_forecast(
+    client,
+    app,
+    db,
+    setup_data,
+):
+
+    authenticate(
+        app,
+        setup_data["astronaut"],
+    )
+
+    for i, value in enumerate([70] * 7 + [60] * 6):
+        db.add(HealthMeasurement(
+            astronaut_id=1,
+            mission_id=1,
+            indicator_code="HEART_RATE",
+            value=value,
+            unit="bpm",
+            measured_at=START + timedelta(days=i),
+            phase_code="ORBIT",
+            environment_code="LOW_EARTH_ORBIT",
+            data_quality="VALIDATED",
+            calculated_state="NORMAL",
+            is_simulated=False,
+        ))
+
+    db.commit()
+
+    response = request_prediction(client)
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["status"] == "model_not_reliable"
+    assert data["forecast"] == []
+    assert data["reliability"]["reliable"] is False
+    assert data["mae_ols"] > data["mae_naive"]

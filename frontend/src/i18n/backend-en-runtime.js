@@ -525,6 +525,14 @@ export const EXACT = {
   "Sin videollamadas: con el retardo de la comunicación una conversación en directo resulta frustrante. Repite el check-in de Bienestar en 24 h; si las señales continúan, coméntalo con tu especialista de apoyo en el próximo contacto con Tierra.":
     "No video calls: with the communication delay, a live conversation becomes frustrating. Repeat the Wellbeing check-in in 24 h; if the signs continue, talk it over with your support specialist at the next contact with Earth.",
 
+  /* ---------- services/prediction_service.py: método y validación del pronóstico ---------- */
+  "Nivel robusto: mediana ponderada exponencialmente de las medianas diarias del segmento actual (los días recientes pesan más). La tendencia se informa siempre, pero solo se extrapola si es estadísticamente significativa y reduce el error dentro de la propia serie; en caso contrario el pronóstico es plano. Cada día lleva bandas de predicción al 80 % y al 95 %.":
+    "Robust level: exponentially weighted median of the daily medians of the current segment (recent days weigh more). The trend is always reported, but it is only extrapolated when it is statistically significant and reduces the error within the series itself; otherwise the forecast is flat. Each day carries 80% and 95% prediction bands.",
+  "Método calibrado con datos reales de reposo en cama (NASA UTMB), un análogo terrestre de la microgravedad; no son datos de vuelo espacial.":
+    "Method calibrated with real bed-rest data (NASA UTMB), a ground analog of microgravity; these are not spaceflight data.",
+  "Indicador sin validación empírica: el método se calibró solo con pulso, presión sistólica, temperatura y frecuencia respiratoria en reposo en cama (análogo terrestre) y aquí se aplica sin haber medido su error real.":
+    "Indicator without empirical validation: the method was calibrated only with pulse, systolic pressure, temperature and respiratory rate during bed rest (ground analog) and is applied here without its real error having been measured.",
+
   /* ---------- api/v1/router.py ---------- */
   // Catálogo de regiones corporales (BODY_REGIONS_CATALOG)
   "Cabeza, Cerebro y Ritmo Circadiano": "Head, Brain and Circadian Rhythm",

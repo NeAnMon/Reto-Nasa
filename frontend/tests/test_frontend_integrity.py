@@ -446,6 +446,25 @@ def test_early_warnings_dropdowns_and_summary_recommendations():
     assert not missing, f"Missing English translations for early_warnings texts: {missing}"
 
 
+def test_prediction_service_texts_have_english_translation():
+    """Los textos en español que el servicio de predicción devuelve al usuario (descripción del método y
+    nota de validación) tienen traducción al inglés; describen pronósticos de tendencia, no diagnósticos."""
+    tree = ast.parse(
+        (PROJECT_ROOT / "backend" / "app" / "services" / "prediction_service.py").read_text(encoding="utf-8")
+    )
+    texts = set()
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
+            name = node.targets[0].id
+            if name == "METHOD_DESCRIPTION" or name.startswith("VALIDATION_NOTE_"):
+                assert isinstance(node.value, ast.Constant) and isinstance(node.value.value, str), name
+                texts.add(_norm(node.value.value))
+    assert len(texts) == 3, texts
+    assert not [t for t in texts if re.search(r"enfermedad|diagn[oó]stic", t, re.I)], texts
+    missing = sorted(texts - _en_keys(I18N_DIR / "backend-en-runtime.js"))
+    assert not missing, f"Missing English translations for prediction_service texts: {missing}"
+
+
 def test_branding_is_semsa_and_status_bar_shows_telecreation_mission():
     """Issue #14: la app se llama SEMSA y la barra superior muestra SEMSA + misión TeleCreation UTS."""
     console_js = (FRONTEND_ROOT / "src" / "console" / "console.js").read_text(encoding="utf-8")

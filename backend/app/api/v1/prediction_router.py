@@ -2,12 +2,19 @@
 """
 SEMSA - Physiological Prediction Router.
 
-Authenticated API for physiological forecasting using:
-- Ordinary Least Squares (OLS)
-- Mean Absolute Error (MAE)
-- Individual physiological baselines
-- Z-score analysis
+Authenticated API for exploratory forecasting of physiological indicators using:
+- Robust level (exponentially weighted median of daily medians)
+- Trend test (OLS slope with lag-1 autocorrelation correction); the slope is only
+  extrapolated when it is significant and validated inside the series
+- Reliability gate: rolling-origin skill against the last-value forecast
+- Calibrated 80 % / 95 % prediction intervals
+- Projection against the current clinical rule ranges and preventive recommendation
+- Individual physiological baselines (Z-score only with a measured dispersion)
 - Mission phase and environment segmentation
+
+The method was calibrated by backtesting on real NASA UTMB bed-rest vitals (a ground
+analog of microgravity, not spaceflight data). It forecasts indicator trends; it does
+not predict or diagnose any condition.
 
 Predictions are exploratory and non-diagnostic.
 """
@@ -53,9 +60,12 @@ router = APIRouter(
     description=(
         "Generate an exploratory physiological forecast "
         "for an authenticated astronaut assigned to a mission. "
-        "The prediction uses historical measurements, OLS "
-        "regression, MAE validation and individual baseline "
-        "Z-score analysis. Results are not clinical diagnoses."
+        "The forecast uses a robust level of the daily medians "
+        "(a trend is only extrapolated when statistically "
+        "significant and validated within the series), calibrated "
+        "80/95 % prediction intervals, the current clinical rule "
+        "ranges and the individual baseline. It forecasts indicator "
+        "trends; results are not clinical diagnoses."
     ),
     responses={
         401: {
@@ -121,8 +131,11 @@ def get_indicator_prediction(
         - Measurement quality filtering.
         - Daily median aggregation.
         - Phase and environment segmentation.
-        - OLS regression.
-        - MAE model validation.
+        - Robust level (exponentially weighted median).
+        - Trend significance test; trend extrapolated only when validated.
+        - Rolling-origin validation against the last-value forecast.
+        - Calibrated 80 % / 95 % prediction intervals.
+        - Projection against the current clinical rule ranges.
         - Individual baseline comparison.
         - Z-score classification.
         - Forecast horizon of 1-14 days.
@@ -214,7 +227,8 @@ def get_indicator_prediction(
     #     There are not enough eligible measurement days.
     #
     # model_not_reliable:
-    #     OLS did not outperform the naive benchmark.
+    #     The method did not outperform the last-value forecast in the
+    #     rolling-origin validation inside the series.
     #
     # These are expected statistical outcomes, not HTTP errors.
 
