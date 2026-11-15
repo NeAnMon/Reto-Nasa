@@ -25,6 +25,12 @@ generales (AHA/ACC, taquicardia, fiebre…) están en el dataset como `verificad
 `dataset_backed=False` significa que el dataset no ofrece base para ese umbral: se conserva el valor previo
 y se rotula "sin respaldo en el dataset".
 
+Pisos de seguridad: donde el dataset tiene regla para el indicador pero no para una dirección peligrosa, se
+conserva el corte de 1.0-DEMO rotulado "sin respaldo en el dataset" en vez de dejarla sin alerta: frecuencia
+respiratoria baja (< 9 amarillo, < 8 rojo) y sistólica baja crítica (< 80 rojo). No se conservan la diastólica
+baja, la temperatura 35,0–36,0 °C ni el sueño excesivo: eran la fuente de las falsas alarmas medidas sobre
+UTMB y el desvío frente a la línea base personal ya los cubre.
+
 No es un dispositivo médico.
 """
 from __future__ import annotations
@@ -130,14 +136,16 @@ CALIBRATION: Dict[str, IndicatorCalibration] = {
         ),
         _cal(
             code="BLOOD_PRESSURE",
-            normal=(91.0, 139.0), monitor=(91.0, 139.0), warning=(60.0, 179.0),
+            normal=(91.0, 139.0), monitor=(91.0, 139.0), warning=(80.0, 179.0),
             source=(
                 "Dataset alertas.py: PAS ≥140/≥180, PAD ≥90/≥120 (AHA/ACC 2017, no verificado), PAS ≤90 "
-                "amarillo (criterio clínico); desvío personal |z| ≥2/≥3 en PAS y PAD"
+                "amarillo; |z| ≥2/≥3. PAS <80 rojo: sin respaldo en el dataset (1.0-DEMO, piso de seguridad)"
             ),
             provenance=(
                 "Sistólica: amarillo ≥ 140 y rojo ≥ 180 mmHg (regla pa_alta, guía AHA/ACC 2017, verificado=False); "
-                "amarillo ≤ 90 mmHg sin nivel rojo (regla pa_baja, criterio clínico general, verificado=False). "
+                "amarillo ≤ 90 mmHg (regla pa_baja, criterio clínico general, verificado=False). El dataset no "
+                "define nivel rojo para la sistólica baja: el rojo por debajo de 80 mmHg queda sin respaldo en el "
+                "dataset; conservado de 1.0-DEMO como piso de seguridad. "
                 "Diastólica: amarillo ≥ 90 y rojo ≥ 120 mmHg (regla pad_alta, AHA/ACC 2017, verificado=False); el "
                 "dataset no define diastólica baja, así que deja de alertar por umbral absoluto. Desvío personal "
                 "|z| ≥ 2 / ≥ 3 en ambas (reglas desvio_pas_mmhg y desvio_pad_mmhg, diseño del equipo). DE mínima "
@@ -185,15 +193,18 @@ CALIBRATION: Dict[str, IndicatorCalibration] = {
         ),
         _cal(
             code="RESP_RATE",
-            normal=(6.0, 20.0), monitor=(6.0, 20.0), warning=(6.0, 23.0),
+            normal=(9.0, 20.0), monitor=(9.0, 20.0), warning=(8.0, 23.0),
             source=(
-                "Dataset alertas.py: frecuencia respiratoria >20 rpm amarillo, ≥24 rpm rojo (criterio "
-                "clínico general, no verificado); sin regla de valor bajo"
+                "Dataset alertas.py: FR >20 rpm amarillo, ≥24 rpm rojo (criterio clínico general, no "
+                "verificado). FR <9/<8 rpm: sin respaldo en el dataset (1.0-DEMO, piso de seguridad)"
             ),
             provenance=(
                 "Amarillo por encima de 20 rpm y rojo ≥ 24 rpm (regla resp_alta, criterio clínico general, "
-                "verificado=False). El dataset no define frecuencia respiratoria baja ni desvío personal para este "
-                "indicador: la línea base solo atenúa el amarillo absoluto. DE mínima 1,5 rpm: build.py."
+                "verificado=False). El dataset no define frecuencia respiratoria baja: el amarillo por debajo de "
+                "9 rpm y el rojo por debajo de 8 rpm quedan sin respaldo en el dataset; conservados de 1.0-DEMO como "
+                "piso de seguridad (en UTMB no hay ninguna lectura por debajo de 12 rpm). Tampoco define desvío "
+                "personal para este indicador: la línea base solo atenúa el amarillo absoluto. DE mínima 1,5 rpm: "
+                "build.py."
             ),
             dataset_backed=True, sd_floor=1.5,
             demo_sd=1.50, demo_sd_source="mediana de las DE personales de frecuencia respiratoria en UTMB (29 sujetos)",

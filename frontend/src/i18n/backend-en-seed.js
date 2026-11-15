@@ -290,14 +290,14 @@ export const EXACT = {
     "SEMSA team · calibration with astronaut-health-dataset (non-clinical)",
   "Dataset alertas.py: pulso ≤50/≥100 amarillo, ≤40/≥120 rojo (criterio clínico general, no verificado); desvío personal |z| ≥2/≥3 (diseño del equipo)":
     "Dataset alertas.py: pulse ≤50/≥100 yellow, ≤40/≥120 red (general clinical criterion, not verified); personal deviation |z| ≥2/≥3 (team design)",
-  "Dataset alertas.py: PAS ≥140/≥180, PAD ≥90/≥120 (AHA/ACC 2017, no verificado), PAS ≤90 amarillo (criterio clínico); desvío personal |z| ≥2/≥3 en PAS y PAD":
-    "Dataset alertas.py: SBP ≥140/≥180, DBP ≥90/≥120 (AHA/ACC 2017, not verified), SBP ≤90 yellow (clinical criterion); personal deviation |z| ≥2/≥3 for SBP and DBP",
+  "Dataset alertas.py: PAS ≥140/≥180, PAD ≥90/≥120 (AHA/ACC 2017, no verificado), PAS ≤90 amarillo; |z| ≥2/≥3. PAS <80 rojo: sin respaldo en el dataset (1.0-DEMO, piso de seguridad)":
+    "Dataset alertas.py: SBP ≥140/≥180, DBP ≥90/≥120 (AHA/ACC 2017, not verified), SBP ≤90 yellow; |z| ≥2/≥3. SBP <80 red: not backed by the dataset (1.0-DEMO, safety floor)",
   "Dataset alertas.py: temperatura ≥37,8 °C amarillo, ≥38,0 °C rojo, <35 °C rojo (criterio clínico general, no verificado); desvío personal |z| ≥2/≥3":
     "Dataset alertas.py: temperature ≥37.8 °C yellow, ≥38.0 °C red, <35 °C red (general clinical criterion, not verified); personal deviation |z| ≥2/≥3",
   "Dataset alertas.py: SpO₂ <95 % amarillo, <92 % rojo (criterio clínico general, no verificado; la SpO₂ del dataset es simulada)":
     "Dataset alertas.py: SpO₂ <95 % yellow, <92 % red (general clinical criterion, not verified; SpO₂ in the dataset is simulated)",
-  "Dataset alertas.py: frecuencia respiratoria >20 rpm amarillo, ≥24 rpm rojo (criterio clínico general, no verificado); sin regla de valor bajo":
-    "Dataset alertas.py: respiratory rate >20 rpm yellow, ≥24 rpm red (general clinical criterion, not verified); no low-value rule",
+  "Dataset alertas.py: FR >20 rpm amarillo, ≥24 rpm rojo (criterio clínico general, no verificado). FR <9/<8 rpm: sin respaldo en el dataset (1.0-DEMO, piso de seguridad)":
+    "Dataset alertas.py: RR >20 rpm yellow, ≥24 rpm red (general clinical criterion, not verified). RR <9/<8 rpm: not backed by the dataset (1.0-DEMO, safety floor)",
   "Dataset demo_laboratorio.csv: rango de referencia i-STAT 70–105 mg/dL (amarillo fuera de rango); rojo <60/>180 mg/dL sin respaldo en el dataset":
     "Dataset demo_laboratorio.csv: i-STAT reference range 70–105 mg/dL (yellow outside the range); red <60/>180 mg/dL not backed by the dataset",
   "Dataset alertas.py: media de 7 noches <6,0 h amarillo, <5,5 h rojo (Barger 2014, ISS 6,09 h/noche verificado; cortes decididos por el equipo)":

@@ -110,9 +110,10 @@ CATALOG: Dict[Tuple[str, str], Recommendation] = {
         "Siéntate o recuéstate, bebe agua y repite la medición en unos minutos.",
         "aumenta la hidratación, levántate despacio y mantén el ejercicio pautado; antes de volver a un entorno con "
         "gravedad, sigue la pauta de hidratación abundante y usa las prendas de compresión.",
-        "Avisa al médico de vuelo si hay mareo o desmayo.",
-        f"{SRC_DATASET}, regla pa_baja (criterio clínico general, no verificado) y contramedidas NASA HRP para las "
-        "adaptaciones cardiovasculares (hidratación y prendas de compresión).",
+        "Avisa al médico de vuelo si hay mareo o desmayo, y de inmediato si la sistólica baja de 80 mmHg.",
+        f"{SRC_DATASET}, regla pa_baja (criterio clínico general, no verificado); el nivel crítico por debajo de "
+        "80 mmHg no tiene respaldo en el dataset y se conserva de 1.0-DEMO como piso de seguridad; contramedidas "
+        "NASA HRP para las adaptaciones cardiovasculares (hidratación y prendas de compresión).",
     ),
     ("BLOOD_PRESSURE", PERSONAL): _rec(
         "Tu presión arterial está fuera de tu rango habitual: repite la medición en reposo y revisa si tienes síntomas.",
@@ -164,6 +165,14 @@ CATALOG: Dict[Tuple[str, str], Recommendation] = {
         "Avisa al médico de vuelo si sigue por encima de 20 rpm en reposo, y de inmediato si llega a 24 rpm o "
         "notas falta de aire.",
         f"{SRC_DATASET}, regla resp_alta (criterio clínico general, no verificado).",
+    ),
+    ("RESP_RATE", LOW): _rec(
+        "Vuelve a contar las respiraciones durante 60 segundos completos, en reposo, y mide tu SpO₂.",
+        "repite el control en reposo a la misma hora y revisa el CO₂ y la ventilación de la cabina.",
+        "Avisa al médico de vuelo si sigue por debajo de 9 rpm al repetir la medición, y de inmediato si baja de "
+        "8 rpm o notas mareo o falta de aire.",
+        "umbral sin respaldo en el dataset (no define frecuencia respiratoria baja); se conserva de 1.0-DEMO como "
+        "piso de seguridad.",
     ),
     # ------------------------------------------------------------------ Glucosa
     ("BLOOD_GLUCOSE", LOW): _rec(

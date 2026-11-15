@@ -71,7 +71,9 @@ DATASET_EDGES = [
     ("HEART_RATE", 41, None, "WARNING"), ("HEART_RATE", 40, None, "CRITICAL"),
     ("BLOOD_PRESSURE", 139, 80, "NORMAL"), ("BLOOD_PRESSURE", 140, 80, "WARNING"), ("BLOOD_PRESSURE", 179, 80, "WARNING"),
     ("BLOOD_PRESSURE", 180, 80, "CRITICAL"), ("BLOOD_PRESSURE", 91, 60, "NORMAL"), ("BLOOD_PRESSURE", 90, 60, "WARNING"),
-    ("BLOOD_PRESSURE", 70, 45, "WARNING"),   # PAS baja: el dataset solo tiene nivel amarillo
+    # PAS baja: amarillo ≤ 90 del dataset; rojo < 80 conservado de 1.0-DEMO como piso de seguridad
+    ("BLOOD_PRESSURE", 85, 60, "WARNING"), ("BLOOD_PRESSURE", 80, 55, "WARNING"),
+    ("BLOOD_PRESSURE", 79, 50, "CRITICAL"), ("BLOOD_PRESSURE", 70, 45, "CRITICAL"),
     ("BLOOD_PRESSURE", 120, 89, "NORMAL"), ("BLOOD_PRESSURE", 120, 90, "WARNING"), ("BLOOD_PRESSURE", 130, 119, "WARNING"),
     ("BLOOD_PRESSURE", 130, 120, "CRITICAL"),
     ("BLOOD_PRESSURE", 120, 46, "NORMAL"),   # PAD baja: sin regla en el dataset
@@ -80,7 +82,8 @@ DATASET_EDGES = [
     ("SPO2", 95, None, "NORMAL"), ("SPO2", 94, None, "WARNING"), ("SPO2", 92, None, "WARNING"), ("SPO2", 91, None, "CRITICAL"),
     ("RESP_RATE", 20, None, "NORMAL"), ("RESP_RATE", 21, None, "WARNING"), ("RESP_RATE", 23, None, "WARNING"),
     ("RESP_RATE", 24, None, "CRITICAL"),
-    ("RESP_RATE", 8, None, "NORMAL"),        # FR baja: sin regla en el dataset
+    # FR baja: sin regla en el dataset; cortes de 1.0-DEMO conservados como piso de seguridad
+    ("RESP_RATE", 9, None, "NORMAL"), ("RESP_RATE", 8, None, "WARNING"), ("RESP_RATE", 7, None, "CRITICAL"),
     ("BLOOD_GLUCOSE", 70, None, "NORMAL"), ("BLOOD_GLUCOSE", 69, None, "WARNING"), ("BLOOD_GLUCOSE", 105, None, "NORMAL"),
     ("BLOOD_GLUCOSE", 106, None, "WARNING"),
 ]
@@ -207,6 +210,39 @@ def test_invalid_readings_are_rejected_before_any_rule():
     assert evaluate_reading("HEART_RATE", float("nan")).state == "INVALID"
 
 
+def test_safety_floors_for_low_respiratory_rate_and_low_systolic():
+    """Pisos de seguridad conservados de 1.0-DEMO (sin respaldo en el dataset): FR baja y PAS baja crítica."""
+    # FR 7 rpm: rojo; nunca se atenúa aunque sea "habitual" para la línea base
+    rr7 = evaluate_reading("RESP_RATE", 7.0, unit="rpm", min_valid=6.0, max_valid=45.0)
+    assert (rr7.state, rr7.direction) == ("CRITICAL", "LOW")
+    assert evaluate_reading("RESP_RATE", 7.0, baseline=PersonalBaseline(mean=7.5, sd=1.5)).state == "CRITICAL"
+    # FR 8 rpm: amarillo; WARNING lejos de la línea base o sin ella, MONITOR si es habitual
+    assert evaluate_reading("RESP_RATE", 8.0).state == "WARNING"
+    assert evaluate_reading("RESP_RATE", 8.0, baseline=PersonalBaseline(mean=13.5, sd=1.5)).state == "WARNING"
+    assert evaluate_reading("RESP_RATE", 8.0, baseline=PersonalBaseline(mean=9.0, sd=1.5)).state == "MONITOR"
+    immediate, followup = rec.build_alert_texts("RESP_RATE", rr7.direction, rr7.state)
+    assert ("RESP_RATE", rec.LOW) in rec.CATALOG
+    assert immediate.startswith("1. Vuelve a contar las respiraciones") and rec.LEVEL_STEP["CRITICAL"] in immediate
+    assert "8 rpm" in followup and UNBACKED in followup and "piso de seguridad" in followup
+
+    # PAS 79 mmHg: rojo (piso de seguridad); PAS 85 sigue en la capa amarilla del dataset (≤ 90)
+    pas79 = evaluate_reading("BLOOD_PRESSURE", 79.0, 50.0, unit="mmHg", min_valid=60.0, max_valid=250.0)
+    assert (pas79.state, pas79.direction, pas79.component) == ("CRITICAL", "LOW", "PRIMARY")
+    assert evaluate_reading(
+        "BLOOD_PRESSURE", 79.0, 50.0, baseline=PersonalBaseline(mean=82.0, sd=8.0, secondary_mean=52.0)
+    ).state == "CRITICAL"
+    pas85 = evaluate_reading("BLOOD_PRESSURE", 85.0, 60.0)
+    assert (pas85.state, pas85.direction) == ("WARNING", "LOW")
+    habitual = evaluate_reading(
+        "BLOOD_PRESSURE", 85.0, 60.0, baseline=PersonalBaseline(mean=92.0, sd=8.0, secondary_mean=62.0)
+    )
+    assert habitual.state == "MONITOR"
+    _, followup = rec.build_alert_texts("BLOOD_PRESSURE", rec.LOW, "CRITICAL")
+    assert "80 mmHg" in followup and "no tiene respaldo en el dataset" in followup and "piso de seguridad" in followup
+    # La diastólica baja sigue sin umbral absoluto (era la fuente de falsas alarmas)
+    assert evaluate_reading("BLOOD_PRESSURE", 120.0, 46.0).state == "NORMAL"
+
+
 # --------------------------------------------------------------------------------------------------
 # Procedencia de los umbrales
 # --------------------------------------------------------------------------------------------------
@@ -230,6 +266,18 @@ def test_unbacked_thresholds_are_labelled_and_nothing_unverified_is_presented_as
     # Respaldo parcial: se dice qué parte no lo tiene
     for code in ("BLOOD_GLUCOSE", "MOOD_WELLNESS", "RADIATION_EXPOSURE"):
         assert UNBACKED in CALIBRATION[code].source, code
+    # Pisos de seguridad (FR baja y sistólica baja crítica): el dataset no los define; se conservan los
+    # cortes de 1.0-DEMO y se dice tanto en la fuente corta como en la procedencia
+    for code in ("RESP_RATE", "BLOOD_PRESSURE"):
+        cal = CALIBRATION[code]
+        assert UNBACKED in cal.source and "1.0-DEMO" in cal.source and "piso de seguridad" in cal.source, code
+        assert UNBACKED in cal.provenance and "1.0-DEMO como piso de seguridad" in cal.provenance, code
+    assert CALIBRATION["RESP_RATE"].monitor[0] == 9.0 and CALIBRATION["RESP_RATE"].warning[0] == 8.0
+    assert CALIBRATION["BLOOD_PRESSURE"].monitor[0] == 91.0 and CALIBRATION["BLOOD_PRESSURE"].warning[0] == 80.0
+    # Lo que no se recupera: diastólica baja, temperatura 35,0–36,0 °C y sueño excesivo
+    assert CALIBRATION["BLOOD_PRESSURE"].secondary_monitor[0] == CALIBRATION["BLOOD_PRESSURE"].secondary_warning[0] == 30.0
+    assert CALIBRATION["BODY_TEMP"].monitor[0] == CALIBRATION["BODY_TEMP"].warning[0] == 35.0
+    assert CALIBRATION["SLEEP_DURATION"].warning[1] == INDICATOR_BY_CODE["SLEEP_DURATION"]["max_valid_value"]
     # Reglas que el dataset marca verificado=False (criterio clínico general / guía)
     for code in ("HEART_RATE", "BLOOD_PRESSURE", "BODY_TEMP", "SPO2", "RESP_RATE"):
         cal = CALIBRATION[code]

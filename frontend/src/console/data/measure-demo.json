@@ -19,7 +19,7 @@
       "how_to": ["Descansa 5 minutos sin cruzar las piernas.", "Ajusta el brazalete a la altura del corazón.", "Escribe la alta (sistólica) y la baja (diastólica)."],
       "how_to_en": ["Rest 5 minutes without crossing your legs.", "Place the cuff at heart level.", "Enter the high (systolic) and low (diastolic) numbers."],
       "secondary": { "label": "Baja (diastólica)", "label_en": "Low (diastolic)", "min": 30, "max": 160, "required": true },
-      "normal_min": 91, "normal_max": 139, "monitor_min": 91, "monitor_max": 139, "warning_min": 60, "warning_max": 179
+      "normal_min": 91, "normal_max": 139, "monitor_min": 91, "monitor_max": 139, "warning_min": 80, "warning_max": 179
     },
     {
       "code": "BODY_TEMP", "name": "Temperatura", "name_en": "Temperature", "unit": "°C",
@@ -46,7 +46,7 @@
       "device": "Solo un reloj", "device_en": "Just a clock",
       "how_to": ["En reposo, cuenta cuántas veces sube el pecho en 60 segundos.", "Escribe el número."],
       "how_to_en": ["At rest, count how many times your chest rises in 60 seconds.", "Enter the number."],
-      "normal_min": 6, "normal_max": 20, "monitor_min": 6, "monitor_max": 20, "warning_min": 6, "warning_max": 23
+      "normal_min": 9, "normal_max": 20, "monitor_min": 9, "monitor_max": 20, "warning_min": 8, "warning_max": 23
     },
     {
       "code": "BLOOD_GLUCOSE", "name": "Glucosa", "name_en": "Blood glucose", "unit": "mg/dL",
