@@ -3,11 +3,13 @@
  * ánimo y dinámica de equipo. Contrato: docs/CONTRATO_AISLAMIENTO.md (§1–3; §4 solo resumen/enlace).
  *
  * Subsecciones (pestañas internas WAI-ARIA, la elegida se recuerda en la sesión):
- *   - Hoy: check-in rápido (sueño, ánimo, energía, aislamiento, nota privada) + tarjeta de sueño
- *     y accesos al check-in emocional y a la evaluación cognitiva.
+ *   - Hoy: check-in rápido (sueño, ánimo, energía, aislamiento, nota privada) + tarjeta de sueño.
  *   - Cuestionarios: cuestionario de bienestar psicológico (antes en "Registrar medición") y chequeo
  *     del turno: estrés, FC en reposo, carga NASA-TLX y test de reacción tipo PVT (questionnaires.js,
  *     shift-check.js). Sueño y ánimo no se repiten: se toman del check-in de Hoy.
+ *   - Check-in emocional: cuestionarios del equipo de apoyo (emotional.js), con contador de pendientes.
+ *   - Evaluación cognitiva: atención, memoria y tiempo de reacción (cognitive.js).
+ *     Antes eran secciones aparte enlazadas desde Hoy; ahora son pestañas como las demás (issue #26).
  *   - Respiración: respiración guiada en cuadrado 4-4-4-4 con rondas y contador local (breathing.js).
  *   - Tiempo libre: hobbies breves con filtros, pasos, fuente NASA y registro "Lo hice".
  *   - Tripulación: actividades de integración (proponer, unirse, asistencia, quórum, meta semanal).
@@ -23,6 +25,8 @@ import { tr, fmt as fmtT, fmtNum, locale } from "../../i18n/i18n.js";
 import { bt, btLines } from "/src/i18n/backend.js";
 import { renderBreathing } from "./breathing.js";
 import { renderChecks } from "./questionnaires.js";
+import { renderEmotionalView } from "./emotional.js";
+import { renderCognitiveView } from "./cognitive.js";
 import {
   esc, tag, errMsg, ensureCss, makeStale, roleOf, isOwnAstronaut, astronautName,
   snapshotFields, restoreFields, langChanged,
@@ -57,7 +61,7 @@ const DICT = {
     intro: "Un espacio para cuidar el descanso, el ánimo y la conexión con los demás durante la misión. Todo lo que escribas aquí es privado por defecto.",
     introLeader: "Resumen de bienestar de {name}. Por privacidad, ánimo, energía, sensación de aislamiento y notas solo los ve la propia persona.",
     tabsAria: "Secciones de bienestar",
-    tabs: { today: "Hoy", checks: "Cuestionarios", breath: "Respiración", leisure: "Tiempo libre", crew: "Tripulación" },
+    tabs: { today: "Hoy", checks: "Cuestionarios", emotional: "Check-in emocional", cognitive: "Evaluación cognitiva", breath: "Respiración", leisure: "Tiempo libre", crew: "Tripulación" },
     loading: "Cargando…",
     retry: "Reintentar",
     noData: "—",
@@ -113,13 +117,8 @@ const DICT = {
     quality: "Calidad",
     isolatedShort: "Aislamiento",
     noteShort: "Nota",
-    // Hoy · herramientas
-    toolsTitle: "Más herramientas de bienestar",
-    toolEmotional: "Check-in emocional",
-    toolEmotionalSub: "Cuestionarios que te envía el equipo de apoyo",
+    // Pestaña Check-in emocional · pendientes
     toolPending: "{n} pendientes",
-    toolCognitive: "Evaluación cognitiva",
-    toolCognitiveSub: "Atención, memoria y tiempo de reacción",
     // Tiempo libre
     leisureTitle: "Tiempo libre",
     leisureSub: "Pausas breves que ayudan a desconectar",
@@ -200,7 +199,7 @@ const DICT = {
     intro: "A space to look after your rest, your mood and your connection with others during the mission. Everything you write here is private by default.",
     introLeader: "Well-being summary for {name}. For privacy, mood, energy, feeling isolated and notes are only visible to that person.",
     tabsAria: "Well-being sections",
-    tabs: { today: "Today", checks: "Questionnaires", breath: "Breathing", leisure: "Free time", crew: "Crew" },
+    tabs: { today: "Today", checks: "Questionnaires", emotional: "Emotional check-in", cognitive: "Cognitive assessment", breath: "Breathing", leisure: "Free time", crew: "Crew" },
     loading: "Loading…",
     retry: "Retry",
     noData: "—",
@@ -254,12 +253,7 @@ const DICT = {
     quality: "Quality",
     isolatedShort: "Isolation",
     noteShort: "Note",
-    toolsTitle: "More well-being tools",
-    toolEmotional: "Emotional check-in",
-    toolEmotionalSub: "Questionnaires sent by the support team",
     toolPending: "{n} pending",
-    toolCognitive: "Cognitive assessment",
-    toolCognitiveSub: "Attention, memory and reaction time",
     leisureTitle: "Free time",
     leisureSub: "Short breaks that help you switch off",
     leisureIntro: "On long missions, small personal routines —tending plants, reading, listening to music— help cope with isolation. Pick whatever you feel like: it's not one more task.",
@@ -335,7 +329,7 @@ const DICT = {
   },
 };
 
-const SUBS = ["today", "checks", "breath", "leisure", "crew"];
+const SUBS = ["today", "checks", "emotional", "cognitive", "breath", "leisure", "crew"];
 const SUB_KEY = "av_wb_sub";
 const CATEGORIES = ["PLANTS", "READING", "GAMES", "MUSIC", "ART", "PHOTOGRAPHY", "WRITING", "MOVEMENT"];
 const DURATIONS = [10, 20, 30];
@@ -494,7 +488,7 @@ export async function renderWellbeingView(container, appState, helpers) {
 
 function tabHTML(s, T, pending) {
   const on = s === ui.sub;
-  const badge = s === "today" && pending > 0
+  const badge = s === "emotional" && pending > 0
     ? ` <span class="av-wb-count">${esc(fmtT(T.toolPending, { n: pending }))}</span>`
     : "";
   return `<button type="button" role="tab" class="av-wb-tab" id="av-wb-tab-${s}" data-wb-tab="${s}"
@@ -550,12 +544,17 @@ async function renderPanel() {
   if (!panel.querySelector(`[data-wb-sub="${sub}"]`)) {
     panel.innerHTML = `<div class="av-sub av-wb-loading" role="status">${esc(tr(DICT).loading)}</div>`;
   }
-  const renderers = { today: renderToday, checks: (p, st) => renderChecks(p, { appState, helpers: ctx.helpers, isStale: st, goTab: (s) => ui.selectTab?.(s, true) }), breath: (p) => renderBreathing(p, appState), leisure: renderLeisure, crew: renderCrew };
+  const renderers = { today: renderToday, checks: (p, st) => renderChecks(p, { appState, helpers: ctx.helpers, isStale: st, goTab: (s) => ui.selectTab?.(s, true) }), breath: (p) => renderBreathing(p, appState), leisure: renderLeisure, crew: renderCrew,
+    emotional: (p) => renderEmbedded(p, "emotional", renderEmotionalView),
+    cognitive: (p) => renderEmbedded(p, "cognitive", renderCognitiveView) };
   await renderers[sub](panel, isStale);
   if (isStale()) return;
   panel.querySelector("[data-wb-retry]")?.addEventListener("click", () => renderPanel());
   panel.querySelectorAll("[data-wb-go]").forEach((b) =>
     b.addEventListener("click", () => ctx.helpers.navigateToSection?.(b.getAttribute("data-wb-go")))
+  );
+  panel.querySelectorAll("[data-wb-tabgo]").forEach((b) =>
+    b.addEventListener("click", () => ui.selectTab?.(b.getAttribute("data-wb-tabgo"), true))
   );
   if (ui.focusSel) {
     panel.querySelector(ui.focusSel)?.focus();
@@ -582,22 +581,16 @@ function scaleFieldset(key, legend, T) {
     </fieldset>`;
 }
 
-function toolsHTML(T, appState, own) {
-  const pending = own ? pendingEmotional(appState) : 0;
-  const tool = (sec, title, sub, extra = "") => `<li>
-      <button type="button" class="av-btn av-wb-tool" data-wb-go="${sec}">
-        <span class="av-wb-tool-t">${esc(title)}${extra}</span>
-        <span class="av-sub">${esc(sub)}</span>
-      </button>
-    </li>`;
-  return `<section class="av-panel" aria-labelledby="av-wb-tools-h">
-      <div class="av-panel-head"><h3 class="av-h3" id="av-wb-tools-h">${esc(T.toolsTitle)}</h3></div>
-      <ul class="av-wb-tools">
-        ${tool("emotional-center", T.toolEmotional, T.toolEmotionalSub,
-          pending > 0 ? ` <span class="av-wb-count">${esc(fmtT(T.toolPending, { n: pending }))}</span>` : "")}
-        ${tool("cognitive-center", T.toolCognitive, T.toolCognitiveSub)}
-      </ul>
-    </section>`;
+/* Check-in emocional y Evaluación cognitiva dentro de su pestaña: cada vista pinta su propia raíz
+ * (av-em-root / av-cg-root) en un contenedor propio, así sus repintados internos (enviar, reintentar,
+ * cambio de idioma) no tocan las pestañas de Bienestar. */
+async function renderEmbedded(panel, sub, render) {
+  let host = panel.querySelector(`[data-wb-sub="${sub}"]`);
+  if (!host) {
+    panel.innerHTML = `<div class="av-wb-embed" data-wb-sub="${sub}"></div>`;
+    host = panel.firstElementChild;
+  }
+  await render(host, ctx.appState, ctx.helpers);
 }
 
 function careHTML(T) {
@@ -605,7 +598,7 @@ function careHTML(T) {
       <strong>${esc(T.careTitle)}</strong>
       <span>${esc(T.careText)}</span>
       <span class="av-mx-btns">
-        <button type="button" class="av-btn av-btn-sm" data-wb-go="emotional-center">${esc(T.careEmotional)}</button>
+        <button type="button" class="av-btn av-btn-sm" data-wb-tabgo="emotional">${esc(T.careEmotional)}</button>
       </span>
     </div>`;
 }
@@ -715,7 +708,7 @@ async function renderToday(panel, isStale) {
 
   panel.innerHTML = `<div class="av-wb-cols" data-wb-sub="today">
       <div class="av-wb-col">${formHTML}${sleepHTML}</div>
-      <div class="av-wb-col">${recentHTML}${toolsHTML(T2, appState, own)}</div>
+      <div class="av-wb-col">${recentHTML}</div>
     </div>`;
 
   if (own) bindCheckin(panel);

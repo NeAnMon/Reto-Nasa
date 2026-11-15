@@ -28,6 +28,7 @@ import { apiService } from "../../services/api.js";
 import { tr, fmt } from "../../i18n/i18n.js";
 import { bt, btLines } from "/src/i18n/backend.js";
 import { CLS, ALERT_CLASSES, STATE_WORD, alertClassOf, isAlarm, isEarlyAlert } from "../alert-classes.js";
+import { openWellbeingSub } from "./wellbeing.js";
 
 const esc = escapeHtml;
 
@@ -172,6 +173,40 @@ const DICT = {
     earlyEarth: "Ver canal con Tierra en Recomendaciones",
     earlyManage: "Ver detalle y gestionar",
     earlyListAria: "Alertas tempranas desplegables",
+    // Recomendaciones y contramedidas (issue #26)
+    recoTitle: "Recomendaciones y contramedidas",
+    recoIntro: "Qué hacer ahora con cada alerta activa, agrupada por el módulo donde se generó. La más grave va primero.",
+    recoCount: "{n} alertas activas",
+    recoCountOne: "1 alerta activa",
+    recoEmpty: "No hay alertas activas: no hace falta ninguna contramedida ahora.",
+    recoEarlyNote: "Las alertas tempranas de aislamiento tienen su recomendación en el bloque siguiente.",
+    recoNow: "Qué hacer ahora",
+    recoFollow: "Seguimiento",
+    recoCounter: "Contramedida",
+    recoDetail: "Ver detalle y gestionar",
+    recoMore: "Mostrar {n} más",
+    recoLess: "Mostrar menos",
+    recoGroupAria: "Alertas del módulo {m}",
+    module: {
+      VITALS: "Signos vitales",
+      RADIATION: "Radiación",
+      EMOTIONAL: "Bienestar · check-in emocional",
+      COGNITIVE: "Bienestar · evaluación cognitiva",
+      SLEEP: "Sueño, fatiga y ánimo",
+      HABITS: "Hidratación y actividad física",
+      ISOLATION: "Bienestar · aislamiento",
+      OTHER: "Otros módulos",
+    },
+    counter: {
+      VITALS: ["Reposo sentado 5 minutos, hidrátate y vuelve a medir. Si el valor sigue fuera de límite, escala al médico de vuelo.", "Volver a medir"],
+      RADIATION: ["Ve al área más blindada de la nave o refugio, aplaza la actividad extravehicular y revisa la dosis acumulada en el dosímetro.", "Abrir Radiación"],
+      EMOTIONAL: ["Busca un momento en privado con tu especialista de apoyo y completa el check-in emocional pendiente.", "Abrir Check-in emocional"],
+      COGNITIVE: ["Haz una pausa de recuperación (descanso o respiración guiada) y repite la evaluación cognitiva cuando estés descansado.", "Abrir Evaluación cognitiva"],
+      SLEEP: ["Higiene de sueño: compartimento oscuro y silencioso, sin pantallas antes de dormir; registra tu sueño en el check-in de Bienestar.", "Abrir Bienestar · Hoy"],
+      HABITS: ["Completa las contramedidas de hoy: rutina de hidratación y ejercicio programado.", "Abrir Contramedidas de hoy"],
+      ISOLATION: ["Programa un contacto con Tierra con familia o equipo de apoyo.", "Ver canal con Tierra"],
+      OTHER: ["Revisa las contramedidas de hoy y sigue el procedimiento de la alerta.", "Abrir Contramedidas de hoy"],
+    },
   },
   en: {
     status: {
@@ -311,6 +346,40 @@ const DICT = {
     earlyEarth: "See the Earth channel in Recommendations",
     earlyManage: "See details and manage",
     earlyListAria: "Expandable early warnings",
+    // Recommendations and countermeasures (issue #26)
+    recoTitle: "Recommendations and countermeasures",
+    recoIntro: "What to do now for each active alert, grouped by the module that raised it. The most severe comes first.",
+    recoCount: "{n} active alerts",
+    recoCountOne: "1 active alert",
+    recoEmpty: "No active alerts: no countermeasure is needed right now.",
+    recoEarlyNote: "Isolation early warnings have their recommendation in the next block.",
+    recoNow: "What to do now",
+    recoFollow: "Follow-up",
+    recoCounter: "Countermeasure",
+    recoDetail: "See details and manage",
+    recoMore: "Show {n} more",
+    recoLess: "Show less",
+    recoGroupAria: "Alerts from {m}",
+    module: {
+      VITALS: "Vital signs",
+      RADIATION: "Radiation",
+      EMOTIONAL: "Wellbeing · emotional check-in",
+      COGNITIVE: "Wellbeing · cognitive assessment",
+      SLEEP: "Sleep, fatigue and mood",
+      HABITS: "Hydration and physical activity",
+      ISOLATION: "Wellbeing · isolation",
+      OTHER: "Other modules",
+    },
+    counter: {
+      VITALS: ["Rest seated for 5 minutes, hydrate and measure again. If the value stays out of limits, escalate to the flight surgeon.", "Measure again"],
+      RADIATION: ["Move to the most shielded area or storm shelter, postpone extravehicular activity and check the accumulated dose on the dosimeter.", "Open Radiation"],
+      EMOTIONAL: ["Find a private moment with your support specialist and complete the pending emotional check-in.", "Open Emotional check-in"],
+      COGNITIVE: ["Take a recovery break (rest or guided breathing) and repeat the cognitive assessment once rested.", "Open Cognitive assessment"],
+      SLEEP: ["Sleep hygiene: dark, quiet crew quarters, no screens before sleeping; log your sleep in the Wellbeing check-in.", "Open Wellbeing · Today"],
+      HABITS: ["Complete today's countermeasures: hydration routine and scheduled exercise.", "Open Today's countermeasures"],
+      ISOLATION: ["Schedule an Earth contact with family or the support team.", "See the Earth channel"],
+      OTHER: ["Check today's countermeasures and follow the alert procedure.", "Open Today's countermeasures"],
+    },
   },
 };
 
@@ -334,7 +403,36 @@ const ui = {
   sig: null,
   drafts: {},
   earlyOpen: new Set(), // alertas tempranas desplegadas (sobreviven al sondeo y al repintado)
+  recoOpen: new Set(), // módulos de Recomendaciones con todas sus alertas a la vista
 };
+
+/* Módulo donde se generó cada alerta (regla o indicador) y dónde se hace su contramedida */
+const VITAL_CODES = new Set(["HEART_RATE", "BLOOD_PRESSURE", "BODY_TEMP", "SPO2", "RESP_RATE", "BLOOD_GLUCOSE"]);
+const MODULE_ORDER = ["VITALS", "RADIATION", "EMOTIONAL", "COGNITIVE", "SLEEP", "HABITS", "ISOLATION", "OTHER"];
+const RECO_VISIBLE = 3;
+/* act: data-al-act del botón de contramedida; sec/sub: sección (y pestaña de Bienestar) a la que lleva */
+const MODULE_GO = {
+  VITALS: { act: "go-measure" },
+  RADIATION: { act: "go-cm", sec: "radiation" },
+  EMOTIONAL: { act: "go-cm", sec: "emotional-center" },
+  COGNITIVE: { act: "go-cm", sec: "cognitive-center" },
+  SLEEP: { act: "go-cm", sec: "wellbeing-hub", sub: "today" },
+  HABITS: { act: "go-cm", sec: "daily-missions" },
+  ISOLATION: { act: "go-rec", rec: "earth-channel" },
+  OTHER: { act: "go-cm", sec: "daily-missions" },
+};
+function moduleOf(a) {
+  const rule = String(a.rule_code || "");
+  const ind = String(a.indicator_code || "");
+  if (isEarlyAlert(a)) return "ISOLATION";
+  if (rule.startsWith("RULE_EMOTIONAL") || rule.startsWith("RULE_SUPPORT")) return "EMOTIONAL";
+  if (rule.startsWith("RULE_COGNITIVE")) return "COGNITIVE";
+  if (ind.startsWith("RADIATION")) return "RADIATION";
+  if (VITAL_CODES.has(ind)) return "VITALS";
+  if (ind === "SLEEP_DURATION" || ind === "PERCEIVED_FATIGUE" || ind === "MOOD_WELLNESS") return "SLEEP";
+  if (ind === "HYDRATION" || ind === "PHYSICAL_ACTIVITY") return "HABITS";
+  return "OTHER";
+}
 
 /* Al cambiar de usuario (cerrar sesión y entrar con otro) se vuelve al estado inicial:
  * filtros, selección y borradores no pasan de una cuenta a otra. */
@@ -342,7 +440,7 @@ function resetUiFor(appState) {
   const uid = appState.currentUser?.id ?? null;
   if (ui.userId === uid) return;
   Object.assign(ui, { state: "ACTIVE", cls: "ALL", showAdv: false, crew: null, crewPicked: false,
-    selectedId: null, knownIds: null, sig: null, drafts: {}, earlyOpen: new Set(), userId: uid });
+    selectedId: null, knownIds: null, sig: null, drafts: {}, earlyOpen: new Set(), recoOpen: new Set(), userId: uid });
 }
 
 /* ───────────────────────── utilidades ───────────────────────── */
@@ -480,6 +578,7 @@ export async function renderAlertsView(container, appState, helpers) {
   <div class="av-console av-al-root">
     <div class="av-grid">
       <section class="av-col-b" aria-labelledby="av-al-h">
+        <div data-al-zone="reco"></div>
         <div data-al-zone="early"></div>
         <div class="av-panel">
           <div class="av-panel-head">
@@ -550,12 +649,95 @@ async function reload(ctx, { first = false, focusDetail = false, headerFresh = f
 }
 
 function renderAll(ctx) {
+  renderReco(ctx);
   renderEarly(ctx);
   renderScope(ctx);
   renderCounters(ctx);
   renderFilters(ctx);
   renderTable(ctx);
   renderDetail(ctx);
+}
+
+/* Recomendaciones y contramedidas (issue #26): cada alerta activa del ámbito, de cualquier módulo,
+ * con su acción inmediata, su seguimiento y la contramedida del módulo a la vista (sin desplegar).
+ * Grupos por módulo de origen, el más grave primero; dentro, el orden de ctx.list (clase y hora).
+ * Las tempranas de aislamiento ya tienen su bloque desplegable debajo: aquí solo se mencionan. */
+function renderReco(ctx) {
+  const T = tr(DICT);
+  const z = zone(ctx, "reco");
+  if (!z) return;
+  const leader = isLeader(ctx.appState);
+  const active = ctx.list.filter((v) => v.active && !v.outOfScope);
+  const items = active.filter((v) => !isEarlyAlert(v.a));
+  const earlyN = active.length - items.length;
+  const groups = new Map();
+  items.forEach((v) => {
+    const m = moduleOf(v.a);
+    if (!groups.has(m)) groups.set(m, []);
+    groups.get(m).push(v);
+  });
+  const topRank = (list) => Math.max(...list.map((v) => RANK[v.cls] || 0));
+  const mods = [...groups.keys()].sort((x, y) =>
+    topRank(groups.get(y)) - topRank(groups.get(x)) || MODULE_ORDER.indexOf(x) - MODULE_ORDER.indexOf(y));
+
+  const card = (v, m) => {
+    const a = v.a;
+    const id = Number(a.id);
+    const go = MODULE_GO[m];
+    const [cmText, cmBtn] = T.counter[m];
+    const who = leader ? a.crew_code || a.astronaut_name || "" : "";
+    const val = `${a.value_recorded ?? ""} ${bt(a.unit ?? "")}`.trim();
+    const sub = [val ? `<span class="av-mono">${esc(val)}</span>` : "", esc(who), esc(statusText(v)), timeHTML(a.created_at)]
+      .filter(Boolean).join(" · ");
+    const goAttrs = `data-al-act="${go.act}" data-al-astro="${Number(a.astronaut_id)}"` +
+      (go.sec ? ` data-al-sec="${esc(go.sec)}"` : "") + (go.sub ? ` data-al-sub="${esc(go.sub)}"` : "") +
+      (go.rec ? ` data-al-rec="${esc(go.rec)}"` : "");
+    return `<li class="av-al-reco-card" data-cls="${esc(v.cls)}">
+      <div class="av-al-reco-head">
+        ${clsBadge(v.cls)}
+        <span class="av-al-reco-t">${esc(bt(a.title) || T.untitled)}</span>
+      </div>
+      <p class="av-sub av-al-p">${sub}</p>
+      <div class="av-al-reco-now">
+        <span class="av-lbl">${esc(T.recoNow)}</span>
+        <p class="av-al-p">${esc(bt(a.immediate_action) || T.noImmediate)}</p>
+      </div>
+      ${a.followup_recommendation ? `<p class="av-al-p"><strong>${esc(T.recoFollow)}:</strong> ${esc(bt(a.followup_recommendation))}</p>` : ""}
+      <p class="av-al-p av-al-reco-cm"><strong>${esc(T.recoCounter)}:</strong> ${esc(cmText)}</p>
+      <div class="av-al-btns">
+        <button type="button" class="av-btn av-btn-sm av-btn-primary" ${goAttrs}>${esc(cmBtn)}</button>
+        <button type="button" class="av-btn av-btn-sm" data-al-pick="${id}" aria-controls="av-al-detail">${esc(T.recoDetail)}</button>
+      </div>
+    </li>`;
+  };
+
+  const group = (m) => {
+    const list = groups.get(m);
+    const open = ui.recoOpen.has(m);
+    const shown = open ? list : list.slice(0, RECO_VISIBLE);
+    const rest = list.length - RECO_VISIBLE;
+    const name = T.module[m];
+    return `<section class="av-al-reco-group" aria-label="${esc(fmt(T.recoGroupAria, { m: name }))}">
+      <h3 class="av-h3 av-al-reco-mod">${esc(name)} <span class="av-sub av-mono">${list.length}</span></h3>
+      <ul class="av-al-reco-list">${shown.map((v) => card(v, m)).join("")}</ul>
+      ${rest > 0 ? `<button type="button" class="av-btn av-btn-sm av-al-reco-more" data-al-act="reco-more" data-al-mod="${m}" aria-expanded="${open}">
+        ${esc(open ? T.recoLess : fmt(T.recoMore, { n: rest }))}</button>` : ""}
+    </section>`;
+  };
+
+  const count = items.length === 1 ? T.recoCountOne : fmt(T.recoCount, { n: items.length });
+  z.innerHTML = `
+    <section class="av-panel av-al-reco" aria-labelledby="av-al-reco-h">
+      <div class="av-panel-head">
+        <h2 id="av-al-reco-h" class="av-h2">${esc(T.recoTitle)}</h2>
+        <span class="av-sub">${esc(count)}</span>
+      </div>
+      ${items.length
+        ? `<p class="av-sub av-al-pad av-al-reco-intro">${esc(T.recoIntro)}</p>
+           <div class="av-al-reco-groups">${mods.map(group).join("")}</div>`
+        : `<p class="av-sub av-al-pad">${esc(T.recoEmpty)}</p>`}
+      ${earlyN ? `<p class="av-sub av-al-pad av-al-reco-intro">${esc(T.recoEarlyNote)}</p>` : ""}
+    </section>`;
 }
 
 /* Alertas tempranas en desplegables (<details>, mismo patrón .av-fold que las secciones plegables
@@ -927,6 +1109,18 @@ function bind(ctx) {
     } else if (act === "go-console" || act === "go-measure") {
       await selectAstronautIfNeeded(ctx, Number(btn.getAttribute("data-al-astro")));
       helpers.navigateToSection(act === "go-console" ? "mission-control" : "my-health-check");
+    } else if (act === "go-cm") {
+      // Contramedida de una alerta: lleva al módulo donde se hace (y a su pestaña de Bienestar)
+      await selectAstronautIfNeeded(ctx, Number(btn.getAttribute("data-al-astro")));
+      const sub = btn.getAttribute("data-al-sub");
+      if (sub) openWellbeingSub(sub);
+      helpers.navigateToSection(btn.getAttribute("data-al-sec"));
+    } else if (act === "reco-more") {
+      const m = btn.getAttribute("data-al-mod");
+      if (ui.recoOpen.has(m)) ui.recoOpen.delete(m);
+      else ui.recoOpen.add(m);
+      renderReco(ctx);
+      root.querySelector(`[data-al-act="reco-more"][data-al-mod="${CSS.escape(m)}"]`)?.focus();
     } else if (act === "go-rec") {
       // Pestaña Recomendaciones con el cuadro pedido desplegado (lo lee views/recommendations.js)
       try { sessionStorage.setItem("av_rec_open", btn.getAttribute("data-al-rec") || ""); } catch { /* sin almacenamiento */ }
@@ -1070,6 +1264,7 @@ async function poll(ctx) {
   fresh.forEach((v) => ui.knownIds.add(v.a.id));
   // los desplegables de alertas tempranas tampoco se repintan mientras se usan
   if (!zone(ctx, "early").contains(document.activeElement)) renderEarly(ctx);
+  if (!zone(ctx, "reco").contains(document.activeElement)) renderReco(ctx);
   renderScope(ctx);
   renderCounters(ctx);
   // los filtros solo se repintan si no se están usando

@@ -153,6 +153,17 @@ const SECTION_REDIRECTS = {
   "communication-center": "recommendations",
   // El cuestionario de bienestar psicológico vive en Bienestar → Cuestionarios (se abre esa pestaña)
   "wellness-center": "wellbeing-hub",
+  // Check-in emocional y Evaluación cognitiva son pestañas de Bienestar (issue #26): sus ids antiguos
+  // (contramedidas, cuestionarios, alertas) abren Bienestar en esa pestaña
+  "emotional-center": "wellbeing-hub",
+  "cognitive-center": "wellbeing-hub",
+};
+
+/* Pestaña de Bienestar que abre cada id antiguo redirigido */
+const WELLBEING_TAB_OF = {
+  "wellness-center": "checks",
+  "emotional-center": "emotional",
+  "cognitive-center": "cognitive",
 };
 
 /* Escribe texto en un elemento solo si existe (el antiguo encabezado hdr-* ya no está en el HTML) */
@@ -180,7 +191,7 @@ function setMoreMenu(open, { focusButton = false } = {}) {
 }
 
 /* Secciones sin entrada propia en la navegación que cuelgan de una pestaña: se marca la pestaña madre.
- * Evaluación cognitiva y Check-in emocional se abren desde Bienestar → Hoy. */
+ * (Evaluación cognitiva y Check-in emocional ya redirigen a sus pestañas de Bienestar; se dejan por si acaso.) */
 const NAV_PARENT = {
   "cognitive-center": "wellbeing-hub",
   "emotional-center": "wellbeing-hub",
@@ -430,7 +441,7 @@ async function refreshGlobalHeaderAndSummary() {
 }
 
 async function navigateToSection(sectionId) {
-  if (sectionId === "wellness-center") openWellbeingSub("checks");
+  if (WELLBEING_TAB_OF[sectionId]) openWellbeingSub(WELLBEING_TAB_OF[sectionId]);
   sectionId = SECTION_REDIRECTS[sectionId] || sectionId;
   appState.currentSection = sectionId;
   document.body.classList.toggle(
