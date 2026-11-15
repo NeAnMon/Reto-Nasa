@@ -306,6 +306,8 @@ export const EXACT = {
     "Perform the movement and resistive exercise session authorized by the current protocol.",
   "El ejercicio resistivo protege huesos y músculos antigravitatorios. Se suspende automáticamente si existe una alerta médica incompatible.":
     "Resistive exercise protects bones and antigravity muscles. It is automatically suspended if there is an incompatible medical alert.",
+  "Completar el cuestionario privado de bienestar psicológico en Bienestar → Cuestionarios.":
+    "Complete the private psychological well-being questionnaire in Wellbeing → Questionnaires.",
   "Completar un chequeo privado de bienestar psicológico en el Wellness Center.":
     "Complete a private psychological well-being check in the Wellness Center.",
   "El bienestar psicológico se evalúa con privacidad reforzada; reconocer el estrés a tiempo es una fortaleza operativa.":

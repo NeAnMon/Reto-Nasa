@@ -191,7 +191,7 @@ BODY_REGIONS_CATALOG = [
         "name": "Estado General y Bienestar Psicosocial",
         "system_function": "Integración mente-cuerpo, regulación emocional, motivación, cohesión de tripulación y resiliencia.",
         "space_risks": "Aislamiento y confinamiento, distancia visual y comunicativa de la Tierra, sobrecarga de trabajo y monotonía sensorial.",
-        "preventive_recommendations": "Utilizar el Wellness Center privado, practicar respiración guiada, mantener enlaces familiares autorizados y solicitar apoyo sin estigma.",
+        "preventive_recommendations": "Usar Bienestar (check-in privado, cuestionarios y respiración guiada), mantener enlaces familiares autorizados y solicitar apoyo sin estigma.",
         "indicator_codes": ["MOOD_WELLNESS", "PERCEIVED_FATIGUE", "SLEEP_DURATION"],
     },
 ]

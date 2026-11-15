@@ -492,12 +492,16 @@ export const EXACT = {
     "Thank you for answering openly. We have immediately activated the priority support instructions so you receive timely support.",
   "Tu cuestionario emocional fue registrado de forma privada. Se ha generado una señal de acompañamiento para facilitar el contacto con el equipo de apoyo.":
     "Your emotional questionnaire was recorded privately. A support signal has been generated to facilitate contact with the support team.",
+  "Pide apoyo desde Bienestar (check-in emocional) o coméntalo con tu especialista de apoyo en el próximo contacto con Tierra.":
+    "Ask for support from Wellbeing (emotional check-in) or talk it over with your support specialist at the next contact with Earth.",
   "Accede al Wellness Center o abre un canal privado en Communication Center con tu líder o especialista.":
     "Go to the Wellness Center or open a private channel in the Communication Center with your leader or specialist.",
   "Estado operativo EMOTIONAL_WELLNESS_MONITORING: se recomienda seguimiento preventivo de descanso y carga operativa.":
     "Operational state EMOTIONAL_WELLNESS_MONITORING: preventive follow-up of rest and operational workload is recommended.",
   "Se observan algunas dimensiones de carga o cansancio que vale la pena acompañar con pausas de recuperación.":
     "Some workload or tiredness dimensions are observed that are worth supporting with recovery breaks.",
+  "Revisar en Bienestar los recursos de descanso, respiración guiada y tiempo libre, y mantener el contacto social autorizado.":
+    "Review the rest, guided breathing and free-time resources in Wellbeing, and keep up authorized social contact.",
   "Revisar recursos de descanso, respiración guiada y contacto social autorizado en el Wellness Center.":
     "Review rest, guided breathing and authorized social contact resources in the Wellness Center.",
   "Estado operativo EMOTIONAL_WELLNESS_STABLE: cuestionario completado dentro de parámetros habituales.":
@@ -592,6 +596,8 @@ export const EXACT = {
     "Mind-body integration, emotional regulation, motivation, crew cohesion and resilience.",
   "Aislamiento y confinamiento, distancia visual y comunicativa de la Tierra, sobrecarga de trabajo y monotonía sensorial.":
     "Isolation and confinement, visual and communication distance from Earth, work overload and sensory monotony.",
+  "Usar Bienestar (check-in privado, cuestionarios y respiración guiada), mantener enlaces familiares autorizados y solicitar apoyo sin estigma.":
+    "Use Wellbeing (private check-in, questionnaires and guided breathing), maintain authorized family links and request support without stigma.",
   "Utilizar el Wellness Center privado, practicar respiración guiada, mantener enlaces familiares autorizados y solicitar apoyo sin estigma.":
     "Use the private Wellness Center, practice guided breathing, maintain authorized family links and request support without stigma.",
   // Auth / usuarios

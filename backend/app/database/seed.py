@@ -603,7 +603,7 @@ DAILY_MISSIONS_DATA = [
         "MIND_CHECK",
         "Mind Check",
         "WELLNESS",
-        "Completar un chequeo privado de bienestar psicológico en el Wellness Center.",
+        "Completar el cuestionario privado de bienestar psicológico en Bienestar → Cuestionarios.",
         30,
         "ALL",
         False,
@@ -2592,6 +2592,9 @@ CREW_ACTIVITY_TEMPLATES_DATA = [
 
 # Misiones de XP del módulo (inactivas: no aparecen en la lista de misiones diarias)
 RETIRED_DAILY_MISSION_CODES = ("REVIEW_MISSION_MESSAGES", "RESPOND_SUPPORT_REQUEST")
+LEGACY_DAILY_MISSION_DESCRIPTIONS = {
+    "MIND_CHECK": "Completar un chequeo privado de bienestar psicológico en el Wellness Center.",
+}
 
 ISOLATION_XP_MISSIONS_DATA = [
     ("LEISURE_BREAK", "Tiempo libre registrado", "WELLNESS",
@@ -2748,4 +2751,10 @@ def seed_isolation_module(db: Session) -> None:
         dm = db.query(DailyMission).filter(DailyMission.code == code).first()
         if dm and dm.is_active:
             dm.is_active = False
+    # Textos que nombraban el antiguo "Wellness Center" (issue #14): se actualizan en BD ya sembradas
+    for code, old_desc in LEGACY_DAILY_MISSION_DESCRIPTIONS.items():
+        new_desc = next((d[3] for d in DAILY_MISSIONS_DATA if d[0] == code), None)
+        dm = db.query(DailyMission).filter(DailyMission.code == code).first()
+        if dm and new_desc and dm.description == old_desc:
+            dm.description = new_desc
     db.commit()

@@ -823,6 +823,33 @@ def test_messages_only_daily_missions_are_retired(tmp_path):
         eng.dispose()
 
 
+def test_no_legacy_center_names_in_user_texts(tmp_path):
+    """Issue #14: los textos ya no remiten al antiguo "Wellness Center" ni al "Communication Center" retirado."""
+    import inspect
+    from backend.app.database.seed import LEGACY_DAILY_MISSION_DESCRIPTIONS, seed_isolation_module
+    from backend.app.services import emotional_engine
+
+    src = inspect.getsource(emotional_engine)
+    assert "Wellness Center" not in src and "Communication Center" not in src
+
+    eng = create_engine(f"sqlite:///{tmp_path / 'legacy_text.db'}", future=True)
+    Base.metadata.create_all(bind=eng)
+    db = sessionmaker(bind=eng, autoflush=False, future=True)()
+    try:
+        db.add(DailyMission(code="MIND_CHECK", title="Mind Check", category="WELLNESS",
+                            description=LEGACY_DAILY_MISSION_DESCRIPTIONS["MIND_CHECK"], xp_reward=30,
+                            compatible_environments_csv="ALL", contraindicated_on_critical_alert=False,
+                            educational_content="x", is_active=True))
+        db.commit()
+        seed_isolation_module(db)
+        dm = db.query(DailyMission).filter(DailyMission.code == "MIND_CHECK").one()
+        assert "Wellness Center" not in dm.description
+        assert "Cuestionarios" in dm.description
+    finally:
+        db.close()
+        eng.dispose()
+
+
 def test_daily_missions_endpoint_hides_messages_missions(client, users):
     r = client.get("/api/v1/gamification/missions", headers=users["elena"]["headers"])
     assert r.status_code == 200, r.text
