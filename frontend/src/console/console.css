@@ -144,6 +144,16 @@ body[data-theme="daylight-clean"] .av-console {
 .av-bar > span { display: block; height: 100%; background: var(--av-text); }
 .av-panel-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--av-border); }
 
+/* Secciones plegables (vista Radiación): misma cabecera y mismo ancho en cada columna */
+.av-fold { width: 100%; box-sizing: border-box; padding: 0; }
+.av-fold > .av-fold-head { cursor: pointer; list-style: none; min-height: 48px; box-sizing: border-box; padding-right: 36px; position: relative; }
+.av-fold > .av-fold-head::-webkit-details-marker { display: none; }
+.av-fold > .av-fold-head::after { content: ""; position: absolute; right: 14px; top: 50%; width: 8px; height: 8px; border-right: 2px solid var(--av-text2); border-bottom: 2px solid var(--av-text2); transform: translateY(-70%) rotate(45deg); transition: transform .15s; }
+.av-fold:not([open]) > .av-fold-head { border-bottom: 0; }
+.av-fold:not([open]) > .av-fold-head::after { transform: translateY(-30%) rotate(-45deg); }
+.av-fold > .av-fold-head:hover { background: var(--av-hover); }
+.av-fold > .av-fold-head:focus-visible { outline: 2px solid var(--av-text); outline-offset: -2px; }
+
 /* Tablas */
 .av-hscroll { overflow-x: auto; scrollbar-width: thin; scrollbar-color: var(--av-strong) var(--av-bg); }
 .av-hscroll::-webkit-scrollbar { height: 10px; }
