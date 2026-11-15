@@ -1,5 +1,5 @@
 /*
- * AstroVital · Consola · Vista "Mensajes" (centro de comunicación)
+ * SEMSA · Consola · Vista "Mensajes" (centro de comunicación)
  *
  * Sustituye a renderCommunicationCenter (app/expansion_views.js) con el diseño de la consola:
  *  - lista de conversaciones 1-a-1 (tripulante ↔ líder en Tierra asignado) con no leídos y última actividad GMT

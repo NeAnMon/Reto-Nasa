@@ -25,7 +25,7 @@ class AssistiveGuidanceService:
     """
 
     DISCLAIMER = (
-        "Aviso Operativo: AstroVital proporciona orientación educativa y preventiva basada en reglas "
+        "Aviso Operativo: SEMSA proporciona orientación educativa y preventiva basada en reglas "
         "configuradas (DEMO). No realiza diagnósticos médicos autónomos, no sustituye al personal "
         "sanitario de vuelo y no modifica protocolos clínicos."
     )

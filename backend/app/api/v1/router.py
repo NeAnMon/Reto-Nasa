@@ -350,7 +350,7 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
         user_id=user.id,
         token=token,
         csrf_token=csrf_token,
-        user_agent=request.headers.get("user-agent", "AstroVital-Client"),
+        user_agent=request.headers.get("user-agent", "SEMSA-Client"),
         ip_address=ip_addr,
         is_revoked=False,
         created_at=now,
@@ -1302,7 +1302,7 @@ def _build_astronaut_health_summary(
             "trends_for_review": trends_requiring_review,
             "data_quality_coverage_percent": coverage_pct,
             "non_clinical_index_notice": (
-                "AstroVital no calcula un 'porcentaje de salud total' arbitrario. "
+                "SEMSA no calcula un 'porcentaje de salud total' arbitrario. "
                 "Se presentan estados operativos verificables por indicador e índices de participación en autocuidado."
             ),
         },
@@ -2762,7 +2762,7 @@ def export_mission_report(
 
     now = utcnow()
     report_meta = {
-        "report_title": f"AstroVital Mission Health & Context Report — {mission.code}",
+        "report_title": f"SEMSA Mission Health & Context Report — {mission.code}",
         "generated_at_utc": now.isoformat(),
         "generated_by": user.email,
         "generated_by_role": user.role.code if user.role else "",
@@ -2777,7 +2777,7 @@ def export_mission_report(
         "contains_simulated_data": True,
         "simulation_badge": "SIMULADO — Datos sintéticos de demostración",
         "clinical_disclaimer": (
-            "AstroVital ayuda a observar, comprender, registrar y comunicar información sobre la salud. "
+            "SEMSA ayuda a observar, comprender, registrar y comunicar información sobre la salud. "
             "No diagnostica de manera autónoma ni reemplaza al personal médico."
         ),
     }
@@ -2822,7 +2822,7 @@ def export_mission_report(
             content=content_bytes,
             media_type="application/json",
             headers={
-                "Content-Disposition": f'attachment; filename="astrovital_report_{target_user.crew_code}.json"'
+                "Content-Disposition": f'attachment; filename="semsa_report_{target_user.crew_code}.json"'
             },
         )
 
@@ -2868,19 +2868,19 @@ def export_mission_report(
             content=buf.getvalue().encode("utf-8"),
             media_type="text/csv; charset=utf-8",
             headers={
-                "Content-Disposition": f'attachment; filename="astrovital_report_{target_user.crew_code}.csv"'
+                "Content-Disposition": f'attachment; filename="semsa_report_{target_user.crew_code}.csv"'
             },
         )
 
     # PDF Format
     pdf_lines = [
-        f"ASTROVITAL MISSION HEALTH & CONTEXT REPORT [SIMULADO] (ID #{rep_row.id})",
+        f"SEMSA MISSION HEALTH & CONTEXT REPORT [SIMULADO] (ID #{rep_row.id})",
         f"Generado (UTC): {now.strftime('%Y-%m-%d %H:%M:%S UTC')} | Solicitado por: {user.email} ({user.role.code})",
         f"Tripulante: {target_user.full_name} ({target_user.crew_code}) | Mision: {mission.name} ({mission.code})",
         f"Fase Actual: {mission.current_phase} | Entorno: {summary['context']['environment_code']} (Fuente: {summary['context']['determination_source']})",
         f"Cobertura Temporal de Datos: {summary['mission_summary']['data_quality_coverage_percent']}% | Alertas Activas: {summary['mission_summary']['active_alerts_count']}",
         "----------------------------------------------------------------------------------------",
-        "AVISO OPERATIVO: Datos etiquetados como SIMULADO. AstroVital no realiza diagnosticos medicos autonomos.",
+        "AVISO OPERATIVO: Datos etiquetados como SIMULADO. SEMSA no realiza diagnosticos medicos autonomos.",
         "----------------------------------------------------------------------------------------",
         "RESUMEN DE INDICADORES FISIOLOGICOS Y DE BIENESTAR:",
     ]
@@ -2903,7 +2903,7 @@ def export_mission_report(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f'attachment; filename="astrovital_report_{target_user.crew_code}.pdf"'
+            "Content-Disposition": f'attachment; filename="semsa_report_{target_user.crew_code}.pdf"'
         },
     )
 

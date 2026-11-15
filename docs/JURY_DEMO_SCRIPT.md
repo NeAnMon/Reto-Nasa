@@ -1,15 +1,15 @@
 # Guion de Demostración para el Jurado (5 Minutos — 10 Escenas)
-## AstroVital — *Your health. Your mission. Your future.*
+## SEMSA — *Your health. Your mission. Your future.*
 **Reto NASA Space Apps Challenge:** *Health Monitoring Software for Astronauts on Space Missions*
 
-> **Nota de Transparencia:** Todas las escenas utilizan datos sintéticos reproducibles etiquetados explícitamente como **SIMULADO** y reglas marcadas como **DEMO**. AstroVital ayuda a observar, comprender, registrar y comunicar información preventiva sobre la salud; no realiza diagnósticos médicos autónomos ni reemplaza a los profesionales sanitarios.
+> **Nota de Transparencia:** Todas las escenas utilizan datos sintéticos reproducibles etiquetados explícitamente como **SIMULADO** y reglas marcadas como **DEMO**. SEMSA ayuda a observar, comprender, registrar y comunicar información preventiva sobre la salud; no realiza diagnósticos médicos autónomos ni reemplaza a los profesionales sanitarios.
 
 ---
 
 ### Escena 1 — Inicio de misión (0:00 – 0:30)
-1. Abra `http://127.0.0.1:8000` e inicie sesión como la astronauta **Cmdr. Elena Rostova** (`elena.rostova@astrovital.demo` / `AstroCrew!2026`).
+1. Abra `http://127.0.0.1:8000` e inicie sesión como la astronauta **Cmdr. Elena Rostova** (`elena.rostova@semsa.demo` / `AstroCrew!2026`).
 2. En **Mission Control**, destaque el encabezado superior:
-   - Misión activa: `ARTEMIS-IV-DEMO` (*Lunar South Pole Outpost*).
+   - Misión activa: `TELECREATION-UTS` (*TeleCreation UTS*).
    - Fase actual (`SURFACE`), entorno resuelto (`Superficie Lunar — 0.166 G`) con fuente explícita (`DEMO_SIMULATION`).
    - Resumen de misión: indicadores en rango normal, en seguimiento, alertas activas y el **índice de participación en rutinas** (aclarando que no se calcula un falso "porcentaje de salud clínica total").
 
@@ -47,15 +47,15 @@
 2. Abra **6. Mission Analytics** y muestre la serie temporal longitudinal de Frecuencia Cardíaca y la gráfica de **Comparación por Fases** (`TRAINING`, `LAUNCH`, `TRANSIT`, `SURFACE`, `EVA`), destacando la nota metodológica que distingue asociación temporal de causalidad.
 
 ### Escena 8 — Supervisión terrestre como Líder de Misión (3:30 – 4:00)
-1. Cierre sesión e ingrese como **Líder en Tierra** (`leader@astrovital.demo` / `AstroLeader!2026`).
+1. Cierre sesión e ingrese como **Líder en Tierra** (`leader@semsa.demo` / `AstroLeader!2026`).
 2. Abra **8. Crew Monitoring**:
-   - Muestre que el líder puede supervisar a **Elena Rostova** y **Marcus Vance** (asignados a `ARTEMIS-IV-DEMO`), pero **no** tiene acceso al astronauta **Kenji Takahashi** (asignado a otra misión).
+   - Muestre que el líder puede supervisar a **Elena Rostova** y **Marcus Vance** (asignados a `TELECREATION-UTS`), pero **no** tiene acceso al astronauta **Kenji Takahashi** (asignado a otra misión).
    - Muestre que en la sección de bienestar el líder recibe la señal operativa (`SUPPORT_RECOMMENDED`), pero el texto privado del astronauta aparece protegido (`🔒 Respuestas detalladas ocultas por política de privacidad`).
 
 ### Escena 9 — Administración y auditoría de seguridad (4:00 – 4:30)
-1. Cierre sesión e ingrese como **Administradora** (`admin@astrovital.demo` / `AstroAdmin!2026`).
+1. Cierre sesión e ingrese como **Administradora** (`admin@semsa.demo` / `AstroAdmin!2026`).
 2. Abra **10. Administration**:
-   - Cree un nuevo usuario de tripulación, asígnelo a la misión `ARTEMIS-IV-DEMO` y muestre el directorio de cuentas, las versiones de reglas `DEMO` y la tabla de **Eventos de Auditoría y Seguridad**.
+   - Cree un nuevo usuario de tripulación, asígnelo a la misión `TELECREATION-UTS` y muestre el directorio de cuentas, las versiones de reglas `DEMO` y la tabla de **Eventos de Auditoría y Seguridad**.
 
 ### Escena 10 — Cierre, informes y trazabilidad (4:30 – 5:00)
 1. Abra **9. Reports**, ingrese una justificación operativa y descargue el informe en **PDF**, **CSV** y **JSON**.

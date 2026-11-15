@@ -1,4 +1,4 @@
-/* AstroVital · Consola · vista "Monitoreo de tripulación" (sustituye al antiguo Crew Monitoring)
+/* SEMSA · Consola · vista "Monitoreo de tripulación" (sustituye al antiguo Crew Monitoring)
  *
  * Supervisión en tierra (MISSION_LEADER y ADMINISTRATOR): una tarjeta por tripulante autorizado con
  * su contexto, el resumen de indicadores y la señal operativa de bienestar. "Inspeccionar" cambia
