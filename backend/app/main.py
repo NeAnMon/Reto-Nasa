@@ -21,7 +21,7 @@ FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend"
 mimetypes.add_type("image/webp", ".webp")
 
 
-logger = logging.getLogger("astrovital")
+logger = logging.getLogger("semsa")
 
 
 def init_db_and_seed() -> None:
@@ -87,5 +87,5 @@ def serve_index():
     index_path = FRONTEND_DIR / "index.html"
     if index_path.exists():
         return FileResponse(str(index_path))
-    return {"message": "AstroVital API running. Visit /docs for OpenAPI documentation."}
+    return {"message": "SEMSA API running. Visit /docs for OpenAPI documentation."}
 

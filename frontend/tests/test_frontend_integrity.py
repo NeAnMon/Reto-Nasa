@@ -62,7 +62,6 @@ def test_frontend_files_exist_and_have_required_sections():
     # Vistas del menú "Más" rediseñadas como módulos de la consola (antes vivían en app.js y
     # expansion_views.js): cada una con su export, su ruta, su entrada en el importmap y la hoja común
     for module, export_name in [
-        ("wellness", "renderWellnessView"),
         ("cognitive", "renderCognitiveView"),
         ("emotional", "renderEmotionalView"),
         ("crew", "renderCrewView"),
@@ -116,13 +115,38 @@ def test_frontend_files_exist_and_have_required_sections():
     assert "data-nav-section" not in wellbeing_js.split("*/", 1)[1]
     assert "data-act=" not in wellbeing_js
 
-    # Bienestar psicológico, Evaluación cognitiva y Check-in emocional salieron del menú "Más":
+    # Evaluación cognitiva y Check-in emocional salieron del menú "Más":
     # se abren desde Bienestar → Hoy, y sus rutas siguen funcionando
-    for sub_id in ["wellness-center", "cognitive-center", "emotional-center"]:
+    for sub_id in ["cognitive-center", "emotional-center"]:
         assert f'data-nav-section="{sub_id}"' not in index_html, f"{sub_id} should not be a menu item"
         assert f'sectionId === "{sub_id}"' in app_js, f"Missing handler for {sub_id}"
         assert f'tool("{sub_id}"' in wellbeing_js, f"Bienestar → Hoy must link to {sub_id}"
     assert 'data-wb-go="${sec}"' in wellbeing_js
+
+    # El cuestionario de bienestar psicológico pasó a "Registrar medición" (tarjeta del grupo
+    # "Cuestionarios" con los controles de medición): Bienestar ya no lo enlaza, la vista antigua
+    # no existe y la ruta "wellness-center" redirige a la medición con el cuestionario abierto
+    assert not (views_dir / "wellness.js").exists()
+    assert "/src/console/views/wellness.js" not in index_html
+    assert "renderWellnessView" not in app_js
+    assert "wellness-center" not in wellbeing_js
+    assert 'data-nav-section="wellness-center"' not in index_html
+    assert '"wellness-center": "my-health-check"' in app_js
+    assert "openMeasureItem(WELLNESS_QUESTIONNAIRE)" in app_js
+    mq_js = (views_dir / "measure-questionnaire.js").read_text(encoding="utf-8")
+    assert '"/src/console/views/measure-questionnaire.js": "/src/console/views/measure-questionnaire.js?v=__BUILD__"' in index_html
+    assert 'from "./measure-questionnaire.js"' in (views_dir / "measure.js").read_text(encoding="utf-8")
+    for call in ["getWellnessInstruments", "getWellnessAssessments", "createWellnessAssessment", "getWellnessRecommendations"]:
+        assert f"apiService.{call}(" in mq_js, f"measure-questionnaire.js must keep using {call}"
+    for cls in ["av-ms-tile", "av-ms-entry", "av-ms-scale", "av-ms-stepper", "av-ms-save", "av-ms-done"]:
+        assert cls in mq_js, f"questionnaire must reuse the measure class {cls}"
+    assert mq_js.count("const DICT = {") == 1 and "tr(DICT)" in mq_js
+    mq_es, mq_en = _dict_blocks(mq_js)
+    for indent in (4, 6):
+        assert _keys(mq_es, indent) == _keys(mq_en, indent), (
+            f"measure-questionnaire.js DICT es/en keys differ at indent {indent}: "
+            f"{sorted(_keys(mq_es, indent) ^ _keys(mq_en, indent))}"
+        )
     # El contador de pendientes del check-in emocional pasa a la pestaña "Bienestar"
     tab_start = index_html.index('data-nav-section="wellbeing-hub"')
     assert "js-emo-badge" in index_html[tab_start:index_html.index("</button>", tab_start)]
@@ -275,7 +299,7 @@ def test_wellbeing_limits_dedup_and_api_errors():
 
 def test_family_channel_not_in_frontend():
     """El canal familiar ("Conexión con Tierra") no se construye: solo queda como recomendación en Bienestar."""
-    forbidden = ["FAMILY_MEMBER", "uploadAttachment", "MediaRecorder", "astrovital_msg_outbox", "av_messages_channel"]
+    forbidden = ["FAMILY_MEMBER", "uploadAttachment", "MediaRecorder", "astrovital_msg_outbox", "semsa_msg_outbox", "av_messages_channel"]
     hits = []
     for path in (FRONTEND_ROOT / "src").rglob("*"):
         if path.suffix not in {".js", ".css", ".html"} or not path.is_file():
@@ -283,3 +307,20 @@ def test_family_channel_not_in_frontend():
         text = path.read_text(encoding="utf-8")
         hits += [f"{path.relative_to(FRONTEND_ROOT)}: {word}" for word in forbidden if word in text]
     assert not hits, f"Family channel leftovers in frontend/src: {hits}"
+
+
+def test_branding_is_semsa_and_status_bar_shows_telecreation_mission():
+    """Issue #14: la app se llama SEMSA y la barra superior muestra SEMSA + misión TeleCreation UTS."""
+    console_js = (FRONTEND_ROOT / "src" / "console" / "console.js").read_text(encoding="utf-8")
+    assert 'const BRAND_LABEL = "TeleCreation UTS";' in console_js
+    assert 'const APP_NAME = "SEMSA";' in console_js
+    assert "${esc(APP_NAME)}</span></div>" in console_js
+    hits = []
+    for path in [FRONTEND_ROOT / "index.html", *(FRONTEND_ROOT / "src").rglob("*")]:
+        if path.suffix not in {".js", ".css", ".html"} or not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8")
+        if path.name == "api.js":  # migra una vez las claves antiguas "astrovital_*" del almacenamiento
+            text = re.sub(r'"astrovital_(session_token|csrf_token|offline_queue)"', "", text)
+        hits += [f"{path.relative_to(FRONTEND_ROOT)}: {word}" for word in ("AstroVital", "astrovital", "ARTEMIS-IV") if word in text]
+    assert not hits, f"Restos de la marca anterior: {hits}"

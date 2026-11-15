@@ -127,8 +127,8 @@ export const EXACT = {
   "Entorno no confirmado": "Unconfirmed environment",
   "Sin datos verificados": "No verified data",
   "No confirmado": "Not confirmed",
-  "No existe telemetría verificada ni confirmación manual autorizada. AstroVital no asume ubicación por GPS local.":
-    "No verified telemetry or authorized manual confirmation is available. AstroVital does not infer location from local GPS.",
+  "No existe telemetría verificada ni confirmación manual autorizada. SEMSA no asume ubicación por GPS local.":
+    "No verified telemetry or authorized manual confirmation is available. SEMSA does not infer location from local GPS.",
   "Incertidumbre contextual: interprete las mediciones con precaución y confirme el entorno manualmente.":
     "Contextual uncertainty: interpret measurements with caution and confirm the environment manually.",
   "Solicitar confirmación de entorno por parte de la tripulación o control de misión.":
@@ -271,8 +271,8 @@ export const EXACT = {
      Reglas clínicas DEMO (ClinicalRule / ClinicalRuleVersion)
      (nombre e instrucciones con el indicador dentro → ver PATTERNS)
      --------------------------------------------------------------------- */
-  "AstroVital DEMO Reference Protocol (Ilustrativo / No Clínico)":
-    "AstroVital DEMO Reference Protocol (Illustrative / Non-Clinical)",
+  "SEMSA DEMO Reference Protocol (Ilustrativo / No Clínico)":
+    "SEMSA DEMO Reference Protocol (Illustrative / Non-Clinical)",
   "Comité de Demostración de Medicina Espacial (Ficticio)": "Space Medicine Demonstration Committee (Fictional)",
   "Escalamiento inmediato a Dirección de Medicina de Vuelo si persiste en rango WARNING por >2 mediciones o ante cualquier lectura en rango CRITICAL.":
     "Immediate escalation to the Flight Medicine Directorate if the value stays in the WARNING range for >2 measurements, or upon any reading in the CRITICAL range.",
@@ -920,7 +920,7 @@ export const EXACT = {
   "Medición de pulso verificada.": "Pulse measurement verified.",
   "Revisión ambiental completada.": "Environmental review completed.",
   "Omitida durante EVA programada sin penalización.": "Skipped during scheduled EVA, no penalty.",
-  "Primer registro fisiológico validado en misión Artemis IV.": "First validated physiological record on the Artemis IV mission.",
+  "Primer registro fisiológico validado en misión TeleCreation UTS.": "First validated physiological record on the TeleCreation UTS mission.",
   "Racha de 5 días de participación constante.": "5-day streak of consistent participation.",
   "Registro de rutina de descanso completado.": "Rest routine log completed.",
   "Exploración de cápsulas educativas en Body Explorer.": "Explored educational capsules in the Body Explorer.",

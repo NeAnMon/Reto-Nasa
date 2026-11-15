@@ -1,5 +1,5 @@
 /*
- * AstroVital · Bitácora → "Seguimiento periódico" (antes en el Resumen de la consola)
+ * SEMSA · Bitácora → "Seguimiento periódico" (antes en el Resumen de la consola)
  *
  * Panel plegable con los registros periódicos del tripulante seleccionado en la bitácora:
  * masa corporal, visión (SANS), medicación y polvo lunar (sin registros en la app),

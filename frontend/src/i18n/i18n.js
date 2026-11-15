@@ -1,5 +1,5 @@
 /* =========================================================================
-   AstroVital — núcleo de idiomas (es / en)
+   SEMSA — núcleo de idiomas (es / en)
    -------------------------------------------------------------------------
    Contrato para todos los módulos:
    - Cada módulo define sus textos como diccionario por idioma:
@@ -93,7 +93,7 @@ export function fmtNum(v, dec = 0) {
 export const STATIC = {
   es: {
     "lang.label": "Idioma",
-    "doc.title": "AstroVital — Plataforma de Monitoreo Integral de Salud Espacial",
+    "doc.title": "SEMSA — Plataforma de Monitoreo Integral de Salud Espacial",
     // Encabezado global y pestañas
     "chrome.aria": "Encabezado de la consola de salud",
     "nav.aria": "Navegación principal",
@@ -124,7 +124,7 @@ export const STATIC = {
   },
   en: {
     "lang.label": "Language",
-    "doc.title": "AstroVital — Integrated Space Health Monitoring Platform",
+    "doc.title": "SEMSA — Integrated Space Health Monitoring Platform",
     "chrome.aria": "Health console header",
     "nav.aria": "Main navigation",
     "tab.summary": "Overview",

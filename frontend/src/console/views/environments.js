@@ -1,5 +1,5 @@
 /*
- * AstroVital · Consola de salud · Vista "Insights por entorno"
+ * SEMSA · Consola de salud · Vista "Insights por entorno"
  *
  * Reto NASA Space Apps "Health Monitoring Software for Astronauts": información de salud
  * para astronautas en distintos entornos (nave espacial, estación espacial, rover,
@@ -69,7 +69,7 @@ const DICT = {
   exNote: "objetivo orientativo de la app (demo), no prescripción",
   level: { 1: "Bajo", 2: "Medio", 3: "Alto" },
   levelWord: "Nivel",
-  disclaimer: "AstroVital ayuda a observar, registrar y comunicar información de salud; no diagnostica ni sustituye al personal médico. Ante cualquier duda, consulta al médico de vuelo.",
+  disclaimer: "SEMSA ayuda a observar, registrar y comunicar información de salud; no diagnostica ni sustituye al personal médico. Ante cualquier duda, consulta al médico de vuelo.",
   sources: "Fuentes: NASA-STD-3001 Vol. 1 y 2 (salud de tripulación y habitabilidad) y riesgos del NASA Human Research Program (radiación espacial, SANS, pérdida ósea y muscular, desacondicionamiento cardiovascular, sensoriomotor, sueño, aislamiento y confinamiento, polvo de regolito). Valores por rango y orientativos: varían con la misión, el blindaje, la actividad solar y la actividad del tripulante.",
 
   cm: {
@@ -361,7 +361,7 @@ const DICT = {
   exNote: "app guidance target (demo), not a prescription",
   level: { 1: "Low", 2: "Medium", 3: "High" },
   levelWord: "Level",
-  disclaimer: "AstroVital helps observe, log and communicate health information; it does not diagnose or replace medical staff. If in doubt, consult the flight surgeon.",
+  disclaimer: "SEMSA helps observe, log and communicate health information; it does not diagnose or replace medical staff. If in doubt, consult the flight surgeon.",
   sources: "Sources: NASA-STD-3001 Vol. 1 and 2 (crew health and habitability) and NASA Human Research Program risks (space radiation, SANS, bone and muscle loss, cardiovascular deconditioning, sensorimotor, sleep, isolation and confinement, regolith dust). Values are ranges and indicative: they vary with the mission, shielding, solar activity and crew activity.",
 
   cm: {
