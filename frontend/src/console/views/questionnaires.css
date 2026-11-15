@@ -1,0 +1,69 @@
+/* SEMSA · Consola · Bienestar → Cuestionarios (questionnaires.js + shift-check.js)
+ * Prefijos av-qz- (cuestionario y piezas comunes) y av-sc- (chequeo del turno: TLX y test de reacción).
+ * Usa los tokens de .av-console (console.css), las clases av-mx-* de more.css y el esqueleto av-wb-*
+ * de wellbeing.css. Sin colores de alarma: solo texto, contraste y borde. Nada con ancho fijo:
+ * todo cabe en 320–375 px sin scroll horizontal.
+ */
+
+.av-qz-root, .av-qz-root * { min-width: 0; }
+.av-qz-body { display: flex; flex-direction: column; gap: 12px; }
+.av-qz-body legend, .av-qz-body label, .av-qz-body p { overflow-wrap: anywhere; }
+.av-qz-foot { margin: 0; font-size: 12px; }
+
+/* Escala 1–10: rejilla que reparte el ancho disponible (10 columnas; 5 en pantallas estrechas) */
+.av-qz-scale { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.av-qz-row { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 4px; }
+.av-qz-opt { position: relative; display: flex; cursor: pointer; }
+.av-qz-opt input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
+.av-qz-opt > span {
+  flex: 1; min-height: 44px; display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--av-strong); background: var(--av-raised); color: var(--av-text); font-size: 14px;
+}
+.av-qz-opt:hover > span { border-color: var(--av-text); }
+.av-qz-opt input:checked + span { background: var(--av-text); color: var(--av-bg); border-color: var(--av-text); font-weight: 600; }
+.av-qz-opt input:focus-visible + span { outline: 2px solid var(--av-text); outline-offset: 2px; }
+.av-qz-ends { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 12px; font-size: 12px; color: var(--av-text2); }
+
+.av-qz-check { align-items: flex-start; }
+.av-qz-check input { margin-top: 2px; }
+.av-qz-done { display: flex; flex-direction: column; gap: 8px; }
+.av-qz-done:focus { outline: none; }
+.av-qz-recs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.av-qz-recs li { padding: 8px 10px; border: 1px solid var(--av-border); background: var(--av-bg); font-size: 13px; overflow-wrap: anywhere; }
+.av-qz-hist ul { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.av-qz-hist li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 13px; }
+
+/* Chequeo del turno */
+.av-sc-today { display: flex; flex-direction: column; gap: 8px; }
+.av-sc-block { border-top: 1px solid var(--av-row) !important; padding-top: 12px !important; gap: 8px !important; }
+.av-sc-block > legend { float: left; width: 100%; margin-bottom: 4px; }
+.av-sc-block > legend + * { clear: both; }
+.av-sc-tlx { display: flex; flex-direction: column; gap: 2px; }
+.av-sc-tlx-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.av-sc-tlx-head label { font-size: 13px; font-weight: 600; color: var(--av-text); }
+.av-sc-tlx-head output { font-size: 14px; font-weight: 600; color: var(--av-text); }
+.av-sc-tlx-desc { margin: 0; font-size: 12px; }
+.av-sc-range { width: 100%; min-height: 32px; margin: 0; accent-color: var(--av-text); cursor: pointer; }
+.av-sc-range:focus-visible { outline: 2px solid var(--av-text); outline-offset: 2px; }
+.av-sc-total { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.av-sc-len { max-width: 320px; }
+.av-sc-len .av-input { min-height: 44px; }
+.av-sc-len option { background: var(--av-panel); color: var(--av-text); }
+
+/* Área del test de reacción: el estado se lee por texto (y por contraste), nunca solo por color */
+.av-sc-pvt {
+  width: 100%; min-height: 132px; padding: 12px; display: flex; align-items: center; justify-content: center;
+  border: 1px dashed var(--av-strong); background: var(--av-raised); color: var(--av-text); cursor: pointer;
+  font: 600 16px/1.3 "IBM Plex Sans", system-ui, sans-serif; text-align: center; overflow-wrap: anywhere;
+  touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
+}
+.av-sc-pvt:hover { border-color: var(--av-text); }
+.av-sc-pvt:focus-visible { outline: 2px solid var(--av-text); outline-offset: 2px; }
+.av-sc-pvt.is-wait { border-style: solid; background: var(--av-bg); color: var(--av-text2); }
+.av-sc-pvt.is-go { border: 1px solid var(--av-text); background: var(--av-text); color: var(--av-bg); font-size: 28px; letter-spacing: .04em; }
+
+@media (max-width: 420px) {
+  .av-qz-row { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .av-sc-len { max-width: none; }
+  .av-sc-pvt { min-height: 120px; }
+}

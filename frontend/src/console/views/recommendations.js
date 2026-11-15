@@ -360,8 +360,23 @@ function cardHTML(T, it) {
     </details>`;
 }
 
+/* Cuadro pedido desde otra vista (p. ej. la alerta temprana "Contacto con Tierra" del Resumen o de
+ * Alertas pide "earth-channel"): se guarda en sessionStorage "av_rec_open" y se consume aquí una vez. */
+function takeRequestedOpen() {
+  try {
+    const id = sessionStorage.getItem("av_rec_open");
+    sessionStorage.removeItem("av_rec_open");
+    return id || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function renderRecommendationsView(container) {
   const T = tr(DICT);
+  const asked = takeRequestedOpen();
+  const requested = asked && T.items.some((it) => it.id === asked) ? asked : null;
+  if (requested) openIds.add(requested);
   const count = T.countLabel.replace("{n}", String(T.items.length));
 
   container.innerHTML = `
@@ -386,6 +401,11 @@ export async function renderRecommendationsView(container) {
   </div>`;
 
   const root = container.querySelector("[data-rec-root]");
+  if (requested) {
+    const card = root.querySelector(`[data-rec-id="${CSS.escape(requested)}"]`);
+    card?.scrollIntoView({ block: "start" });
+    card?.querySelector("summary")?.focus({ preventScroll: true });
+  }
 
   // Recuerda qué cuadros están abiertos (el evento toggle no burbujea: se escucha en captura)
   root.addEventListener(

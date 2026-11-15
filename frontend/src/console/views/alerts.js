@@ -27,7 +27,7 @@ import { escapeHtml, gmt, badge, RANK, ruleOf } from "../console.js";
 import { apiService } from "../../services/api.js";
 import { tr, fmt } from "../../i18n/i18n.js";
 import { bt, btLines } from "/src/i18n/backend.js";
-import { CLS, ALERT_CLASSES, STATE_WORD, alertClassOf, isAlarm } from "../alert-classes.js";
+import { CLS, ALERT_CLASSES, STATE_WORD, alertClassOf, isAlarm, isEarlyAlert } from "../alert-classes.js";
 
 const esc = escapeHtml;
 
@@ -161,6 +161,17 @@ const DICT = {
     actionFail: "No se pudo completar la acción: {msg}",
     newAlert: "Nueva alerta {c} ({w}): {t}{more}.",
     newMore: " y {n} más",
+    earlyTitle: "Alertas tempranas",
+    earlyCount: "{n} activas",
+    earlyCountOne: "1 activa",
+    earlyIntro: "Señales preventivas antes de que haga falta una alarma. Despliega cada una para ver la recomendación.",
+    earlyEmpty: "No hay alertas tempranas activas.",
+    earlyRec: "Recomendación",
+    earlyIfPersists: "Si continúa",
+    earlyKind: "Bienestar · aislamiento",
+    earlyEarth: "Ver canal con Tierra en Recomendaciones",
+    earlyManage: "Ver detalle y gestionar",
+    earlyListAria: "Alertas tempranas desplegables",
   },
   en: {
     status: {
@@ -289,6 +300,17 @@ const DICT = {
     actionFail: "Could not complete the action: {msg}",
     newAlert: "New {c} alert ({w}): {t}{more}.",
     newMore: " and {n} more",
+    earlyTitle: "Early warnings",
+    earlyCount: "{n} active",
+    earlyCountOne: "1 active",
+    earlyIntro: "Preventive signals before an alarm is needed. Expand each one to see the recommendation.",
+    earlyEmpty: "No active early warnings.",
+    earlyRec: "Recommendation",
+    earlyIfPersists: "If it continues",
+    earlyKind: "Wellbeing · isolation",
+    earlyEarth: "See the Earth channel in Recommendations",
+    earlyManage: "See details and manage",
+    earlyListAria: "Expandable early warnings",
   },
 };
 
@@ -311,6 +333,7 @@ const ui = {
   userId: null,
   sig: null,
   drafts: {},
+  earlyOpen: new Set(), // alertas tempranas desplegadas (sobreviven al sondeo y al repintado)
 };
 
 /* Al cambiar de usuario (cerrar sesión y entrar con otro) se vuelve al estado inicial:
@@ -319,7 +342,7 @@ function resetUiFor(appState) {
   const uid = appState.currentUser?.id ?? null;
   if (ui.userId === uid) return;
   Object.assign(ui, { state: "ACTIVE", cls: "ALL", showAdv: false, crew: null, crewPicked: false,
-    selectedId: null, knownIds: null, sig: null, drafts: {}, userId: uid });
+    selectedId: null, knownIds: null, sig: null, drafts: {}, earlyOpen: new Set(), userId: uid });
 }
 
 /* ───────────────────────── utilidades ───────────────────────── */
@@ -457,6 +480,7 @@ export async function renderAlertsView(container, appState, helpers) {
   <div class="av-console av-al-root">
     <div class="av-grid">
       <section class="av-col-b" aria-labelledby="av-al-h">
+        <div data-al-zone="early"></div>
         <div class="av-panel">
           <div class="av-panel-head">
             <div>
@@ -526,11 +550,60 @@ async function reload(ctx, { first = false, focusDetail = false, headerFresh = f
 }
 
 function renderAll(ctx) {
+  renderEarly(ctx);
   renderScope(ctx);
   renderCounters(ctx);
   renderFilters(ctx);
   renderTable(ctx);
   renderDetail(ctx);
+}
+
+/* Alertas tempranas en desplegables (<details>, mismo patrón .av-fold que las secciones plegables
+ * de Radiación). Cerradas por defecto; las que se abren siguen abiertas tras el sondeo. */
+function renderEarly(ctx) {
+  const T = tr(DICT);
+  const z = zone(ctx, "early");
+  if (!z) return;
+  const leader = isLeader(ctx.appState);
+  const items = ctx.list.filter((v) => v.active && !v.outOfScope && isEarlyAlert(v.a));
+  const count = items.length === 1 ? T.earlyCountOne : fmt(T.earlyCount, { n: items.length });
+  const item = (v) => {
+    const a = v.a;
+    const id = Number(a.id);
+    const who = leader ? a.crew_code || a.astronaut_name || "" : "";
+    const sub = [who, T.earlyKind].filter(Boolean).join(" · ");
+    return `<li>
+      <details class="av-fold av-al-early-item" data-al-early="${id}" ${ui.earlyOpen.has(id) ? "open" : ""}>
+        <summary class="av-panel-head av-fold-head av-al-early-head">
+          ${clsBadge(v.cls)}
+          <span class="av-al-early-t">${esc(bt(a.title) || T.untitled)}</span>
+          <span class="av-mono av-sub av-al-early-time">${timeHTML(a.created_at)}</span>
+        </summary>
+        <div class="av-al-early-body">
+          <p class="av-sub av-al-p">${esc(sub)}${!v.acked ? ` · ${esc(T.status.NEW)}` : ""}</p>
+          <p class="av-al-p">${esc(bt(a.explanation) || T.noExplanation)}</p>
+          <h3 class="av-h3">${esc(T.earlyRec)}</h3>
+          <p class="av-al-p">${esc(bt(a.immediate_action) || T.noImmediate)}</p>
+          ${a.followup_recommendation ? `<p class="av-sub av-al-p"><strong>${esc(T.earlyIfPersists)}:</strong> ${esc(bt(a.followup_recommendation))}</p>` : ""}
+          <div class="av-al-btns">
+            <button type="button" class="av-btn av-btn-sm av-btn-primary" data-al-act="go-rec" data-al-rec="earth-channel">${esc(T.earlyEarth)}</button>
+            <button type="button" class="av-btn av-btn-sm" data-al-pick="${id}" aria-controls="av-al-detail">${esc(T.earlyManage)}</button>
+          </div>
+        </div>
+      </details>
+    </li>`;
+  };
+  z.innerHTML = `
+    <section class="av-panel av-al-early" aria-labelledby="av-al-early-h">
+      <div class="av-panel-head">
+        <h2 id="av-al-early-h" class="av-h2">${esc(T.earlyTitle)}</h2>
+        <span class="av-sub">${esc(count)}</span>
+      </div>
+      ${items.length
+        ? `<p class="av-sub av-al-pad av-al-early-intro">${esc(T.earlyIntro)}</p>
+           <ul class="av-al-early-list" aria-label="${esc(T.earlyListAria)}">${items.map(item).join("")}</ul>`
+        : `<p class="av-sub av-al-pad">${esc(T.earlyEmpty)}</p>`}
+    </section>`;
 }
 
 function renderScope(ctx) {
@@ -760,7 +833,7 @@ function detailHTML(ctx, v) {
       <span class="av-sub">${esc(bt(a.unit || ""))}</span>
     </div>
     <dl class="av-al-kv">
-      <dt>${esc(T.kvIndicator)}</dt><dd>${esc(bt(cat?.name) || a.indicator_code || "—")}</dd>
+      <dt>${esc(T.kvIndicator)}</dt><dd>${esc(bt(cat?.name) || (isEarlyAlert(a) ? T.earlyKind : a.indicator_code) || "—")}</dd>
       <dt>${esc(T.kvRule)}</dt><dd><span class="av-mono">${esc(a.rule_code || "—")}${a.rule_version_label ? ` · v${esc(a.rule_version_label)}` : ""}</span>${demo ? ` ${tag("DEMO")}` : ""}</dd>
       <dt>${esc(T.kvPriority)}</dt><dd>${esc(T.priority[a.priority] || a.priority || "—")}</dd>
       <dt>${esc(T.kvQuality)}</dt><dd>${esc(T.quality[a.data_quality] || a.data_quality || "—")}</dd>
@@ -854,8 +927,21 @@ function bind(ctx) {
     } else if (act === "go-console" || act === "go-measure") {
       await selectAstronautIfNeeded(ctx, Number(btn.getAttribute("data-al-astro")));
       helpers.navigateToSection(act === "go-console" ? "mission-control" : "my-health-check");
+    } else if (act === "go-rec") {
+      // Pestaña Recomendaciones con el cuadro pedido desplegado (lo lee views/recommendations.js)
+      try { sessionStorage.setItem("av_rec_open", btn.getAttribute("data-al-rec") || ""); } catch { /* sin almacenamiento */ }
+      helpers.navigateToSection("recommendations");
     }
   });
+
+  // "toggle" de <details> no burbujea: se escucha en captura para recordar los desplegables abiertos
+  root.addEventListener("toggle", (ev) => {
+    const d = ev.target;
+    if (!(d instanceof HTMLElement) || !d.matches("details[data-al-early]")) return;
+    const id = Number(d.getAttribute("data-al-early"));
+    if (d.open) ui.earlyOpen.add(id);
+    else ui.earlyOpen.delete(id);
+  }, true);
 
   const saveDraft = (ev) => {
     const k = draftKey(ev.target);
@@ -982,6 +1068,8 @@ async function poll(ctx) {
   if (!root.isConnected) return;
   const fresh = ctx.list.filter((v) => !ui.knownIds.has(v.a.id));
   fresh.forEach((v) => ui.knownIds.add(v.a.id));
+  // los desplegables de alertas tempranas tampoco se repintan mientras se usan
+  if (!zone(ctx, "early").contains(document.activeElement)) renderEarly(ctx);
   renderScope(ctx);
   renderCounters(ctx);
   // los filtros solo se repintan si no se están usando
