@@ -533,6 +533,8 @@ body[data-theme="daylight-clean"] .av-env-banner-logo { content: url("../assets/
   background: transparent; color: var(--av-text2); font-size: 16px; line-height: 1; cursor: pointer;
 }
 .av-crew-edit:hover, .av-crew-edit:focus-visible { color: var(--av-text); border-color: var(--av-text2); }
+/* Modo tripulante (issue #44): volver a la cuenta de supervisión */
+.av-crew-exit { flex: 0 0 auto; min-height: 44px; white-space: nowrap; }
 .av-crew-pop {
   position: fixed; z-index: 1000; background: var(--av-panel); color: var(--av-text);
   border: 1px solid var(--av-strong); box-shadow: 0 6px 18px rgba(0, 0, 0, .45);
