@@ -11,6 +11,7 @@ import { renderCountermeasuresView } from "../console/views/countermeasures.js";
 import { renderAlertsView } from "../console/views/alerts.js";
 import { renderRecommendationsView } from "../console/views/recommendations.js";
 import { renderLogbookView } from "../console/views/logbook.js";
+import { renderPredictions } from "../console/views/predictions.js";
 import { renderCognitiveView } from "../console/views/cognitive.js";
 import { renderEmotionalView } from "../console/views/emotional.js";
 import { renderCrewView } from "../console/views/crew.js";
@@ -360,6 +361,9 @@ function updateRoleNavigation() {
       btn.classList.add("hidden");
     } else if (sec === "crew-monitoring" && role === "ASTRONAUT") {
       btn.classList.add("hidden");
+    } else if (sec === "predictions" && role !== "ASTRONAUT") {
+      // El endpoint de predicciones solo responde a astronautas con asignación activa (403 al resto)
+      btn.classList.add("hidden");
     } else {
       btn.classList.remove("hidden");
     }
@@ -480,6 +484,8 @@ async function navigateToSection(sectionId) {
       await renderCrewView(container, appState, expansionHelpers);
     } else if (sectionId === "reports") {
       await renderLogbookView(container, appState, expansionHelpers);
+    } else if (sectionId === "predictions") {
+      await renderPredictions(container, appState, expansionHelpers);
     } else if (sectionId === "administration") {
       await renderAdminView(container, appState, expansionHelpers);
     } else if (sectionId === "settings-help") {
