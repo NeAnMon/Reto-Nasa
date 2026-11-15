@@ -1207,7 +1207,7 @@ function bind(ctx) {
       setBusy(ctx, false);
       const msg = fmt(tr(DICT).actionFail, { msg: bt(e.message) });
       if (root.isConnected) announce(ctx, msg);
-      else helpers.showToast(msg);
+      else helpers.showToast(msg, "error");
       return;
     }
     setBusy(ctx, false);

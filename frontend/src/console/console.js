@@ -1574,7 +1574,7 @@ async function setCrewEnvironment(key) {
     envState.pending = false;
     renderChrome(st);
     repaintConsole();
-    if (hp.showToast) hp.showToast(fmt(tt().envPostFailed, { label: env.label, msg: bt(e.message) }));
+    if (hp.showToast) hp.showToast(fmt(tt().envPostFailed, { label: env.label, msg: bt(e.message) }), "error");
   }
 }
 
@@ -1634,7 +1634,7 @@ export function initChrome(appState, helpers = {}) {
         if (hp.navigateToSection) await hp.navigateToSection("radiation");
       }
     } catch (e) {
-      if (hp.showToast) hp.showToast(fmt(tt().actionFailed, { msg: bt(e.message) }));
+      if (hp.showToast) hp.showToast(fmt(tt().actionFailed, { msg: bt(e.message) }), "error");
       el.disabled = false;
     }
   });
@@ -2304,7 +2304,7 @@ function alertsCardHTML(alerts) {
   const T = tt();
   const top = alerts.filter((a) => !a.acked).reduce((m, a) => (!m || RANK[a.cls] > RANK[m.cls] ? a : m), null);
   const topL = top ? top.cls : "N";
-  const rows = shown.map((a) => `<li class="av-alert-row">
+  const rows = shown.map((a) => `<li class="av-alert-row" data-cls="${esc(a.cls)}">
       ${badge(a.cls)}
       <span style="min-width:0"><span style="font-weight:600;display:block">${esc(a.msg)}</span><span class="av-sub">${esc(a.detail)}${a.local ? ` · ${esc(T.onboard)}` : ""}</span></span>
       <span class="av-mono av-sub" style="text-align:right">${a.t ? gmt(a.t, false) : ""}${a.acked ? `<span style="display:block" title="ACK">ACK</span>` : ""}</span>
@@ -2943,7 +2943,7 @@ function bindOnce(container, appState, helpers) {
         await submitMeasurement(container, st, hp, { indicator_code: "HYDRATION", value: base + ml, notes: fmt(tt().hydNoteApi, { ml }) });
       }
     } catch (e) {
-      hp.showToast(fmt(tt().actionFailed, { msg: bt(e.message) }));
+      hp.showToast(fmt(tt().actionFailed, { msg: bt(e.message) }), "error");
       el.disabled = false;
     }
   });
@@ -3040,7 +3040,7 @@ function bindOnce(container, appState, helpers) {
         paint(container, st);
       }
     } catch (e) {
-      hp.showToast(fmt(tt().saveFailed, { msg: bt(e.message) }));
+      hp.showToast(fmt(tt().saveFailed, { msg: bt(e.message) }), "error");
     }
   });
 }

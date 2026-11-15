@@ -32,6 +32,9 @@ const DICT = {
     sessionRenewed: "Sesión renovada automáticamente.",
     sessionLost: "No se pudo abrir la sesión con el servidor.",
     retry: "Reintentar",
+    toastInfo: "Confirmado",
+    toastError: "Error",
+    toastClose: "Cerrar aviso",
     states: {
       NORMAL: "● NORMAL",
       MONITOR: "▲ VIGILAR",
@@ -60,6 +63,9 @@ const DICT = {
     sessionRenewed: "Session renewed automatically.",
     sessionLost: "Could not open a session with the server.",
     retry: "Retry",
+    toastInfo: "Confirmed",
+    toastError: "Error",
+    toastClose: "Dismiss notice",
     states: {
       NORMAL: "● NOMINAL",
       MONITOR: "▲ ADVISORY",
@@ -107,15 +113,44 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
-function showToast(message) {
+/* Aviso flotante (issue #34: más grande y visible, con el estilo del HUD).
+   kind: "info" (por defecto) | "error". Los errores usan role="alert" y duran más.
+   Iconos SVG constantes (sin datos del usuario); el mensaje va siempre como texto. */
+const TOAST_ICONS = {
+  info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"><path d="M4 12.5l5 5L20 6.5"/></svg>',
+  error: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"><path d="M12 5v9M12 18v1.5"/></svg>',
+  close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+};
+function showToast(message, kind = "info") {
   const container = document.getElementById("toast-container");
   if (!container) return;
+  const T = tr(DICT);
+  const type = kind === "error" ? "error" : "info";
   const div = document.createElement("div");
-  div.className = "toast";
-  div.setAttribute("role", "status");
-  div.textContent = message;
+  div.className = `toast toast-${type}`;
+  div.setAttribute("role", type === "error" ? "alert" : "status");
+  const icon = document.createElement("span");
+  icon.className = "toast-icon";
+  icon.setAttribute("aria-hidden", "true");
+  icon.innerHTML = TOAST_ICONS[type];
+  const body = document.createElement("div");
+  body.className = "toast-body";
+  const label = document.createElement("span");
+  label.className = "toast-label";
+  label.textContent = type === "error" ? T.toastError : T.toastInfo;
+  const text = document.createElement("span");
+  text.className = "toast-text";
+  text.textContent = message;
+  body.append(label, text);
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "toast-close";
+  close.setAttribute("aria-label", T.toastClose);
+  close.innerHTML = TOAST_ICONS.close;
+  close.addEventListener("click", () => div.remove());
+  div.append(icon, body, close);
   container.appendChild(div);
-  setTimeout(() => div.remove(), 4800);
+  setTimeout(() => div.remove(), type === "error" ? 8000 : 6000);
 }
 
 function formatDateUTC(isoStr) {
@@ -280,7 +315,7 @@ async function reauthenticate() {
     showToast(tr(DICT).sessionRenewed);
     await navigateToSection(appState.currentSection);
   } catch (err) {
-    showToast(`${tr(DICT).sessionLost} ${bt(err.message) || ""}`.trim());
+    showToast(`${tr(DICT).sessionLost} ${bt(err.message) || ""}`.trim(), "error");
   }
 }
 
