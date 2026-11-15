@@ -102,6 +102,15 @@ def test_01_frontend_and_svg_delivery(client: TestClient):
         assert region_code in res_figure.text
 
 
+def test_01b_env_banner_webp_served_as_image(client: TestClient):
+    """Las imágenes .webp del banner de entorno se sirven como image/webp (no application/octet-stream)."""
+    for name in ["env-spacecraft.webp", "semsa-logo-dark.webp"]:
+        res = client.get(f"/src/assets/env/{name}")
+        assert res.status_code == 200, name
+        assert res.headers["content-type"].split(";")[0].strip() == "image/webp", res.headers["content-type"]
+        assert res.content[:4] == b"RIFF" and res.content[8:12] == b"WEBP"
+
+
 def test_02_rbac_and_horizontal_access_protection(client: TestClient):
     """
     Verifies Section 21.5:
