@@ -3177,3 +3177,8 @@ router.include_router(expansion_router)
 from backend.app.api.v1.isolation_router import isolation_router  # noqa: E402
 
 router.include_router(isolation_router)
+
+# Bitácora: series de solo lectura para las gráficas por motor (issue #30)
+from backend.app.api.v1.logbook_router import logbook_router  # noqa: E402
+
+router.include_router(logbook_router)
