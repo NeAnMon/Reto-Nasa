@@ -5,6 +5,7 @@
  * Subsecciones (pestañas internas WAI-ARIA, la elegida se recuerda en la sesión):
  *   - Hoy: check-in rápido (sueño, ánimo, energía, aislamiento, nota privada) + tarjeta de sueño
  *     y accesos al cuestionario completo, check-in emocional, evaluación cognitiva y respiración.
+ *   - Respiración: respiración guiada en cuadrado 4-4-4-4 con rondas y contador local (breathing.js).
  *   - Contacto con Tierra: tarjeta informativa (recomendación, no funcionalidad) sobre el contacto
  *     asíncrono con seres queridos frente al aislamiento; enlaza a Mensajes (canal de misión).
  *   - Tiempo libre: hobbies breves con filtros, pasos, fuente NASA y registro "Lo hice".
@@ -17,6 +18,7 @@
 import { apiService } from "../../services/api.js";
 import { tr, fmt as fmtT, fmtNum, locale } from "../../i18n/i18n.js";
 import { bt, btLines } from "/src/i18n/backend.js";
+import { renderBreathing } from "./breathing.js";
 import {
   esc, tag, errMsg, ensureCss, makeStale, roleOf, isOwnAstronaut, astronautName,
   snapshotFields, restoreFields, langChanged,
@@ -51,7 +53,7 @@ const DICT = {
     intro: "Un espacio para cuidar el descanso, el ánimo y la conexión con los demás durante la misión. Todo lo que escribas aquí es privado por defecto.",
     introLeader: "Resumen de bienestar de {name}. Por privacidad, ánimo, energía, sensación de aislamiento y notas solo los ve la propia persona.",
     tabsAria: "Secciones de bienestar",
-    tabs: { today: "Hoy", earth: "Contacto con Tierra", leisure: "Tiempo libre", crew: "Tripulación" },
+    tabs: { today: "Hoy", breath: "Respiración", earth: "Contacto con Tierra", leisure: "Tiempo libre", crew: "Tripulación" },
     loading: "Cargando…",
     retry: "Reintentar",
     noData: "—",
@@ -213,7 +215,7 @@ const DICT = {
     intro: "A space to look after your rest, your mood and your connection with others during the mission. Everything you write here is private by default.",
     introLeader: "Well-being summary for {name}. For privacy, mood, energy, feeling isolated and notes are only visible to that person.",
     tabsAria: "Well-being sections",
-    tabs: { today: "Today", earth: "Contact with Earth", leisure: "Free time", crew: "Crew" },
+    tabs: { today: "Today", breath: "Breathing", earth: "Contact with Earth", leisure: "Free time", crew: "Crew" },
     loading: "Loading…",
     retry: "Retry",
     noData: "—",
@@ -366,7 +368,7 @@ const DICT = {
   },
 };
 
-const SUBS = ["today", "earth", "leisure", "crew"];
+const SUBS = ["today", "breath", "earth", "leisure", "crew"];
 const SUB_KEY = "av_wb_sub";
 const CATEGORIES = ["PLANTS", "READING", "GAMES", "MUSIC", "ART", "PHOTOGRAPHY", "WRITING", "MOVEMENT"];
 const DURATIONS = [10, 20, 30];
@@ -583,7 +585,7 @@ async function renderPanel() {
   if (!panel.querySelector(`[data-wb-sub="${sub}"]`)) {
     panel.innerHTML = `<div class="av-sub av-wb-loading" role="status">${esc(tr(DICT).loading)}</div>`;
   }
-  const renderers = { today: renderToday, earth: renderEarth, leisure: renderLeisure, crew: renderCrew };
+  const renderers = { today: renderToday, breath: (p) => renderBreathing(p, appState), earth: renderEarth, leisure: renderLeisure, crew: renderCrew };
   await renderers[sub](panel, isStale);
   if (isStale()) return;
   panel.querySelector("[data-wb-retry]")?.addEventListener("click", () => renderPanel());
