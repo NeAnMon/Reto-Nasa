@@ -23,9 +23,12 @@ ver `backend/tests/test_prediction_calibration.py`):
    el horizonte, ajustada en una mitad de los sujetos y comprobada en la otra. (Las bandas de la
    rama de tendencia usan el intervalo de predicción de la regresión con esa misma inflación; no
    están contrastadas con datos reales porque esa rama no se activa en ellos.)
-5. Proyección contra los rangos vigentes de `ClinicalRuleVersion` (con los mismos criterios que
-   `rules/engine.py`, incluida la distancia a la línea base) y recomendación preventiva con
-   las instrucciones de seguimiento de esa versión. Aquí no se crean alertas.
+5. Proyección contra el motor de alertas: el estado de cada día pronosticado lo da
+   `rules/evaluation.evaluate_reading` (umbral absoluto de la versión vigente de la regla + desvío
+   frente a la línea base personal), evaluando el nivel como sostenido. No se proyectan la
+   diastólica ni la dosis acumulada de radiación. La recomendación preventiva sale del catálogo de
+   alertas (`rules/recommendations.py`) para el indicador y la dirección del cruce. Aquí no se
+   crean alertas.
 
 Las funciones puras (sin BD) están en la primera mitad del módulo; `predict_indicator` las aplica
 a las mediciones del astronauta.
@@ -44,7 +47,18 @@ from sqlalchemy.orm import Session
 from backend.app.models.models import (
     HealthBaseline, HealthIndicatorDefinition, HealthMeasurement, MissionAssignment,
 )
-from backend.app.rules.engine import get_active_rule_version
+from backend.app.rules.calibration import (
+    PERSISTENCE_WINDOW_HOURS, Z_RED, Z_YELLOW, get_calibration, is_placeholder_std_dev,
+)
+from backend.app.rules.engine import baseline_from_row, get_active_rule_version
+from backend.app.rules.evaluation import (
+    ABS_OBSERVE, Evaluation, PersonalBaseline, PreviousReading, RollingWindow, Thresholds,
+    evaluate_reading, is_valid_std_dev,
+)
+from backend.app.rules.recommendations import (
+    CATALOG, GENERIC, HIGH, LEVEL_STEP, LOW, PERSONAL, RULE_FOLLOWUP_INSTRUCTIONS,
+    RULE_IMMEDIATE_INSTRUCTIONS, build_alert_texts, get_recommendation,
+)
 
 MIN_DAYS = 10
 MAX_HORIZON = 14
@@ -99,7 +113,6 @@ VALIDATION_NOTE_NOT_VALIDATED = (
 
 _NORMAL = NormalDist()
 _STATE_SEVERITY = {"NORMAL": 0, "MONITOR": 1, "WARNING": 2, "CRITICAL": 3}
-_PLACEHOLDER_STD_DEV = 5.0         # valor por defecto de la columna HealthBaseline.std_dev
 
 
 @dataclass
@@ -118,7 +131,9 @@ class PredictionResult:
     mae_ols: float | None = None
     mae_naive: float | None = None
     forecast: list[dict] = field(default_factory=list)
-    z_score: float | None = None  # último día pronosticado; también va en cada día
+    # z frente a la línea base personal como lo calcula el motor de alertas (DE con piso; en los
+    # indicadores de media móvil, DE de la media). Último día pronosticado; también va en cada día.
+    z_score: float | None = None
     z_band: str | None = None
     direction: str | None = None  # respecto a la línea base (above / below / at_baseline)
     baseline_status: str = "missing"
@@ -438,104 +453,258 @@ def forecast_series(xs: list[int], ys: list[float], horizon_days: int = MAX_HORI
     return out
 
 
-def classify_state(value: float, version, baseline_value: float | None = None) -> str:
-    """Estado operativo de un valor con los criterios de `rules/engine.py` (`compute_measurement_state`).
+@dataclass(frozen=True)
+class ProjectionContext:
+    """Lo que necesita el motor de alertas (`rules/evaluation.py`) para evaluar un nivel pronosticado."""
 
-    Rangos de la versión de regla y, si hay línea base personal y la regla define
-    `baseline_delta_threshold`, MONITOR cuando el valor se aleja de la línea base ese umbral o más.
+    indicator_code: str
+    unit: str
+    thresholds: Thresholds
+    baseline: PersonalBaseline | None = None
+
+
+def personal_scale(indicator_code: str, baseline: PersonalBaseline | None) -> tuple[float, float] | None:
+    """(media, DE efectiva) con las que el motor de alertas calcula z para un nivel sostenido.
+
+    None si no hay línea base válida. Es el mismo criterio que `evaluate_reading`: DE real (ni
+    ausente, ni ≤ 0, ni de relleno), piso de DE de la calibración y, en los indicadores cuya regla
+    usa la media móvil (sueño), DE de la media de la ventana. Lo comprueba
+    `test_prediction_service.py::test_personal_scale_matches_the_alert_engine`.
     """
-    if value < version.warning_min or value > version.warning_max:
-        return "CRITICAL"
-    if value < version.monitor_min or value > version.monitor_max:
-        return "WARNING"
-    if value < version.normal_min or value > version.normal_max:
-        return "MONITOR"
-    delta = version.baseline_delta_threshold
-    if baseline_value is not None and delta and abs(value - baseline_value) >= delta:
-        return "MONITOR"
-    return "NORMAL"
-
-
-def _normal_bounds(version, baseline_value: float | None) -> tuple[float, float]:
-    """Límites dentro de los cuales el valor es NORMAL (rango normal acotado por la línea base ± delta)."""
-    low, high = version.normal_min, version.normal_max
-    delta = version.baseline_delta_threshold
-    if baseline_value is not None and delta:
-        low, high = max(low, baseline_value - delta), min(high, baseline_value + delta)
-    return low, high
-
-
-def _crossing(lower: float, upper: float, version, baseline_value: float | None = None) -> dict | None:
-    """Peor estado que alcanza el tramo [lower, upper], con su dirección y el umbral cruzado."""
-    low_state = classify_state(lower, version, baseline_value)
-    high_state = classify_state(upper, version, baseline_value)
-    state = low_state if _STATE_SEVERITY[low_state] >= _STATE_SEVERITY[high_state] else high_state
-    if state == "NORMAL":
+    if baseline is None or baseline.mean is None or not isfinite(baseline.mean):
         return None
-    normal_low, normal_high = _normal_bounds(version, baseline_value)
-    middle = (normal_low + normal_high) / 2
-    low_bad = low_state != "NORMAL" and lower < middle
-    high_bad = high_state != "NORMAL" and upper > middle
-    if low_bad and high_bad and low_state == high_state:
-        return {"state": state, "direction": "both", "threshold": None}
-    if high_bad and (not low_bad or _STATE_SEVERITY[high_state] > _STATE_SEVERITY[low_state]):
-        threshold = {"MONITOR": normal_high, "WARNING": version.monitor_max, "CRITICAL": version.warning_max}[state]
-        return {"state": state, "direction": "above", "threshold": threshold}
-    threshold = {"MONITOR": normal_low, "WARNING": version.monitor_min, "CRITICAL": version.warning_min}[state]
-    return {"state": state, "direction": "below", "threshold": threshold}
+    if not is_valid_std_dev(baseline.sd, baseline.is_simulated):
+        return None
+    cal = get_calibration(indicator_code)
+    sd = max(float(baseline.sd), (cal.sd_floor if cal and cal.sd_floor else 0.0))
+    if cal is not None and cal.rolling_days:
+        sd /= sqrt(cal.rolling_days)
+    return float(baseline.mean), sd
+
+
+def evaluate_level(ctx: ProjectionContext, value: float) -> Evaluation:
+    """Estado que daría el motor de alertas si el indicador se mantuviera en `value`.
+
+    Envoltura fina de `evaluate_reading` (única fuente de verdad del estado). Como se evalúa un
+    nivel sostenido y no una lectura aislada, la lectura anterior es el mismo valor (un desvío
+    personal amarillo cuenta como confirmado) y, en los indicadores con regla de media móvil, la
+    ventana completa está en ese valor. No se proyectan ni el valor secundario (la diastólica) ni
+    la dosis acumulada de radiación.
+    """
+    cal = get_calibration(ctx.indicator_code)
+    window = RollingWindow(mean=value, count=cal.rolling_days) if cal is not None and cal.rolling_days else None
+    return evaluate_reading(
+        ctx.indicator_code, value, None, ctx.thresholds, unit=ctx.unit, baseline=ctx.baseline,
+        previous=PreviousReading(value=value), window=window,
+    )
+
+
+def evaluate_observed(ctx: ProjectionContext, xs: list[int], values: list[float]) -> Evaluation:
+    """Estado del último valor diario observado, con su contexto real a resolución diaria.
+
+    Como el motor al registrar una lectura: la lectura anterior solo cuenta si está dentro de la
+    ventana de persistencia y, en los indicadores con media móvil, se usa la media de la ventana.
+    """
+    cal = get_calibration(ctx.indicator_code)
+    previous = None
+    if len(values) >= 2 and (xs[-1] - xs[-2]) * 24 <= PERSISTENCE_WINDOW_HOURS:
+        previous = PreviousReading(value=values[-2])
+    window = None
+    if cal is not None and cal.rolling_days:
+        recent = [v for x, v in zip(xs, values) if x > xs[-1] - cal.rolling_days]
+        window = RollingWindow(mean=sum(recent) / len(recent), count=len(recent))
+    return evaluate_reading(
+        ctx.indicator_code, values[-1], None, ctx.thresholds, unit=ctx.unit, baseline=ctx.baseline,
+        previous=previous, window=window,
+    )
+
+
+def _side(ev: Evaluation) -> str | None:
+    """Lado del cruce: HIGH → above, LOW → below, PERSONAL → según el signo de z."""
+    if ev.direction == HIGH:
+        return "above"
+    if ev.direction == LOW:
+        return "below"
+    if ev.direction == PERSONAL and ev.z is not None:
+        return "above" if ev.z > 0 else "below"
+    return None
+
+
+def _crossing(ctx: ProjectionContext, ev: Evaluation) -> dict | None:
+    """Estado, dirección y umbral cruzado de una evaluación del motor; None si es NORMAL.
+
+    El umbral es el borde del rango absoluto que corresponde al estado o, cuando lo que decide es
+    el desvío frente a la persona, media ± Z·DE (con la DE efectiva del motor).
+    """
+    if ev.state not in _STATE_SEVERITY or ev.state == "NORMAL":
+        return None
+    side = _side(ev)
+    out = {"state": ev.state, "direction": side, "threshold": None, "reference": None, "alert_direction": ev.direction}
+    if side is None:
+        return out
+    sign = 1 if side == "above" else -1
+    th = ctx.thresholds
+    scale = personal_scale(ctx.indicator_code, ctx.baseline)
+
+    def edge(low: float, high: float) -> float:
+        return high if sign > 0 else low
+
+    if ev.direction == PERSONAL:
+        if scale is not None:
+            cut = Z_RED if ev.state == "WARNING" else Z_YELLOW
+            out.update(threshold=scale[0] + sign * cut * scale[1], reference="personal_baseline")
+        return out
+    out["reference"] = "absolute_range"
+    if ev.state == "CRITICAL":
+        out["threshold"] = edge(th.warning_min, th.warning_max)
+    elif ev.absolute_level == ABS_OBSERVE:
+        out["threshold"] = edge(th.normal_min, th.normal_max)
+    else:
+        out["threshold"] = edge(th.monitor_min, th.monitor_max)
+        if ev.state == "WARNING" and scale is not None:
+            # Amarillo absoluto que además se aleja de la persona: manda el corte más exigente de los dos
+            personal = scale[0] + sign * Z_YELLOW * scale[1]
+            if (personal - out["threshold"]) * sign > 0:
+                out.update(threshold=personal, reference="personal_baseline")
+    return out
+
+
+def _band_crossing(ctx: ProjectionContext, lower: float, upper: float) -> dict | None:
+    """Peor estado que alcanza el tramo [lower, upper].
+
+    El estado del motor solo empeora al alejarse por cada lado, así que basta evaluar los extremos.
+    Si los dos salen del rango con la misma gravedad por lados distintos, la dirección es "both":
+    no hay un único umbral, así que `sides` trae el de cada lado (`below` / `above`) con su
+    referencia. `reference` solo se informa si los dos lados comparten la misma, y
+    `alert_direction` es PERSONAL si lo que decide en ambos es el desvío frente a la persona.
+    """
+    low = _crossing(ctx, evaluate_level(ctx, lower))
+    high = _crossing(ctx, evaluate_level(ctx, upper))
+    if low is None or high is None:
+        return high or low
+    if _STATE_SEVERITY[low["state"]] == _STATE_SEVERITY[high["state"]] and low["direction"] != high["direction"]:
+        sides = {
+            c["direction"]: {"threshold": c["threshold"], "reference": c["reference"]}
+            for c in (low, high) if c["direction"] in ("below", "above")
+        }
+        return {
+            "state": high["state"],
+            "direction": "both",
+            "threshold": None,
+            "reference": low["reference"] if low["reference"] == high["reference"] else None,
+            "alert_direction": PERSONAL if low["alert_direction"] == high["alert_direction"] == PERSONAL else None,
+            "sides": sides,
+        }
+    return high if _STATE_SEVERITY[high["state"]] >= _STATE_SEVERITY[low["state"]] else low
+
+
+def _personal_ranges(ctx: ProjectionContext) -> dict:
+    """Banda personal amarilla (|z| ≥ 2) y roja (|z| ≥ 3) del indicador, si el motor la aplica."""
+    cal = get_calibration(ctx.indicator_code)
+    scale = personal_scale(ctx.indicator_code, ctx.baseline)
+    if cal is None or not cal.deviation or scale is None:
+        return {}
+    mean, sd = scale
+    upper = cal.deviation == "both"  # "low": solo alerta el desvío hacia abajo
+    out = {"personal_yellow": [mean - Z_YELLOW * sd, mean + Z_YELLOW * sd if upper else None]}
+    if cal.deviation_red:
+        out["personal_red"] = [mean - Z_RED * sd, mean + Z_RED * sd if upper else None]
+    return out
+
+
+def _recommendation_texts(ctx: ProjectionContext, version, target: dict, out_now: bool) -> dict:
+    """Recomendación del catálogo de alertas para el indicador y la dirección del cruce.
+
+    Si el catálogo no tiene una entrada propia para ese indicador y dirección (solo la genérica),
+    se usan las instrucciones de seguimiento de la versión de regla; y si la regla solo remite a
+    la alerta, la entrada genérica del catálogo. La acción inmediata solo se da cuando el último
+    valor ya está fuera de rango: ante un cruce previsto lo útil es la pauta para los próximos días.
+
+    Si la banda sale por los dos lados no se presupone dirección: solo se usa la entrada de desvío
+    personal propia del indicador (cuando los dos lados son desvíos frente a la persona), nunca un
+    alias hacia "alto" o "bajo"; en otro caso, la regla o la entrada genérica.
+    """
+    direction = target.get("alert_direction")
+    if target.get("direction") == "both":
+        rec = CATALOG.get((ctx.indicator_code, PERSONAL)) if direction == PERSONAL else None
+    else:
+        rec = get_recommendation(ctx.indicator_code, direction) if direction else None
+    generic = any(rec is entry for key, entry in CATALOG.items() if key[0] == GENERIC)
+    if rec is not None and not generic:
+        return {
+            "text": rec.followup,
+            "immediate_action": build_alert_texts(ctx.indicator_code, direction, target["state"])[0] if out_now else None,
+            "source": "alert_recommendation_catalog",
+            "source_detail": rec.source,
+        }
+    rule_text = (version.followup_instructions or "").strip()
+    if rule_text and rule_text != RULE_FOLLOWUP_INSTRUCTIONS:
+        immediate = (version.immediate_instructions or "").strip()
+        return {
+            "text": rule_text,
+            "immediate_action": immediate if out_now and immediate and immediate != RULE_IMMEDIATE_INSTRUCTIONS else None,
+            "source": "clinical_rule_followup_instructions",
+            "source_detail": version.protocol_source,
+        }
+    # Entrada genérica: por dirección, o la de "fuera de tu rango habitual" si la banda sale por los dos lados
+    generic_key = {"above": HIGH, "below": LOW}.get(target.get("direction"), PERSONAL)
+    rec = rec or CATALOG[(GENERIC, generic_key)]
+    level_step = LEVEL_STEP.get(target["state"], LEVEL_STEP["MONITOR"])
+    return {
+        "text": rec.followup,
+        "immediate_action": f"{rec.now}\n{level_step}" if out_now else None,
+        "source": "alert_recommendation_catalog",
+        "source_detail": rec.source,
+    }
 
 
 def project_thresholds(
-    forecast: list[dict], last_value: float, rule, version, baseline_value: float | None = None,
+    forecast: list[dict], ctx: ProjectionContext, current: Evaluation, rule, version,
 ) -> tuple[dict, dict]:
-    """Proyecta el pronóstico contra los rangos de la regla y arma la recomendación preventiva.
+    """Proyecta el pronóstico contra el motor de alertas y arma la recomendación preventiva.
 
-    Añade a cada día `projected_state` (estado del valor esperado), `worst_state_80/95` (peor estado
-    que alcanza cada banda) e `interval_touches_threshold` (la banda del 95 % llega a un estado peor
-    que el del valor esperado). Devuelve (threshold_projection, recommendation).
+    Añade a cada día `projected_state` (estado que daría el motor al valor esperado),
+    `worst_state_80/95` (peor estado que alcanza cada banda) e `interval_touches_threshold` (la
+    banda del 95 % llega a un estado peor que el del valor esperado). `current` es la evaluación
+    del último valor observado. Devuelve (threshold_projection, recommendation).
     """
-    current_state = classify_state(last_value, version, baseline_value)
     first_expected = None
     first_possible = None
     for point in forecast:
-        value = point["value"]
-        state = classify_state(value, version, baseline_value)
-        c80 = _crossing(point["lower_80"], point["upper_80"], version, baseline_value)
-        c95 = _crossing(point["lower_95"], point["upper_95"], version, baseline_value)
+        expected = _crossing(ctx, evaluate_level(ctx, point["value"]))
+        state = expected["state"] if expected else "NORMAL"
+        c80 = _band_crossing(ctx, point["lower_80"], point["upper_80"])
+        c95 = _band_crossing(ctx, point["lower_95"], point["upper_95"])
         point["projected_state"] = state
         point["worst_state_80"] = c80["state"] if c80 else "NORMAL"
         point["worst_state_95"] = c95["state"] if c95 else "NORMAL"
         point["interval_touches_threshold"] = _STATE_SEVERITY[point["worst_state_95"]] > _STATE_SEVERITY[state]
         when = {"date": point["date"], "days_ahead": point["t_ahead"]}
-        if first_expected is None and state != "NORMAL":
-            first_expected = {**when, **_crossing(value, value, version, baseline_value), "basis": "expected_value"}
+        if first_expected is None and expected is not None:
+            first_expected = {**when, **expected, "basis": "expected_value"}
         if first_possible is None and first_expected is None and c80 is not None:
             first_possible = {**when, **c80, "basis": "interval_80"}
     for point in forecast:
         point.pop("t_ahead", None)
 
-    ranges = {
-        "normal": [version.normal_min, version.normal_max],
-        "monitor": [version.monitor_min, version.monitor_max],
-        "warning": [version.warning_min, version.warning_max],
-    }
-    if baseline_value is not None and version.baseline_delta_threshold:
-        ranges["baseline_delta"] = [
-            baseline_value - version.baseline_delta_threshold,
-            baseline_value + version.baseline_delta_threshold,
-        ]
+    th = ctx.thresholds
+    now = _crossing(ctx, current)
     projection = {
         "rule_code": rule.rule_code,
         "rule_version": version.version_number,
         "protocol_source": version.protocol_source,
-        "ranges": ranges,
-        "current_state": current_state,
+        "ranges": {
+            "normal": [th.normal_min, th.normal_max],
+            "monitor": [th.monitor_min, th.monitor_max],
+            "warning": [th.warning_min, th.warning_max],
+            **_personal_ranges(ctx),
+        },
+        "current_state": now["state"] if now else "NORMAL",
         "first_expected_crossing": first_expected,
         "first_possible_crossing": first_possible,
     }
 
-    if current_state != "NORMAL":
-        now = _crossing(last_value, last_value, version, baseline_value)
+    if now is not None:
         basis, target = "currently_out_of_range", {**now, "date": None, "days_ahead": 0}
     elif first_expected is not None:
         basis, target = "expected_crossing", first_expected
@@ -548,14 +717,20 @@ def project_thresholds(
         "state": target["state"] if target else None,
         "direction": target["direction"] if target else None,
         "threshold": target["threshold"] if target else None,
+        "reference": target["reference"] if target else None,
+        "alert_direction": target["alert_direction"] if target else None,
+        "sides": target.get("sides") if target else None,
         "date": target["date"] if target else None,
         "days_ahead": target["days_ahead"] if target else None,
-        # Texto de la versión de regla vigente, sin modificar: aquí no se redactan consejos clínicos.
-        "text": version.followup_instructions if target else None,
-        "source": "clinical_rule_followup_instructions",
+        "text": None,
+        "immediate_action": None,
+        "source": None,
+        "source_detail": None,
         "rule_code": rule.rule_code,
         "rule_version": version.version_number,
     }
+    if target is not None:
+        recommendation.update(_recommendation_texts(ctx, version, target, out_now=now is not None))
     return projection, recommendation
 
 
@@ -579,14 +754,14 @@ def _z_band(z: float) -> str:
     return "strong_deviation"
 
 
-def _baseline_status(baseline: HealthBaseline | None, peers: list[tuple[float, str]] | None = None) -> str:
-    """Estado de la línea base personal.
+def _baseline_status(baseline: HealthBaseline | None) -> str:
+    """Estado de la línea base personal, con el mismo criterio que el motor de alertas.
 
-    `placeholder_std_dev`: la desviación es un relleno y no una dispersión medida, así que no se
-    publica puntaje Z. Se detecta cuando vale exactamente el valor por defecto de la columna (5.0) o
-    cuando el astronauta tiene la misma desviación en tres o más indicadores de unidades distintas
-    (p. ej. 4.0 para lpm, °C y % a la vez, como en las cuentas demo). `peers` = (std_dev, unidad) de
-    todas las líneas base del astronauta.
+    Solo `available_unverified` permite calcular z (equivale a `rules.evaluation.is_valid_std_dev`):
+    - `invalid_std_dev`: DE ausente, no finita o ≤ 0 (el seed demo pone 0.0 a los indicadores cuya
+      DE no se puede derivar del dataset).
+    - `placeholder_std_dev`: DE de relleno (`rules.calibration.is_placeholder_std_dev`: el valor por
+      defecto del modelo, 5.0, o el 4.0 que ponía el seed demo a las líneas base simuladas).
     """
     if baseline is None:
         return "missing"
@@ -594,13 +769,9 @@ def _baseline_status(baseline: HealthBaseline | None, peers: list[tuple[float, s
         return "invalid_baseline"
     if baseline.std_dev is None or not isfinite(baseline.std_dev) or baseline.std_dev <= 0:
         return "invalid_std_dev"
-    if baseline.std_dev == _PLACEHOLDER_STD_DEV:
+    if is_placeholder_std_dev(baseline.std_dev, bool(baseline.is_simulated)):
         return "placeholder_std_dev"
-    if peers:
-        same = [unit for std, unit in peers if std == baseline.std_dev]
-        if len(same) >= 3 and len(same) == len(peers) and len(set(same)) >= 2:
-            return "placeholder_std_dev"
-    return "available_unverified"  # dispersión plausible, pero su origen no está verificado
+    return "available_unverified"  # DE utilizable; su origen no está verificado
 
 
 def _valid_measurement(m: HealthMeasurement, indicator: HealthIndicatorDefinition) -> bool:
@@ -717,14 +888,8 @@ def predict_indicator(
         HealthBaseline.astronaut_id == astronaut_id,
         HealthBaseline.indicator_code == indicator_code,
     ).first()
-    peers = None
-    if baseline is not None:
-        peers = [
-            (std, unit) for std, unit in db.query(HealthBaseline.std_dev, HealthIndicatorDefinition.unit)
-            .join(HealthIndicatorDefinition, HealthIndicatorDefinition.code == HealthBaseline.indicator_code)
-            .filter(HealthBaseline.astronaut_id == astronaut_id).all()
-        ]
-    result.baseline_status = _baseline_status(baseline, peers)
+    result.baseline_status = _baseline_status(baseline)
+    personal = baseline_from_row(baseline)
     result.baseline_is_simulated = baseline.is_simulated if baseline is not None else None
     if baseline is not None and result.baseline_status not in ("missing", "invalid_baseline"):
         result.baseline_value = baseline.baseline_value
@@ -824,12 +989,13 @@ def predict_indicator(
         result.status = "model_not_reliable"
         return result
 
-    z_valid = result.baseline_status == "available_unverified"
+    # z como lo calcula el motor de alertas: None sin una DE real (ausente, ≤ 0 o de relleno)
+    scale = personal_scale(indicator_code, personal)
     for point in series["points"]:
         h, value = point["h"], point["value"]
         z = band = direction = None
-        if z_valid:
-            z = (value - baseline.baseline_value) / baseline.std_dev
+        if scale is not None:
+            z = (value - scale[0]) / scale[1]
             if isfinite(z):
                 band = _z_band(z)
                 direction = "above" if z > 0 else "below" if z < 0 else "at_baseline"
@@ -860,8 +1026,12 @@ def predict_indicator(
 
     rule, version = get_active_rule_version(db, indicator_code)
     if rule is not None and version is not None:
+        ctx = ProjectionContext(
+            indicator_code=indicator_code, unit=indicator.unit,
+            thresholds=Thresholds.from_version(version), baseline=personal,
+        )
         result.threshold_projection, result.recommendation = project_thresholds(
-            result.forecast, values[-1], rule, version, result.baseline_value
+            result.forecast, ctx, evaluate_observed(ctx, xs, values), rule, version
         )
     else:
         for point in result.forecast:

@@ -289,6 +289,41 @@ def test_isolation_module_seed_texts_have_english_translation():
     assert not missing_router, f"Missing English translations for isolation_router texts: {missing_router}"
 
 
+def test_analog_mission_seed_texts_have_english_translation():
+    """Los textos de la misión análoga (seed_analog.py) que la interfaz pinta con bt() —nombre de la misión,
+    descripción, hábitat, nombres de fase, especialidad y notas— tienen traducción al inglés."""
+    seed_js = (I18N_DIR / "backend-en-seed.js").read_text(encoding="utf-8")
+    seed_keys = _en_keys(I18N_DIR / "backend-en-seed.js")
+    patterns_src = seed_js[seed_js.index("export const PATTERNS = ["):]
+    tree = ast.parse((PROJECT_ROOT / "backend" / "app" / "database" / "seed_analog.py").read_text(encoding="utf-8"))
+
+    exact, templates = [], []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and getattr(node.func, "id", None) in {
+            "Mission", "MissionPhase", "AstronautProfile", "HealthMeasurement"
+        }:
+            for kw in node.keywords:
+                if kw.arg not in {"name", "description", "vehicle_or_habitat", "specialty", "notes"}:
+                    continue
+                if isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+                    exact.append(kw.value.value)
+                elif isinstance(kw.value, ast.JoinedStr):
+                    templates.append(kw.value)
+        # phases = [(código, nombre, orden, inicio, fin, entorno, vigente), ...]
+        if isinstance(node, ast.Assign) and any(getattr(t, "id", None) == "phases" for t in node.targets):
+            exact += [_const(row.elts[1]) for row in node.value.elts]
+
+    assert len(exact) >= 6, f"seed_analog.py texts not found (got {exact})"
+    missing = sorted({_norm(s) for s in exact} - seed_keys)
+    assert not missing, f"backend-en-seed.js is missing English translations for: {missing}"
+
+    # Textos con valores dentro (f-strings): cada uno necesita un patrón que empiece por su parte fija
+    assert len(templates) >= 2, "seed_analog.py f-string notes not found"
+    for tpl in templates:
+        head = next(v.value for v in tpl.values if isinstance(v, ast.Constant))
+        assert f"/^{head}" in patterns_src, f"backend-en-seed.js PATTERNS is missing a pattern for: {head!r}..."
+
+
 def test_wellbeing_limits_dedup_and_api_errors():
     views_dir = FRONTEND_ROOT / "src" / "console" / "views"
     wellbeing_js = (views_dir / "wellbeing.js").read_text(encoding="utf-8")
@@ -633,6 +668,28 @@ def test_predictions_view_follows_calibrated_forecast_contract():
         assert cls in chart_js and cls in chart_css, f"prediction-chart needs {cls}"
     assert "vals.push(p.b95[0], p.b95[1])" in chart_js  # el dominio del eje Y incluye las bandas
     assert "function bandOf" in chart_js and "return lo <= v && v <= hi ? [lo, hi] : null" in chart_js
+    # las bandas llevan contorno además del relleno (el relleno solo no contrasta en el tema oscuro)
+    assert ".av-pc-band { fill: var(--av-m, #b39ddb); stroke: var(--av-m, #b39ddb);" in chart_css
+    assert ".av-pc-band95 { fill-opacity: .14; stroke-dasharray: 2 3; }" in chart_css
+
+    # 4b. Umbrales del motor de alertas en la gráfica: rango normal y banda personal, con leyenda
+    assert "ranges: tpRanges ? { normal: tpRanges.normal, personal: tpRanges.personal_yellow } : null" in view_js
+    assert {"normalRange", "personalBand"} <= _keys(es_block, 6)
+    assert "function thresholdEdges" in chart_js and "function normalizeRanges" in chart_js
+    for cls in ("av-pc-thr-normal", "av-pc-thr-personal", "av-pc-key-thr-normal", "av-pc-key-thr-personal"):
+        assert cls in chart_css, f"prediction-chart.css needs {cls}"
+    assert "av-pc-thr av-pc-thr-${e.kind}" in chart_js and "av-pc-key-thr-${kind}" in chart_js
+    assert ".av-pc-oor-ring, .av-pc-thr { stroke: CanvasText; }" in chart_css  # también en forced-colors
+
+    # 4c. En pantallas estrechas el eje X muestra el histórico reciente (el pronóstico no queda comprimido)
+    assert "function visibleStart" in chart_js and "if (W >= 520 || !h.length || !f.length) return -Infinity;" in chart_js
+    assert "i = Math.max(i, first);" in chart_js  # el teclado no recorre puntos ocultos
+
+    # 4d. Banda fuera por los dos lados: se dicen los dos umbrales, no "a ambos lados del rango normal"
+    assert "c.sides.below" in view_js and "c.sides.above" in view_js
+    assert {"bothThr", "both"} <= _keys(es_block, 6) and "projRefPersonalBoth" in es_block and "projRefPersonalBoth" in en_block
+    assert "a ambos lados del rango normal" not in view_js and "on both sides of the normal range" not in view_js
+    assert es_block.count("projMedianNote:") == 1 and en_block.count("projMedianNote:") == 1
 
     # 5. Proyección contra umbrales y recomendación, antes de la gráfica
     assert "function projectionHTML" in view_js
@@ -644,6 +701,26 @@ def test_predictions_view_follows_calibrated_forecast_contract():
     assert {"NORMAL", "MONITOR", "WARNING", "CRITICAL", "above", "below", "both"} <= _keys(es_block, 6)
     assert "esc(bt(recText))" in view_js  # el texto de la regla llega del backend: se traduce y se escapa
     assert ".av-pr-proj" in view_css and ".av-pr-rec" in view_css
+    # La proyección usa el motor de alertas: umbral del rango de la regla o de la banda personal
+    # (línea base ± Z·DE), banda personal en los rangos y, si ya está fuera de rango, la acción inmediata
+    for field in ("c.reference", "personal_baseline", "tp.ranges.personal_yellow", "rec.immediate_action"):
+        assert field in view_js, f"predictions.js must read {field}"
+    assert "baseline_delta" not in view_js.replace("f.baseline_delta", "")
+    assert {"projPersonal", "projPersonalLow", "projRefPersonal", "recNowH"} <= _keys(es_block, 4)
+    assert "esc(bt(nowText))" in view_js
+
+    # Los textos de recomendación que puede devolver el pronóstico son los del catálogo de alertas
+    # (ya traducidos: test_alert_recommendations_and_rule_sources_have_english_translation) y el bloque
+    # de dos pasos de la acción inmediata tiene su patrón en bt()
+    service_src = (PROJECT_ROOT / "backend" / "app" / "services" / "prediction_service.py").read_text(encoding="utf-8")
+    for name in ("get_recommendation(", "build_alert_texts(", "rec.followup", "LEVEL_STEP"):
+        assert name in service_src, f"prediction_service.py must take its recommendation from the alert catalog ({name})"
+    from backend.app.rules import recommendations as rec
+
+    runtime_keys = _en_keys(I18N_DIR / "backend-en-runtime.js")
+    generic = {rec.CATALOG[(rec.GENERIC, d)] for d in (rec.HIGH, rec.LOW, rec.PERSONAL)}
+    missing = sorted({_norm(t) for g in generic for t in (g.now, g.followup)} - runtime_keys)
+    assert not missing, f"Missing English translations for the generic recommendations: {missing}"
 
     # 6. Validación empírica: validado con datos reales o no
     assert "empirical_validation" in view_js and "validated_with_real_data" in view_js
@@ -830,6 +907,63 @@ def test_crew_name_can_be_edited_from_the_status_bar_context_menu():
         assert f"    {key}: " in console_js[en_start:], key
     for cls in (".av-crew-pop", ".av-crew-menu-item", ".av-crew-rename", ".av-crew-edit"):
         assert cls in console_css, cls
+
+
+def test_crew_mode_lets_supervision_answer_wellbeing_as_the_crew_member():
+    """Issue #44: la consola entra como líder y Bienestar queda en solo lectura (chequeo del turno,
+    check-in emocional, evaluación cognitiva). "Responder como <tripulante>" abre la sesión demo de ese
+    astronauta y "Volver a supervisión" regresa al líder, desde Bienestar o desde la barra de estado."""
+    app_js = (FRONTEND_ROOT / "src" / "app" / "app.js").read_text(encoding="utf-8")
+    console_js = (FRONTEND_ROOT / "src" / "console" / "console.js").read_text(encoding="utf-8")
+    wellbeing_js = (FRONTEND_ROOT / "src" / "console" / "views" / "wellbeing.js").read_text(encoding="utf-8")
+    config_py = (FRONTEND_ROOT.parent / "backend" / "app" / "core" / "config.py").read_text(encoding="utf-8")
+
+    # 1. La contraseña demo de tripulación coincide con los valores por defecto del backend
+    m = re.search(r'^const DEMO_CREW_PASSWORD = "([^"]+)";$', app_js, re.M)
+    assert m, "app.js needs DEMO_CREW_PASSWORD"
+    for var in ("DEMO_ASTRONAUT1_PASSWORD", "DEMO_ANALOG_PASSWORD"):
+        default = re.search(r'os\.getenv\(\s*"' + var + r'",\s*"([^"]+)"', config_py)
+        assert default and default.group(1) == m.group(1), f"{var} default must match DEMO_CREW_PASSWORD"
+
+    # 2. Solo cuentas demo de astronauta, desde una sesión de supervisión, y el modo es por pestaña
+    can = _function_body(app_js, "function canEnterCrewMode(astronautId)")
+    assert 'u.role_code === "ASTRONAUT"' in can and "endsWith(DEMO_EMAIL_DOMAIN)" in can
+    assert 'appState.currentUser.role_code === "ASTRONAUT") return false;' in can
+    assert "sessionStorage.setItem(key, value)" in _function_body(app_js, "function ssSet(key, value)")
+
+    # 3. La sesión silenciosa (arranque y renovación tras 401) usa la cuenta del modo tripulante y,
+    #    si ya no entra, vuelve al líder
+    assert "const acc = sessionAccount();" in _function_body(app_js, "function autoLogin()")
+    assert "ssSet(CREW_MODE_KEY, null);" in _function_body(app_js, "function autoLogin()")
+    assert "=== sessionAccount().email" in _function_body(app_js, "async function startSession()")
+    on_auth = _function_body(app_js, "async function onAuthenticated(user)")
+    assert "appState.crewMode =" in on_auth and "takeAfterSwitch()" in on_auth
+
+    # 4. Entrar no toca la sesión del líder hasta que el login del tripulante funciona; salir cierra sesión
+    enter = _function_body(app_js, "async function enterCrewMode(astronautId)")
+    assert enter.index("await apiService.login(") < enter.index("apiService.setSession(")
+    exit_ = _function_body(app_js, "async function exitCrewMode()")
+    assert "apiService.logout()" in exit_ and "apiService.clearSession();" in exit_
+    for name in ("canEnterCrewMode", "enterCrewMode", "exitCrewMode"):
+        assert f"  {name},\n" in app_js, f"appHelpers needs {name}"
+
+    # 5. Bienestar ofrece el cambio (supervisión) o la vuelta (modo tripulante); la barra de estado, la vuelta
+    html = _function_body(wellbeing_js, "function crewModeHTML(appState, helpers, T)")
+    assert 'data-wb-crewmode="enter"' in html and 'data-wb-crewmode="exit"' in html
+    assert "${crewModeHTML(appState, helpers, T)}" in wellbeing_js and "bindCrewMode(container);" in wellbeing_js
+    assert 'data-act="crew-mode-exit"' in _function_body(console_js, "function crewCellHTML(appState, sessionName)")
+    assert 'act === "crew-mode-exit" && hp.exitCrewMode' in console_js
+
+    # 6. Textos en español e inglés
+    wb_es, wb_en = _dict_blocks(wellbeing_js)
+    for key in ("crewModeOffTitle", "crewModeOffText", "crewModeEnter", "crewModeOnTitle", "crewModeOnText",
+                "crewModeExit", "crewModeBusy", "crewModeFailed"):
+        assert key in _keys(wb_es, 4) and key in _keys(wb_en, 4), f"wellbeing.js DICT needs {key}"
+    con_es, con_en = _dict_blocks(console_js)
+    for key in ("crewModeLabel", "crewModeExit", "crewModeExitHelp"):
+        assert key in _keys(con_es, 4) and key in _keys(con_en, 4), f"console.js DICT needs {key}"
+    app_es, app_en = _dict_blocks(app_js)
+    assert "crewModeUnavailable" in _keys(app_es, 4) and "crewModeUnavailable" in _keys(app_en, 4)
 
 
 def test_environments_module_redistributed_with_chart_solar_3d_and_minimized_folds():

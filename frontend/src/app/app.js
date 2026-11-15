@@ -32,6 +32,7 @@ const DICT = {
     sessionRenewed: "Sesión renovada automáticamente.",
     sessionLost: "No se pudo abrir la sesión con el servidor.",
     crewChangeFailed: "No se pudo cambiar de tripulante: {msg}",
+    crewModeUnavailable: "Este tripulante no tiene una cuenta demo con la que responder.",
     retry: "Reintentar",
     toastInfo: "Confirmado",
     toastError: "Error",
@@ -64,6 +65,7 @@ const DICT = {
     sessionRenewed: "Session renewed automatically.",
     sessionLost: "Could not open a session with the server.",
     crewChangeFailed: "Could not switch crew member: {msg}",
+    crewModeUnavailable: "This crew member has no demo account to answer with.",
     retry: "Retry",
     toastInfo: "Confirmed",
     toastError: "Error",
@@ -180,6 +182,9 @@ const appHelpers = {
   navigateToSection,
   updateRoleNavigation,
   selectAstronaut,
+  canEnterCrewMode,
+  enterCrewMode,
+  exitCrewMode,
 };
 
 /* Secciones antiguas ya cubiertas por la consola: su id sigue funcionando y lleva al equivalente.
@@ -278,11 +283,58 @@ const REAUTH_COOLDOWN_MS = 15000; // evita bucles si el backend devuelve 401 de 
 let autoLoginInFlight = null;
 let lastReauthAt = 0;
 
-/* Login silencioso con la cuenta demo; las llamadas concurrentes comparten la misma promesa. */
+/* Modo tripulante (issue #44): el líder ve Bienestar en solo lectura, pero los cuestionarios, el chequeo
+ * del turno, el check-in emocional y la evaluación cognitiva los responde cada astronauta con su cuenta.
+ * "Responder como <tripulante>" abre sesión con la cuenta demo de ese astronauta (backend/app/core/config.py
+ * → DEMO_ASTRONAUT*_PASSWORD; la tripulación genérica y la misión análoga usan la misma) y "Volver a
+ * supervisión" regresa al líder. El modo se guarda por pestaña del navegador (sessionStorage) y sobrevive
+ * a recargas; solo se ofrece con cuentas demo (@semsa.demo). */
+const DEMO_CREW_PASSWORD = "AstroCrew!2026";
+const DEMO_EMAIL_DOMAIN = "@semsa.demo";
+const CREW_MODE_KEY = "semsa_crew_mode"; // correo de la cuenta de tripulante en uso
+const AFTER_SWITCH_KEY = "semsa_after_switch"; // sección y tripulante que se muestran tras el cambio
+
+function ssGet(key) {
+  try {
+    return sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+function ssSet(key, value) {
+  try {
+    if (value === null) sessionStorage.removeItem(key);
+    else sessionStorage.setItem(key, value);
+  } catch {
+    /* almacenamiento no disponible: el modo tripulante dura hasta la próxima recarga */
+  }
+}
+
+/* Correo de la cuenta de tripulante si el modo tripulante está activo en esta pestaña */
+function crewModeEmail() {
+  const e = String(ssGet(CREW_MODE_KEY) || "").toLowerCase();
+  return e.endsWith(DEMO_EMAIL_DOMAIN) ? e : "";
+}
+
+/* Cuenta con la que se abre (o renueva) la sesión silenciosa */
+function sessionAccount() {
+  const crew = crewModeEmail();
+  return crew ? { email: crew, password: DEMO_CREW_PASSWORD } : DEMO_SESSION;
+}
+
+/* Login silencioso con la cuenta demo; las llamadas concurrentes comparten la misma promesa.
+ * Si la cuenta del modo tripulante ya no entra (contraseña cambiada, cuenta desactivada), se sale
+ * del modo y se abre la sesión del líder. */
 function autoLogin() {
   if (!autoLoginInFlight) {
+    const acc = sessionAccount();
     autoLoginInFlight = apiService
-      .login(DEMO_SESSION.email, DEMO_SESSION.password)
+      .login(acc.email, acc.password)
+      .catch((err) => {
+        if (acc === DEMO_SESSION) throw err;
+        ssSet(CREW_MODE_KEY, null);
+        return apiService.login(DEMO_SESSION.email, DEMO_SESSION.password);
+      })
       .then((res) => {
         apiService.setSession(res.access_token, res.csrf_token);
         return res.user;
@@ -294,14 +346,59 @@ function autoLogin() {
   return autoLoginInFlight;
 }
 
-/* Reutiliza la sesión guardada si sigue siendo válida y es de la cuenta de acceso directo; si no, auto-login.
- * (Un navegador con la sesión guardada de otra cuenta demo, p. ej. la astronauta de versiones anteriores,
- * debe pasar a la cuenta actual en vez de seguir con la antigua hasta que caduque el token.) */
+/* ¿Se puede responder como este astronauta? (cuenta demo de astronauta, sesión de líder o administración) */
+function canEnterCrewMode(astronautId) {
+  if (crewModeEmail() || !appState.currentUser || appState.currentUser.role_code === "ASTRONAUT") return false;
+  const u = appState.usersList.find((x) => Number(x.id) === Number(astronautId));
+  return !!u && u.role_code === "ASTRONAUT" && String(u.email || "").toLowerCase().endsWith(DEMO_EMAIL_DOMAIN);
+}
+
+/* Entra en modo tripulante con la cuenta del astronauta elegido y recarga la consola en la misma sección.
+ * Si el login falla, la sesión del líder sigue intacta y el error sube a quien llama. */
+async function enterCrewMode(astronautId) {
+  if (!canEnterCrewMode(astronautId)) throw new Error(tr(DICT).crewModeUnavailable);
+  const u = appState.usersList.find((x) => Number(x.id) === Number(astronautId));
+  const email = String(u.email).toLowerCase();
+  const res = await apiService.login(email, DEMO_CREW_PASSWORD);
+  ssSet(CREW_MODE_KEY, email);
+  ssSet(AFTER_SWITCH_KEY, JSON.stringify({ section: appState.currentSection, astronautId: u.id }));
+  apiService.setSession(res.access_token, res.csrf_token);
+  window.location.reload();
+}
+
+/* Sale del modo tripulante: cierra la sesión del astronauta y vuelve al líder con ese astronauta seleccionado */
+async function exitCrewMode() {
+  const astronautId = appState.currentUser?.id;
+  try {
+    await apiService.logout();
+  } catch {
+    /* sin enlace o token ya caducado: basta con olvidar la sesión local */
+  }
+  ssSet(CREW_MODE_KEY, null);
+  ssSet(AFTER_SWITCH_KEY, JSON.stringify({ section: appState.currentSection, astronautId }));
+  apiService.clearSession();
+  window.location.reload();
+}
+
+/* Sección y tripulante pendientes tras entrar o salir del modo tripulante (se consumen una vez) */
+function takeAfterSwitch() {
+  const raw = ssGet(AFTER_SWITCH_KEY);
+  ssSet(AFTER_SWITCH_KEY, null);
+  try {
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+/* Reutiliza la sesión guardada si sigue siendo válida y es de la cuenta de acceso directo (o la del modo
+ * tripulante); si no, auto-login. (Un navegador con la sesión guardada de otra cuenta demo, p. ej. la
+ * astronauta de versiones anteriores, debe pasar a la cuenta actual en vez de seguir con la antigua.) */
 async function startSession() {
   if (apiService.getToken()) {
     try {
       const me = await apiService.getMe();
-      if (me?.user && String(me.user.email || "").toLowerCase() === DEMO_SESSION.email) return me.user;
+      if (me?.user && String(me.user.email || "").toLowerCase() === sessionAccount().email) return me.user;
     } catch {
       // token caducado o inválido (api.js ya limpió la sesión): se abre una nueva
     }
@@ -381,6 +478,16 @@ async function onAuthenticated(user) {
   } else if (astronauts.length > 0) {
     appState.selectedAstronautId = astronauts[0].id;
   }
+
+  // modo tripulante: solo si la sesión abierta es de verdad la del astronauta guardado
+  appState.crewMode = user.role_code === "ASTRONAUT" && String(user.email || "").toLowerCase() === crewModeEmail();
+  if (!appState.crewMode) ssSet(CREW_MODE_KEY, null);
+  // tras entrar o salir del modo tripulante se vuelve a la misma sección y, como líder, al mismo tripulante
+  const after = takeAfterSwitch();
+  if (after && user.role_code !== "ASTRONAUT" && astronauts.some((a) => Number(a.id) === Number(after.astronautId))) {
+    appState.selectedAstronautId = Number(after.astronautId);
+  }
+  if (after && typeof after.section === "string" && after.section) appState.currentSection = after.section;
 
   if (appState.missionsList.length > 0) {
     appState.selectedMissionId = appState.missionsList[0].id;
