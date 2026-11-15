@@ -856,6 +856,14 @@ export const EXACT = {
     "Fictional deep-space cruise mission toward Mars for isolation and medical-autonomy testing.",
   "Nave de Tránsito Interplanetario 'Ares-Vanguard'": "'Ares-Vanguard' Interplanetary Transit Vehicle",
   "Crucero de espacio profundo con retardo de comunicación simulado.": "Deep-space cruise with simulated communication delay.",
+  // Misión análoga de reposo en cama (backend/app/database/seed_analog.py): nombre, descripción, hábitat, fases y perfil
+  "Análogo de microgravedad — Reposo en cama UTMB (datos reales NASA)": "Microgravity Analog — UTMB Bed Rest (real NASA data)",
+  "Misión análoga en tierra: reposo en cama inclinada 6° con la cabeza abajo. Signos vitales reales del estudio de UTMB publicados por el NASA Life Sciences Portal (doi:10.83263/wjw1-ta27), con las fechas trasladadas para la demostración. No son datos de vuelo espacial.":
+    "Ground-based analog mission: 6° head-down tilt bed rest. Real vital signs from the UTMB study published by the NASA Life Sciences Portal (doi:10.83263/wjw1-ta27), with dates shifted for the demonstration. This is not spaceflight data.",
+  "Unidad de reposo en cama, UTMB (Galveston, Texas)": "Bed Rest Unit, UTMB (Galveston, Texas)",
+  "1. Línea base previa al reposo (ambulatoria)": "1. Pre-Bed-Rest Baseline (ambulatory)",
+  "2. Reposo en cama inclinada 6° (cabeza abajo)": "2. 6° Head-Down Tilt Bed Rest",
+  "Participante de reposo en cama (análogo de microgravedad)": "Bed rest participant (microgravity analog)",
   // Contextos (location_module) — se respeta la errata "dePreparación" del seed
   "Hábitat Presurizado Selene-Base (Sector Alfa)": "Selene-Base Pressurized Habitat (Sector Alpha)",
   "Laboratorio Biomédico Selene-Base": "Selene-Base Biomedical Laboratory",
@@ -1307,6 +1315,17 @@ export const PATTERNS = [
     /^Lectura de (.+) \((\S+) ([^()]+)\) requiere seguimiento preventivo post-EVA conforme a (\S+) v(\S+)\.$/,
     (m, bt) =>
       `${bt(m[1])} reading (${m[2]} ${bt(m[3])}) requires preventive post-EVA follow-up per ${m[4]} v${m[5]}.`,
+  ],
+
+  // Misión análoga (seed_analog.py) — AstronautProfile.notes
+  [
+    /^Datos reales del sujeto (\S+) \(([^()]+)\) del estudio de reposo en cama de UTMB \(NASA NLSP\)\.$/,
+    (m) => `Real data from subject ${m[1]} (${m[2]}) of the UTMB bed rest study (NASA NLSP).`,
+  ],
+  // Misión análoga (seed_analog.py) — HealthMeasurement.notes
+  [
+    /^Dato real NASA UTMB, sujeto (\S+), fecha original (\S+), día de reposo (-?\d+)\. Fecha trasladada para la demo\.$/,
+    (m) => `Real NASA UTMB data, subject ${m[1]}, original date ${m[2]}, bed rest day ${m[3]}. Date shifted for the demo.`,
   ],
 
   // Conversation.subject = "Canal Directo: {astronauta} ↔ {líder}"
