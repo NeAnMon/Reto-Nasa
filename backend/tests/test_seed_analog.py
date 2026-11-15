@@ -24,6 +24,10 @@ from backend.app.models.models import (
     MissionAssignment,
     User,
 )
+from backend.app.rules.calibration import CALIBRATION_VERSION
+from backend.app.rules.engine import baseline_from_row, get_active_rule_version
+from backend.app.rules.evaluation import PreviousReading, Thresholds, evaluate_reading
+from backend.app.rules.recommendations import get_recommendation
 from backend.app.services.prediction_service import predict_indicator
 
 
@@ -135,6 +139,36 @@ def test_third_subject_is_forecast_without_extrapolating_noise(db):
     assert bp.empirical_validation["validated_with_real_data"] is True
 
 
+@pytest.mark.parametrize("crew_code", ["HDBR-01", "HDBR-02", "HDBR-03"])
+def test_projection_matches_the_calibrated_alert_engine(db, crew_code):
+    """Con las reglas y las líneas base sembradas, el estado proyectado de cada día es el que daría el
+    motor de alertas (`evaluate_reading`) a ese nivel, y la recomendación sale del catálogo de alertas."""
+    user = _astronaut(db, crew_code)
+    mission_id = _mission(db).id
+    for code in sa.INDICATOR_COLUMNS:
+        result = predict_indicator(db, user.id, mission_id, code, 7)
+        _, version = get_active_rule_version(db, code)
+        projection = result.threshold_projection
+        assert projection["rule_version"] == version.version_number == CALIBRATION_VERSION, code
+        baseline = baseline_from_row(db.query(HealthBaseline).filter(
+            HealthBaseline.astronaut_id == user.id, HealthBaseline.indicator_code == code
+        ).first())
+        for point in result.forecast:
+            expected = evaluate_reading(
+                code, point["value"], None, Thresholds.from_version(version), unit=result.unit,
+                baseline=baseline, previous=PreviousReading(value=point["value"]),
+            )
+            assert point["projected_state"] == expected.state, (code, point["date"])
+        # con línea base real el pronóstico publica el mismo z que usa el motor
+        assert result.baseline_status == "available_unverified" and result.z_score is not None, code
+        rec = result.recommendation
+        if rec["basis"] == "none":
+            assert rec["text"] is None
+        elif rec["alert_direction"]:
+            assert rec["source"] == "alert_recommendation_catalog"
+            assert rec["text"] == get_recommendation(code, rec["alert_direction"]).followup, code
+
+
 def test_reseed_is_idempotent_and_reanchors_to_new_today(db):
     mission = _mission(db)
 
@@ -192,6 +226,58 @@ def test_analog_astronaut_can_log_in_and_read_own_data(session_factory):
             by_code = {p["phase_code"]: p for p in body["phases_comparison"]}
             assert by_code[sa.BED_REST_PHASE]["has_data"] is True
             assert by_code[sa.PRE_PHASE]["has_data"] is True
+    finally:
+        if previous is None:
+            app.dependency_overrides.pop(get_db, None)
+        else:
+            app.dependency_overrides[get_db] = previous
+
+
+def test_logged_measurement_continues_the_forecast_segment(session_factory):
+    """Una lectura registrada desde la app en la misión análoga (que no tiene contexto operativo
+    confirmado) se guarda con la fase vigente de la misión y continúa la serie. Antes quedaba con fase
+    UNKNOWN, abría un segmento de un solo día y dejaba el pronóstico en datos insuficientes."""
+    def override():
+        session = session_factory()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    session = session_factory()
+    mission_id = _mission(session).id
+    session.close()
+    previous = app.dependency_overrides.get(get_db)
+    app.dependency_overrides[get_db] = override
+    try:
+        with TestClient(app) as client:
+            resp = client.post("/api/v1/auth/login", json={
+                "email": "hdbr01@semsa.demo", "password": settings.DEMO_ANALOG_PASSWORD,
+            })
+            assert resp.status_code == 200, resp.text
+            headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
+            params = {"mission_id": mission_id, "horizon_days": 7}
+            before = client.get("/api/v1/predictions/indicators/HEART_RATE", params=params, headers=headers)
+            assert before.status_code == 200, before.text
+            assert before.json()["status"] == "ok"
+
+            created = client.post("/api/v1/health/measurements", headers=headers, json={
+                "mission_id": mission_id, "indicator_code": "HEART_RATE", "value": 72,
+            })
+            assert created.status_code == 201, created.text
+            session = session_factory()
+            try:
+                row = session.get(HealthMeasurement, created.json()["measurement"]["id"])
+                assert (row.phase_code, row.environment_code) == (sa.BED_REST_PHASE, sa.BED_REST_ENV)
+            finally:
+                session.close()
+
+            after = client.get("/api/v1/predictions/indicators/HEART_RATE", params=params, headers=headers)
+            assert after.status_code == 200, after.text
+            body = after.json()
+            assert body["status"] == "ok"
+            assert body["phase_code"] == sa.BED_REST_PHASE
+            assert body["n_days"] >= before.json()["n_days"]
     finally:
         if previous is None:
             app.dependency_overrides.pop(get_db, None)

@@ -99,6 +99,15 @@ La aplicación inicializa y siembra automáticamente la base de datos SQLite (`s
 .\.venv\Scripts\python scripts/init_demo_db.py
 ```
 
+### 4.3.1 Precargar histórico sintético por API (opcional)
+Con la API levantada, genera una tripulación y una misión ficticias con 45 días de mediciones (SIMULADO), entorno,
+bienestar y gamificación a través de los endpoints, para probar predicciones, gráficas, comparación de fases y alertas.
+Es reproducible (`--seed`) e idempotente (no duplica al repetirse). Opciones y credenciales en
+[`docs/SEED_SINTETICO.md`](docs/SEED_SINTETICO.md).
+```powershell
+.\.venv\Scripts\python scripts/seed_synthetic_api.py --baselines-db
+```
+
 ### 4.4 Ejecutar la aplicación
 ```powershell
 .\.venv\Scripts\uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
