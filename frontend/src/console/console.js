@@ -1329,6 +1329,8 @@ export async function renderConsole(container, appState, helpers, opts = {}) {
     if (consoleState.view === "radiation") {
       const live = container.querySelector("#av-rad-live");
       if (live) live.innerHTML = radLiveInner(d);
+      const folds = container.querySelector("#av-rad-live-folds");
+      if (folds) folds.innerHTML = radLiveFolds(d);
     } else {
       const el = container.querySelector("#av-p1-rad");
       if (el) el.outerHTML = radCardHTML(d);
@@ -2620,9 +2622,6 @@ function radLiveInner(d) {
   const cur = heraCurrent();
   const lvl = hera.level;
   const lvlLetter = HERA_LETTER[lvl];
-  const shelter = HERA_LEVELS.indexOf(lvl) >= 2;
-  const bfo30 = d.last30 + d.eventMGyEq;
-  const cns30 = d.last30 / 2.6 + d.eventMGy; // mGy (Q≈2,6 medido por HERA en Artemis I para GCR)
   const env = ENV_BY_KEY[envState.key];
   const T = tt();
   return `      <section class="av-panel ${RANK[lvlLetter] >= 2 ? `av-card-${lvlLetter}` : ""}" style="padding:16px;display:flex;flex-direction:column;gap:10px" aria-label="HERA">
@@ -2643,8 +2642,19 @@ function radLiveInner(d) {
         <p style="margin:0;color:var(--av-text)">${esc(HERA_TEXT[lvl].msg)}</p>
         ${radChartBlock()}
         <p class="av-sub" style="margin:0;font-size:12px">${esc(T.thresholdsNote)}</p>
-      </section>
+      </section>`;
+}
 
+/* Secciones plegables que dependen de la lectura HERA (refugio y riesgos): se
+   repintan en vivo junto con la gráfica, pero dentro de la cuadrícula de secciones. */
+function radLiveFolds(d) {
+  const lvl = hera.level;
+  const lvlLetter = HERA_LETTER[lvl];
+  const shelter = HERA_LEVELS.indexOf(lvl) >= 2;
+  const bfo30 = d.last30 + d.eventMGyEq;
+  const cns30 = d.last30 / 2.6 + d.eventMGy; // mGy (Q≈2,6 medido por HERA en Artemis I para GCR)
+  const T = tt();
+  return `
       ${shelter ? radFold("shelter", esc(T.shelterTitle), esc(T.procedureDemo), `
         <ol class="av-steps">
           <li class="av-step ${lvl === "CAUTION" ? "av-step-active" : "av-step-done"}">${T.shelter1}</li>
@@ -2669,7 +2679,7 @@ function radLiveInner(d) {
 function radFold(key, title, sub, inner, style = "") {
   const open = consoleState.radFold[key] !== false;
   return `<details class="av-panel av-fold" data-fold="${key}" ${open ? "open" : ""}${style ? ` style="${style}"` : ""}>
-        <summary class="av-panel-head av-fold-head"><h2 class="av-h2">${title}</h2>${sub ? `<span class="av-sub">${sub}</span>` : ""}</summary>
+        <summary class="av-panel-head av-fold-head" title="${title}${sub ? ` · ${sub}` : ""}"><h2 class="av-h2">${title}</h2>${sub ? `<span class="av-sub">${sub}</span>` : ""}</summary>
         ${inner}
       </details>`;
 }
@@ -2691,10 +2701,11 @@ function radiationHTML(appState, d) {
   const lim = (v) => (v === null ? "—" : num(v));
   const limRow = (label, a, b, c) => `<tr><td>${esc(label)}</td><td class="av-mono" style="text-align:right">${lim(a)}</td><td class="av-mono" style="text-align:right">${lim(b)}</td><td class="av-mono" style="text-align:right">${lim(c)}</td></tr>`;
   return `
-  <div class="av-grid">
-    <main class="av-col-b" id="av-rad-live">${radLiveInner(d)}</main>
+  <div class="av-rad">
+    <main id="av-rad-live">${radLiveInner(d)}</main>
 
-    <aside class="av-col-c">
+    <div class="av-rad-folds">
+      <div id="av-rad-live-folds" style="display:contents">${radLiveFolds(d)}</div>
       ${radFold("dosimeter", esc(T.dosimeterTitle), esc(T.manualEntry), `
         <form data-form="cad" style="padding:12px;display:flex;flex-direction:column;gap:10px">
           <div class="av-form-grid">
@@ -2731,7 +2742,7 @@ function radiationHTML(appState, d) {
         </table>
         <span style="font-size:11px;color:var(--av-muted)">${esc(T.limitsSource)}</span>
       </div>`)}
-    </aside>
+    </div>
   </div>`;
 }
 

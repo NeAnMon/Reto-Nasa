@@ -144,11 +144,22 @@ body[data-theme="daylight-clean"] .av-console {
 .av-bar > span { display: block; height: 100%; background: var(--av-text); }
 .av-panel-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--av-border); }
 
-/* Secciones plegables (vista Radiación): misma cabecera y mismo ancho en cada columna */
-.av-fold { width: 100%; box-sizing: border-box; padding: 0; }
+/* Vista Radiación: la gráfica HERA arriba a todo el ancho y, debajo, las secciones
+   plegables en una cuadrícula de celdas iguales (mismo ancho y misma altura) */
+.av-rad { display: flex; flex-direction: column; gap: 12px; padding: 12px; }
+.av-rad-folds { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); grid-auto-rows: 1fr; gap: 12px; align-items: stretch; }
+.av-rad-folds > .av-fold[open], .av-rad-folds > div > .av-fold[open] { display: flex; flex-direction: column; min-height: 0; }
+.av-rad-folds .av-fold:not([open]) { align-self: start; }
+
+/* Secciones plegables (vista Radiación): misma cabecera y mismo ancho */
+.av-fold { width: 100%; box-sizing: border-box; padding: 0; min-width: 0; }
 .av-fold > .av-fold-head { cursor: pointer; list-style: none; min-height: 48px; box-sizing: border-box; padding-right: 36px; position: relative; }
 .av-fold > .av-fold-head::-webkit-details-marker { display: none; }
 .av-fold > .av-fold-head::after { content: ""; position: absolute; right: 14px; top: 50%; width: 8px; height: 8px; border-right: 2px solid var(--av-text2); border-bottom: 2px solid var(--av-text2); transform: translateY(-70%) rotate(45deg); transition: transform .15s; }
+.av-fold > .av-fold-head { flex-wrap: nowrap; height: 48px; overflow: hidden; }
+.av-fold > .av-fold-head > * { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.av-fold > .av-fold-head > .av-h2 { flex: 1 1 auto; }
+.av-fold > .av-fold-head > .av-sub { flex: 0 1 auto; }
 .av-fold:not([open]) > .av-fold-head { border-bottom: 0; }
 .av-fold:not([open]) > .av-fold-head::after { transform: translateY(-30%) rotate(-45deg); }
 .av-fold > .av-fold-head:hover { background: var(--av-hover); }
