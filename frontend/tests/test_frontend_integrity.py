@@ -104,9 +104,9 @@ def test_frontend_files_exist_and_have_required_sections():
             f"wellbeing.js DICT es/en keys differ at indent {indent}: "
             f"{sorted(_keys(wb_es, indent) ^ _keys(wb_en, indent))}"
         )
-    # "Contacto con Tierra" es solo una tarjeta de recomendación: enlaza al módulo Recomendaciones y a la fuente NASA
-    assert 'data-wb-go="recommendations">${esc(T.earthOpen)}' in wellbeing_js
-    assert 'const EARTH_SOURCE_URL = "https://www.nasa.gov/hrp/"' in wellbeing_js
+    # "Contacto con Tierra" ya no es una pestaña de Bienestar: es una recomendación que solo aparece como
+    # alerta temprana (backend/app/rules/early_warnings.py), en Alertas (desplegables) y en el Resumen
+    assert "renderEarth" not in wellbeing_js and '"earth"' not in wellbeing_js and "earthTitle" not in wellbeing_js
     assert "getFamilyContacts" not in wellbeing_js
     # Enlaces externos seguros
     assert 'rel="noopener noreferrer"' in wellbeing_js
@@ -398,6 +398,50 @@ def test_messages_module_replaced_by_recommendations():
     assert 'data-nav="recommendations"' in console_js
     assert "unread_messages_count" not in console_js
 
+
+def test_early_warnings_dropdowns_and_summary_recommendations():
+    """Issue #14: las alertas tempranas (p. ej. "Contacto con Tierra") van en desplegables en Alertas
+    y su recomendación en el cuadro "Recomendaciones" del Resumen; la acción lleva a la pestaña
+    Recomendaciones con el cuadro earth-channel desplegado (sin Mensajes, issue #15); los textos del
+    backend tienen traducción al inglés y no mencionan Mensajes."""
+    console_dir = FRONTEND_ROOT / "src" / "console"
+    alerts_js = (console_dir / "views" / "alerts.js").read_text(encoding="utf-8")
+    console_js = (console_dir / "console.js").read_text(encoding="utf-8")
+    classes_js = (console_dir / "alert-classes.js").read_text(encoding="utf-8")
+    assert 'export const isEarlyAlert = (a) => String(a?.rule_code || "").startsWith("RULE_EARLY_");' in classes_js
+    assert '<details class="av-fold av-al-early-item"' in alerts_js
+    assert 'data-al-zone="early"' in alerts_js
+    assert 'root.addEventListener("toggle"' in alerts_js
+    # Un solo cuadro "Recomendaciones" en el Resumen (columna de 2 cuadros, issues #3 y #15)
+    assert "${p1}${table}" in console_js
+    assert "${activeRecsHTML(appState, alerts, T)}" in console_js
+    assert "recsHTML(" not in console_js and "av-recs" not in console_js
+    # Ir al cuadro earth-channel de Recomendaciones
+    rec_js = (console_dir / "views" / "recommendations.js").read_text(encoding="utf-8")
+    assert 'data-nav="recommendations" data-rec-open="earth-channel"' in console_js
+    assert 'data-al-act="go-rec" data-al-rec="earth-channel"' in alerts_js
+    for src in (console_js, alerts_js, rec_js):
+        assert 'sessionStorage.setItem("av_rec_open"' in src or 'sessionStorage.getItem("av_rec_open")' in src
+    assert 'id: "earth-channel"' in rec_js
+    assert 'data-al-act="contact"' not in alerts_js
+    al_es, al_en = _dict_blocks(alerts_js)
+    early_keys = {k for k in _keys(al_es, 4) if k.startswith("early")}
+    assert len(early_keys) >= 8 and early_keys == {k for k in _keys(al_en, 4) if k.startswith("early")}
+    for key in ("recsActive", "recsActiveN", "recsAria", "recsPlanned", "recsFor", "recsSeeAlert", "recsSeeEarth"):
+        assert console_js.count(f"    {key}: ") == 2, f"console.js DICT needs {key} in es and en"
+
+    tree = ast.parse((PROJECT_ROOT / "backend" / "app" / "rules" / "early_warnings.py").read_text(encoding="utf-8"))
+    texts = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name) and node.targets[0].id.startswith("EARTH_CONTACT_"):
+            values = node.value.values if isinstance(node.value, ast.Dict) else [node.value]
+            for v in values:
+                if isinstance(v, ast.Constant) and isinstance(v.value, str) and " " in v.value:
+                    texts.add(_norm(v.value))
+    assert len(texts) >= 5, texts
+    assert not [t for t in texts if re.search(r"mensaje|communication", t, re.I)], "early warnings must not point to Mensajes"
+    missing = sorted(texts - _en_keys(I18N_DIR / "backend-en-runtime.js"))
+    assert not missing, f"Missing English translations for early_warnings texts: {missing}"
 
 
 def test_branding_is_semsa_and_status_bar_shows_telecreation_mission():

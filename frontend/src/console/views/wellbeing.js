@@ -9,10 +9,10 @@
  *     del turno: estrés, FC en reposo, carga NASA-TLX y test de reacción tipo PVT (questionnaires.js,
  *     shift-check.js). Sueño y ánimo no se repiten: se toman del check-in de Hoy.
  *   - Respiración: respiración guiada en cuadrado 4-4-4-4 con rondas y contador local (breathing.js).
- *   - Contacto con Tierra: tarjeta informativa (recomendación, no funcionalidad) sobre el contacto
- *     asíncrono con seres queridos frente al aislamiento; enlaza al módulo Recomendaciones (issue #15).
  *   - Tiempo libre: hobbies breves con filtros, pasos, fuente NASA y registro "Lo hice".
  *   - Tripulación: actividades de integración (proponer, unirse, asistencia, quórum, meta semanal).
+ *   ("Contacto con Tierra" ya no es una pestaña: es una recomendación que solo aparece como alerta
+ *    temprana, ver backend/app/rules/early_warnings.py; se muestra en Alertas y en el Resumen.)
  *
  * Privacidad: líder/administración reciben ánimo, energía, aislamiento y notas como null → "privado".
  * Estados emocionales siempre como etiqueta de texto, sin colores de alarma.
@@ -57,7 +57,7 @@ const DICT = {
     intro: "Un espacio para cuidar el descanso, el ánimo y la conexión con los demás durante la misión. Todo lo que escribas aquí es privado por defecto.",
     introLeader: "Resumen de bienestar de {name}. Por privacidad, ánimo, energía, sensación de aislamiento y notas solo los ve la propia persona.",
     tabsAria: "Secciones de bienestar",
-    tabs: { today: "Hoy", checks: "Cuestionarios", breath: "Respiración", earth: "Contacto con Tierra", leisure: "Tiempo libre", crew: "Tripulación" },
+    tabs: { today: "Hoy", checks: "Cuestionarios", breath: "Respiración", leisure: "Tiempo libre", crew: "Tripulación" },
     loading: "Cargando…",
     retry: "Reintentar",
     noData: "—",
@@ -120,19 +120,6 @@ const DICT = {
     toolPending: "{n} pendientes",
     toolCognitive: "Evaluación cognitiva",
     toolCognitiveSub: "Atención, memoria y tiempo de reacción",
-    // Contacto con Tierra (recomendación; no es una funcionalidad de la app)
-    earthTitle: "Contacto con Tierra",
-    earthTag: "Recomendación",
-    earthWhy: "Sentirse cerca de las personas que quieres ayuda mucho cuando vives aislado y en un espacio reducido. El programa de investigación humana de la NASA (HRP) señala el aislamiento y el confinamiento como un riesgo para el ánimo, el sueño y la convivencia, y el apoyo de los seres queridos es uno de los recursos que más lo amortiguan.",
-    earthRecTitle: "Lo que recomendamos",
-    earthRec: "Un canal asíncrono con la familia: se escribe o se graba con calma y se entrega cuando hay enlace.",
-    earthFeatures: ["Mensajes de voz", "Chat", "Fotos del día a día"],
-    earthNoVideo: "Sin videollamadas: con el retardo de la comunicación una conversación en directo resulta frustrante.",
-    earthDelay: "Retardo estimado ahora mismo: {d} por trayecto.",
-    earthDelayNone: "menos de 1 s",
-    earthMeanwhile: "Este canal todavía no existe en la app: figura, junto con otras mejoras previstas, en el módulo Recomendaciones.",
-    earthOpen: "Ver recomendaciones",
-    earthSourceTitle: "Programa de Investigación Humana de la NASA (HRP)",
     // Tiempo libre
     leisureTitle: "Tiempo libre",
     leisureSub: "Pausas breves que ayudan a desconectar",
@@ -213,7 +200,7 @@ const DICT = {
     intro: "A space to look after your rest, your mood and your connection with others during the mission. Everything you write here is private by default.",
     introLeader: "Well-being summary for {name}. For privacy, mood, energy, feeling isolated and notes are only visible to that person.",
     tabsAria: "Well-being sections",
-    tabs: { today: "Today", checks: "Questionnaires", breath: "Breathing", earth: "Contact with Earth", leisure: "Free time", crew: "Crew" },
+    tabs: { today: "Today", checks: "Questionnaires", breath: "Breathing", leisure: "Free time", crew: "Crew" },
     loading: "Loading…",
     retry: "Retry",
     noData: "—",
@@ -273,18 +260,6 @@ const DICT = {
     toolPending: "{n} pending",
     toolCognitive: "Cognitive assessment",
     toolCognitiveSub: "Attention, memory and reaction time",
-    earthTitle: "Contact with Earth",
-    earthTag: "Recommendation",
-    earthWhy: "Feeling close to the people you love helps a lot when you live isolated in a small space. NASA's Human Research Program (HRP) identifies isolation and confinement as a risk to mood, sleep and getting along with others, and support from loved ones is one of the things that cushions it most.",
-    earthRecTitle: "What we recommend",
-    earthRec: "An asynchronous channel with family: you write or record calmly and it is delivered when there is a link.",
-    earthFeatures: ["Voice messages", "Chat", "Everyday photos"],
-    earthNoVideo: "No video calls: with the communication delay, a live conversation becomes frustrating.",
-    earthDelay: "Estimated delay right now: {d} each way.",
-    earthDelayNone: "under 1 s",
-    earthMeanwhile: "This channel does not exist in the app yet: it is listed, along with other planned improvements, in the Recommendations module.",
-    earthOpen: "View recommendations",
-    earthSourceTitle: "NASA Human Research Program (HRP)",
     leisureTitle: "Free time",
     leisureSub: "Short breaks that help you switch off",
     leisureIntro: "On long missions, small personal routines —tending plants, reading, listening to music— help cope with isolation. Pick whatever you feel like: it's not one more task.",
@@ -360,7 +335,7 @@ const DICT = {
   },
 };
 
-const SUBS = ["today", "checks", "breath", "earth", "leisure", "crew"];
+const SUBS = ["today", "checks", "breath", "leisure", "crew"];
 const SUB_KEY = "av_wb_sub";
 const CATEGORIES = ["PLANTS", "READING", "GAMES", "MUSIC", "ART", "PHOTOGRAPHY", "WRITING", "MOVEMENT"];
 const DURATIONS = [10, 20, 30];
@@ -446,15 +421,6 @@ function privText(v, own, fn = (x) => String(x)) {
   const T = tr(DICT);
   if (isNil(v)) return own ? T.noData : T.private;
   return fn(v);
-}
-
-function delayText(seconds) {
-  const T = tr(DICT);
-  const s = Number(seconds);
-  if (!Number.isFinite(s)) return null;
-  if (s < 1) return T.earthDelayNone;
-  if (s < 90) return `~${fmtNum(s, s < 10 ? 1 : 0)} s`;
-  return `~${fmtNum(s / 60, 0)} ${T.minutes}`;
 }
 
 function pendingEmotional(appState) {
@@ -584,7 +550,7 @@ async function renderPanel() {
   if (!panel.querySelector(`[data-wb-sub="${sub}"]`)) {
     panel.innerHTML = `<div class="av-sub av-wb-loading" role="status">${esc(tr(DICT).loading)}</div>`;
   }
-  const renderers = { today: renderToday, checks: (p, st) => renderChecks(p, { appState, helpers: ctx.helpers, isStale: st, goTab: (s) => ui.selectTab?.(s, true) }), breath: (p) => renderBreathing(p, appState), earth: renderEarth, leisure: renderLeisure, crew: renderCrew };
+  const renderers = { today: renderToday, checks: (p, st) => renderChecks(p, { appState, helpers: ctx.helpers, isStale: st, goTab: (s) => ui.selectTab?.(s, true) }), breath: (p) => renderBreathing(p, appState), leisure: renderLeisure, crew: renderCrew };
   await renderers[sub](panel, isStale);
   if (isStale()) return;
   panel.querySelector("[data-wb-retry]")?.addEventListener("click", () => renderPanel());
@@ -820,38 +786,6 @@ function bindCheckin(panel) {
     ui.focusSel = "#av-wb-ci-status";
     await renderPanel();
   });
-}
-
-/* ───────────────────────── Contacto con Tierra (recomendación) ───────────────────────── */
-
-/* Tarjeta informativa: el canal con la familia NO existe en la app; solo se recomienda.
- * El botón abre Recomendaciones (issue #15) con el manejador genérico data-wb-go de renderPanel. */
-const EARTH_SOURCE_URL = "https://www.nasa.gov/hrp/";
-
-async function renderEarth(panel) {
-  const { appState } = ctx;
-  const T = tr(DICT);
-  const delay = delayText(appState.healthSummary?.context?.comms_delay_seconds);
-
-  panel.innerHTML = `<div class="av-wb-cols" data-wb-sub="earth">
-      <div class="av-wb-col">
-        <section class="av-panel" aria-labelledby="av-wb-earth-h">
-          <div class="av-panel-head">
-            <h3 class="av-h3" id="av-wb-earth-h">${esc(T.earthTitle)}</h3>
-            <span class="av-mx-tag">${esc(T.earthTag)}</span>
-          </div>
-          <div class="av-mx-pad">
-            <p class="av-mx-p">${esc(T.earthWhy)}</p>
-            <p class="av-mx-p"><strong>${esc(T.earthRecTitle)}:</strong> ${esc(T.earthRec)}</p>
-            <ul class="av-wb-feat">${T.earthFeatures.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>
-            <p class="av-mx-p">${esc(T.earthNoVideo)}${delay ? ` <span class="av-sub">${esc(fmtT(T.earthDelay, { d: delay }))}</span>` : ""}</p>
-            <p class="av-mx-note">${esc(T.earthMeanwhile)}</p>
-            <div><button type="button" class="av-btn av-btn-primary" data-wb-go="recommendations">${esc(T.earthOpen)}</button></div>
-            <a class="av-wb-src" href="${esc(EARTH_SOURCE_URL)}" target="_blank" rel="noopener noreferrer">${esc(fmtT(T.source, { t: T.earthSourceTitle }))}<span class="av-mx-sr"> ${esc(T.newTab)}</span></a>
-          </div>
-        </section>
-      </div>
-    </div>`;
 }
 
 /* ───────────────────────── Tiempo libre ───────────────────────── */

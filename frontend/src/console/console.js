@@ -20,7 +20,7 @@ import { apiService } from "../services/api.js";
 import { FIG, FIG_VIEWBOX, FIG_ATTRIBUTION_I18N, BONES, FIG_HOTSPOTS } from "./body-figure.js";
 import { tr, fmt, fmtNum, getLang, onLangChange } from "../i18n/i18n.js";
 import { bt, btLines } from "/src/i18n/backend.js";
-import { LETTER, RANK, STATE_WORD, STATE_LEGEND, CLASS_PLURAL, HERA_LETTER, alertClassOf, isAlarm, classFromRank } from "./alert-classes.js";
+import { LETTER, RANK, STATE_WORD, STATE_LEGEND, CLASS_PLURAL, HERA_LETTER, alertClassOf, isAlarm, classFromRank, isEarlyAlert } from "./alert-classes.js";
 
 /* ───────────────────────── idioma ─────────────────────────
  * Textos de la consola en DICT ({ es, en }); cada render obtiene el idioma actual con tr(DICT).
@@ -202,6 +202,14 @@ const DICT = {
     recSub: "Mejoras previstas para próximas versiones de la app.",
     recItems: ["Biometría continua con dispositivos vestibles", "Instrumentos médicos de a bordo conectados", "Dosimetría personal en tiempo real", "Canal asíncrono con Tierra y con la familia"],
     recOpen: "Ver recomendaciones",
+    // recomendaciones activas (de las alertas tempranas, backend/app/rules/early_warnings.py)
+    recsActive: "Activas ahora",
+    recsAria: "Recomendaciones activas",
+    recsPlanned: "Mejoras previstas",
+    recsFor: "Para {name}",
+    recsSeeAlert: "Ver en Alertas",
+    recsSeeEarth: "Ver canal con Tierra",
+    recsActiveN: "Activas: {n}",
     // detalle de indicador
     backSummary: "← Resumen",
     idealRange: "Rango ideal",
@@ -479,6 +487,13 @@ const DICT = {
     recSub: "Improvements planned for future versions of the app.",
     recItems: ["Continuous biometrics with wearable devices", "Connected onboard medical instruments", "Real-time personal dosimetry", "Asynchronous channel with Earth and family"],
     recOpen: "View recommendations",
+    recsActive: "Active now",
+    recsAria: "Active recommendations",
+    recsPlanned: "Planned improvements",
+    recsFor: "For {name}",
+    recsSeeAlert: "See in Alerts",
+    recsSeeEarth: "See Earth channel",
+    recsActiveN: "Active: {n}",
     backSummary: "← Overview",
     idealRange: "Ideal range",
     yellowLimit: "Yellow limit",
@@ -2325,6 +2340,31 @@ function tasksBoxOpenHTML(data, T) {
       </div>`;
 }
 
+/* Recomendaciones activas: las que traen las alertas tempranas sin resolver (p. ej. "Contacto con
+ * Tierra", backend/app/rules/early_warnings.py). Van arriba del cuadro "Recomendaciones" del Resumen
+ * (un solo cuadro, columna de 2 del issue #3); la alerta en sí se gestiona en Alertas (desplegables).
+ * "Ver canal con Tierra" abre la pestaña Recomendaciones con el cuadro earth-channel desplegado. */
+function activeRecsHTML(appState, alerts, T) {
+  const recs = alerts.filter((a) => a.api && isEarlyAlert(a.raw) && a.raw.immediate_action);
+  if (!recs.length) return "";
+  const leader = (appState.currentUser?.role_code || "ASTRONAUT") !== "ASTRONAUT";
+  const items = recs.map(({ raw }) => `<li class="av-ew">
+      <div class="av-ew-head">
+        <h3 class="av-h3">${esc(bt(raw.title))}</h3>
+        <span class="av-mono av-sub">${gmt(toDate(raw.created_at), false)}</span>
+      </div>
+      ${leader && raw.astronaut_name ? `<div class="av-sub">${esc(fmt(T.recsFor, { name: raw.astronaut_name }))}</div>` : ""}
+      <p class="av-ew-p">${esc(bt(raw.immediate_action))}</p>
+      <div class="av-ew-btns">
+        <button type="button" class="av-btn av-btn-sm av-btn-primary" data-nav="recommendations" data-rec-open="earth-channel">${esc(T.recsSeeEarth)}</button>
+        <button type="button" class="av-btn av-btn-sm" data-nav="alerts-center">${esc(T.recsSeeAlert)}</button>
+      </div>
+    </li>`).join("");
+  return `<div class="av-lbl">${esc(T.recsActive)}</div>
+        <ul class="av-ew-list" aria-label="${esc(T.recsAria)}">${items}</ul>
+        <div class="av-lbl">${esc(T.recsPlanned)}</div>`;
+}
+
 function rightColHTML(appState, d, data, alerts) {
   const T = tt();
   const missions = (data.missions || []).slice(0, 5);
@@ -2339,14 +2379,16 @@ function rightColHTML(appState, d, data, alerts) {
   }).join("");
   // Segundo cuadro: avance del módulo Recomendaciones (el módulo Mensajes se retiró, issue #15)
   const recs = T.recItems.map((t) => `<li style="padding:6px 0;border-top:1px solid var(--av-row)">${esc(t)}</li>`).join("");
+  const nActive = alerts.filter((a) => a.api && isEarlyAlert(a.raw) && a.raw.immediate_action).length;
   return `
   <aside class="av-col-c av-col-sum" aria-label="${esc(T.rightAria)}">
     ${tasksBoxOpenHTML(data, T)}
       <ol class="av-sum-scroll" style="list-style:none;margin:0;padding:0">${tasks || `<li class="av-sub" style="padding:12px">${esc(T.noTasks)}</li>`}</ol>
     </section>
     <section class="av-panel av-sum-box av-rec-box">
-      <div class="av-panel-head"><h2 class="av-h2">${esc(T.recTitle)}</h2><button type="button" class="av-btn av-btn-sm" data-nav="recommendations">${esc(T.recOpen)}</button></div>
+      <div class="av-panel-head"><h2 class="av-h2">${esc(T.recTitle)}</h2>${nActive ? `<span class="av-badge av-b-A av-pill">${esc(fmt(T.recsActiveN, { n: num(nActive) }))}</span>` : ""}<button type="button" class="av-btn av-btn-sm" data-nav="recommendations">${esc(T.recOpen)}</button></div>
       <div class="av-sum-scroll" style="padding:12px;display:flex;flex-direction:column;gap:8px">
+        ${activeRecsHTML(appState, alerts, T)}
         <p class="av-sub" style="margin:0">${esc(T.recSub)}</p>
         <ul style="list-style:none;margin:0;padding:0">${recs}</ul>
       </div>
@@ -2823,6 +2865,11 @@ function bindOnce(container, appState, helpers) {
     const { appState: st, helpers: hp } = container.__avCtx;
     const navBtn = ev.target.closest("[data-nav]");
     if (navBtn) {
+      // data-rec-open: cuadro de Recomendaciones que debe abrirse desplegado (lo lee views/recommendations.js)
+      const recOpen = navBtn.getAttribute("data-rec-open");
+      if (recOpen) {
+        try { sessionStorage.setItem("av_rec_open", recOpen); } catch { /* sin almacenamiento: se abre la pestaña sin desplegar */ }
+      }
       document.body.classList.remove("av-console-on");
       hp.navigateToSection(navBtn.getAttribute("data-nav"));
       return;

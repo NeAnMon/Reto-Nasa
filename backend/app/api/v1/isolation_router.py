@@ -40,6 +40,7 @@ from backend.app.security.auth import (
     utcnow,
     verify_astronaut_access,
 )
+from backend.app.rules.early_warnings import SOURCE_CHECKIN, checkin_needs_earth_contact, create_earth_contact_alert
 from backend.app.services.gamification import award_activity_xp, record_gamification_mission
 
 isolation_router = APIRouter()
@@ -145,6 +146,13 @@ def create_quick_checkin(
         .all()
     )
     record.operational_flag = _compute_operational_flag(recent, now)
+    # Alerta temprana "Contacto con Tierra" (recomendación; ver backend/app/rules/early_warnings.py)
+    early_alert = None
+    if checkin_needs_earth_contact(recent, now):
+        assignment = _active_assignment(db, user.id)
+        early_alert = create_earth_contact_alert(
+            db, astronaut_id=user.id, mission_id=assignment.mission_id if assignment else None, source=SOURCE_CHECKIN
+        )
     db.commit()
     db.refresh(record)
 
@@ -164,6 +172,7 @@ def create_quick_checkin(
 
     out = _serialize_checkin(record, full=True)
     out["xp_awarded"] = xp_awarded
+    out["early_warning_alert_id"] = early_alert.id if early_alert else None
     return out
 
 

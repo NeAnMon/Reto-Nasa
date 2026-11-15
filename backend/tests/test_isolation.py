@@ -829,3 +829,111 @@ def test_daily_missions_endpoint_hides_messages_missions(client, users):
     codes = {m["code"] for m in r.json()["missions"]}
     assert codes, "debe seguir habiendo contramedidas"
     assert not codes & {"REVIEW_MISSION_MESSAGES", "RESPOND_SUPPORT_REQUEST"}
+
+
+# ---------------------------------------------------------------------------
+# Alerta temprana "Contacto con Tierra" (issue #14: recomendación solo como alerta temprana)
+# ---------------------------------------------------------------------------
+
+def _set_share_with_leader(user_id: int, value: bool) -> None:
+    db = IsoSession()
+    try:
+        db.query(User).filter(User.id == user_id).update({"share_wellness_signals_with_leader": value})
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_earth_contact_early_warning_from_checkins(client, users):
+    from backend.app.rules.early_warnings import EARTH_CONTACT_RULE
+
+    marcus, leader, admin = users["marcus"], users["leader"], users["admin"]
+    mid = marcus["user"]["id"]
+    note = "Nota privada de Marcus #EARLY-NOTE-1"
+    post = lambda **kw: client.post(
+        "/api/v1/wellness/quick-checkin", headers=marcus["headers"],
+        json={"sleep_hours": 7.5, "sleep_quality": 4, "mood": 4, "energy": 4, "feels_isolated": False, **kw},
+    )
+
+    def early(headers, aid=mid):
+        res = client.get(f"/api/v1/alerts?astronaut_id={aid}", headers=headers)
+        assert res.status_code == 200, res.text
+        return [a for a in res.json()["alerts"] if a["rule_code"] == EARTH_CONTACT_RULE]
+
+    assert early(marcus["headers"]) == []
+    # Sin señales, y con una sola señal en los 3 últimos registros: no hay alerta
+    r = post()
+    assert r.status_code == 201 and r.json()["early_warning_alert_id"] is None
+    r = post(feels_isolated=True, note=note)
+    assert r.status_code == 201 and r.json()["early_warning_alert_id"] is None
+    # Un registro sin señal nunca dispara, aunque haya otras señales recientes
+    r = post()
+    assert r.json()["early_warning_alert_id"] is None
+    # 2 de los 3 últimos con señal (ánimo bajo + aislamiento) → alerta temprana
+    r = post(mood=2)
+    assert r.status_code == 201
+    alert_id = r.json()["early_warning_alert_id"]
+    assert alert_id
+    assert r.json()["operational_flag"] == "OK"  # es anterior a NEEDS_CHECK_IN (3 de 3)
+    # Una sola abierta por astronauta
+    assert post(feels_isolated=True).json()["early_warning_alert_id"] is None
+
+    own = early(marcus["headers"])
+    assert len(own) == 1 and own[0]["id"] == alert_id
+    a = own[0]
+    assert a["priority"] == "LOW" and a["operational_state"] == "MONITOR" and a["status"] == "NEW"
+    assert "Contacto con Tierra" in a["title"]
+    assert "asíncrono" in a["immediate_action"] and "Recomendaciones" in a["immediate_action"]
+    assert "Mensajes" not in a["immediate_action"] + a["followup_recommendation"]
+    assert "videollamadas" in a["followup_recommendation"]
+    # Privacidad: ni nota ni valores de ánimo en la alerta
+    assert note not in str(a) and a["value_recorded"] is None
+
+    # Líder (comparte señales) y administración la ven
+    assert [x["id"] for x in early(leader["headers"])] == [alert_id]
+    assert [x["id"] for x in early(admin["headers"])] == [alert_id]
+
+    # Si el astronauta deja de compartir señales con su líder, el líder no la ve (ni por id)
+    _set_share_with_leader(mid, False)
+    try:
+        assert early(leader["headers"]) == []
+        all_leader = client.get("/api/v1/alerts", headers=leader["headers"]).json()["alerts"]
+        assert alert_id not in [x["id"] for x in all_leader]
+        assert client.get(f"/api/v1/alerts/{alert_id}", headers=leader["headers"]).status_code == 404
+        assert client.post(
+            f"/api/v1/alerts/{alert_id}/acknowledge", headers=leader["headers"], json={"action_taken": "Revisada"}
+        ).status_code == 404
+        assert [x["id"] for x in early(admin["headers"])] == [alert_id]
+        assert client.get(f"/api/v1/alerts/{alert_id}", headers=marcus["headers"]).status_code == 200
+    finally:
+        _set_share_with_leader(mid, True)
+
+    # Resuelta, una nueva racha de señales vuelve a generarla
+    r = client.post(
+        f"/api/v1/alerts/{alert_id}/followup", headers=marcus["headers"],
+        json={"action_type": "RESOLVED", "notes": "Escribí a mi familia."},
+    )
+    assert r.status_code in (200, 201), r.text
+    assert post(feels_isolated=True).json()["early_warning_alert_id"] not in (None, alert_id)
+
+
+def test_earth_contact_rule_thresholds_unit():
+    from backend.app.models.models import QuickCheckin
+    from backend.app.rules.early_warnings import (
+        checkin_needs_earth_contact,
+        emotional_needs_earth_contact,
+        is_early_rule,
+    )
+
+    now = datetime.now(timezone.utc)
+    mk = lambda mood=4, iso=False, days=0: QuickCheckin(mood=mood, feels_isolated=iso, created_at=now - timedelta(days=days))
+    assert not checkin_needs_earth_contact([], now)
+    assert not checkin_needs_earth_contact([mk(iso=True)], now)
+    assert checkin_needs_earth_contact([mk(iso=True), mk(mood=1)], now)
+    assert checkin_needs_earth_contact([mk(mood=2), mk(), mk(iso=True)], now)
+    assert not checkin_needs_earth_contact([mk(mood=3), mk(iso=True), mk(iso=True)], now)  # el nuevo no es señal
+    assert not checkin_needs_earth_contact([mk(iso=True), mk(), mk(), mk(iso=True)], now)  # solo los 3 últimos
+    assert not checkin_needs_earth_contact([mk(iso=True), mk(iso=True, days=8)], now)  # fuera de la ventana de 7 días
+    assert emotional_needs_earth_contact(["FATIGUE", "ISOLATION"])
+    assert not emotional_needs_earth_contact(["FATIGUE"])
+    assert is_early_rule("RULE_EARLY_EARTH_CONTACT") and not is_early_rule("RULE_EMOTIONAL_CHECKIN_DEMO")

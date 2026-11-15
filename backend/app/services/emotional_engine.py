@@ -11,6 +11,11 @@ from backend.app.models.models import (
     EmotionalQuestion,
     EmotionalSupportRequest,
 )
+from backend.app.rules.early_warnings import (
+    SOURCE_EMOTIONAL,
+    create_earth_contact_alert,
+    emotional_needs_earth_contact,
+)
 
 
 def utcnow() -> datetime:
@@ -228,6 +233,19 @@ class EmotionalWellnessEngine:
             )
             db.add(alert_created)
             db.flush()
+
+        # Alerta temprana "Contacto con Tierra" si la dimensión de aislamiento queda en preocupación
+        # (independiente del estado anterior; una sola abierta por astronauta)
+        if emotional_needs_earth_contact(concern_dimensions + severe_concern_dimensions):
+            create_earth_contact_alert(
+                db,
+                astronaut_id=assessment.astronaut_id,
+                mission_id=assessment.mission_id,
+                source=SOURCE_EMOTIONAL,
+                environment_code=assessment.environment_code,
+                phase_code=assessment.phase_code,
+                is_simulated=bool(assessment.is_simulated),
+            )
 
         return result, alert_created
 
