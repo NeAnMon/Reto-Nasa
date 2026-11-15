@@ -122,7 +122,7 @@ body[data-theme="daylight-clean"] .av-console {
 .av-grid-sum > .av-col-b { container-type: inline-size; container-name: av-col-b; }
 .av-col-c { flex: 1 1 320px; max-width: 400px; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
 .av-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; }
-/* Prioridad 1 del Resumen: grilla 3×2 (5 tarjetas + alertas C&W). Las celdas de una fila se
+/* Prioridad 1 del Resumen: panel de alertas C&W a todo el ancho y debajo 5 tarjetas en 3 columnas. Las celdas de una fila se
  * estiran a la misma altura (align-items: stretch) y el pie se empuja al fondo de cada tarjeta. */
 .av-cards.av-cards-3x2 { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: stretch; }
 .av-cards-3x2 > .av-card > .av-foot { margin-top: auto; }
@@ -142,6 +142,26 @@ body[data-theme="daylight-clean"] .av-console {
 .av-alert-row[data-cls="W"] { background: color-mix(in srgb, var(--av-r) 16%, var(--av-panel)); border-color: var(--av-r); }
 .av-alert-row[data-cls="C"] { background: color-mix(in srgb, var(--av-y) 13%, var(--av-panel)); border-color: var(--av-y); }
 .av-alert-row[data-cls="W"] .av-sub, .av-alert-row[data-cls="C"] .av-sub { color: var(--av-text); }
+/* Issue #30: el panel de alertas C&W del Resumen ocupa todo el ancho de Prioridad 1 (encima de las
+   tarjetas) y cada alerta lleva su recomendación temprana y el enlace a la sección Alertas. */
+.av-cards-3x2 > .av-card-alerts { grid-column: 1 / -1; }
+.av-cw-sub { margin: 0; }
+.av-cw-count { display: flex; align-items: center; gap: 8px; }
+.av-cw-list { max-height: 520px; }
+.av-cw-body { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.av-cw-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.av-cw-msg { min-width: 0; }
+.av-cw-tag { font: 600 11px/1.5 "IBM Plex Mono", monospace; letter-spacing: .04em; text-transform: uppercase; padding: 0 6px; border: 1px solid var(--av-text2); color: var(--av-text); background: var(--av-panel); }
+.av-cw-tag-new { border-color: var(--av-s); color: var(--av-s); }
+.av-cw-new { box-shadow: inset 4px 0 0 var(--av-s); }
+.av-cw-rec { margin: 2px 0 0; padding: 6px 8px; border: 1px solid var(--av-border); background: var(--av-panel); color: var(--av-text); font-size: 14px; line-height: 1.4; white-space: pre-line; overflow-wrap: anywhere; }
+.av-cw-rec .av-lbl { display: block; margin-bottom: 2px; }
+.av-cw-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
+.av-cw-time { text-align: right; white-space: nowrap; }
+@container av-col-b (max-width: 400px) {
+  .av-cw-row { grid-template-columns: auto minmax(0, 1fr); }
+  .av-cw-time { grid-column: 2; text-align: left; }
+}
 .av-card { padding: 12px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .av-card-C { border-color: var(--av-y); }
 .av-card-W { border-color: var(--av-r); }

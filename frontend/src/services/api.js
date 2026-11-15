@@ -210,6 +210,17 @@ export const apiService = {
       throw err;
     }
 
+    // Escritura correcta (medición, check-in, cuestionario, evaluación, ACK…): puede haber generado o
+    // cambiado alertas. Se avisa a la app para que refresque el estado de alertas (console.js, issue #30).
+    const method = String(options.method || "GET").toUpperCase();
+    if (method !== "GET" && method !== "HEAD" && !path.startsWith("/auth/")) {
+      try {
+        window.dispatchEvent(new CustomEvent("semsa:data-changed", { detail: { path, method } }));
+      } catch {
+        /* sin window (pruebas): nada que avisar */
+      }
+    }
+
     const contentType = response.headers.get("content-type") || "";
     if (contentType.includes("application/json")) {
       return await response.json();
