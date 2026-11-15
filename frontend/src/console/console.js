@@ -74,15 +74,12 @@ const DICT = {
     actionFailed: "No se pudo completar la acción: {msg}",
     // barra de estado
     statusAria: "Barra de estado de la misión",
-    mission: "Misión",
     crewMember: "Tripulante",
     groundLink: "Enlace con Tierra",
     envBannerAlt: "Entorno {label}: {scene}",
     delay: "· retardo",
     countsAria: "Contadores de alertas",
     unacked: "Sin reconocer",
-    sensors: "Sensores",
-    online: "en línea",
     // celda entorno
     envLabel: "Entorno",
     syncSending: "enviando…",
@@ -359,15 +356,12 @@ const DICT = {
     envPostFailed: "Environment: {label}. Could not be recorded on the server ({msg}); applied on this device only.",
     actionFailed: "Could not complete the action: {msg}",
     statusAria: "Mission status bar",
-    mission: "Mission",
     crewMember: "Crew member",
     groundLink: "Ground link",
     envBannerAlt: "{label} environment: {scene}",
     delay: "· delay",
     countsAria: "Alert counters",
     unacked: "Unacknowledged",
-    sensors: "Sensors",
-    online: "online",
     envLabel: "Environment",
     syncSending: "sending…",
     syncSendingHelp: "Recording the change on the server",
@@ -1644,17 +1638,18 @@ export function renderChrome(appState) {
   chromeState.lastAcked = hera.ackedLevel;
 }
 
+/* Rótulo fijo de la primera celda de la barra de estado (antes "Misión · DEMO", issue #5) */
+const BRAND_LABEL = "TeleCreation UTS";
+
 function statusBarHTML(appState, d, alerts) {
   const s = d.s;
   const mission = s.mission || {};
-  const astro = s.astronaut || appState.currentUser || {};
+  // Tripulante = usuario con la sesión iniciada (issue #5), no el astronauta seleccionado
+  const astro = appState.currentUser || s.astronaut || {};
   const ctx = s.context || {};
   const w = alerts.filter((a) => a.cls === "W").length;
   const c = alerts.filter((a) => a.cls === "C").length;
   const unack = alerts.filter((a) => isAlarm(a.cls) && !a.acked).length;
-  const sensors = s.sensors || [];
-  const online = sensors.filter((x) => String(x.status || "").toUpperCase() === "ONLINE" || String(x.status || "").toUpperCase() === "ACTIVE").length;
-  const stale = d.cards.filter((x) => x.state === "STALE").length;
   const link = ctx.connectivity_status || "—";
   const crew = `${astro.full_name || "—"}${astro.crew_code ? ` · ${astro.crew_code}` : ""}`;
   const envName = bt(ctx.environment_name) || ctx.environment_code || "";
@@ -1662,7 +1657,7 @@ function statusBarHTML(appState, d, alerts) {
   const T = tt();
   return `
   <div class="av-status" role="group" aria-label="${esc(T.statusAria)}">
-    <div class="av-st"><span class="av-lbl">${esc(T.mission)}${mission.is_simulated ? " · DEMO" : ""}</span><span class="av-v" title="${esc(bt(mission.name) || "")}">${esc(mission.code || "—")}</span></div>
+    <div class="av-st"><span class="av-lbl">${esc(BRAND_LABEL)}</span><span class="av-v" title="${esc(bt(mission.name) || "")}">${esc(mission.code || "—")}</span></div>
     <div class="av-st"><span class="av-lbl">${esc(T.crewMember)}</span><span class="av-v" title="${esc(crew)}">${esc(crew)}</span></div>
     <div class="av-st av-st-row av-st-fixed">
       <div><div class="av-lbl">GMT</div><div class="av-mono av-v av-st-clock" id="av-gmt">${gmt(chromeNow())}</div></div>
@@ -1677,7 +1672,6 @@ function statusBarHTML(appState, d, alerts) {
       <span class="av-st-count">${c ? badge("C", CLASS_PLURAL.C) : `<span class="av-badge" style="color:var(--av-y);border-color:var(--av-y)" title="${esc(CLASS_PLURAL.C)}">C</span>`}<span class="av-mono av-v">${c}</span></span>
       <span class="av-st-col"><span class="av-lbl">${esc(T.unacked)}</span><span class="av-mono av-v">${unack}</span></span>
     </div>
-    <div class="av-st av-st-fixed"><span class="av-lbl">${esc(T.sensors)}</span><span class="av-st-line"><span class="av-mono av-v">${online}/${sensors.length}</span> ${esc(T.online)}${stale ? ` · ${badge("S")} ${stale}` : ""}</span></div>
   </div>`;
 }
 
