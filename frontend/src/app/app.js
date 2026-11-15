@@ -6,12 +6,11 @@ import {
   renderChrome,
   refreshConsoleData,
 } from "../console/console.js";
-import { renderMeasureView } from "../console/views/measure.js";
+import { renderMeasureView, openMeasureItem, WELLNESS_QUESTIONNAIRE } from "../console/views/measure.js";
 import { renderCountermeasuresView } from "../console/views/countermeasures.js";
 import { renderAlertsView } from "../console/views/alerts.js";
 import { renderMessagesView } from "../console/views/messages.js";
 import { renderLogbookView } from "../console/views/logbook.js";
-import { renderWellnessView } from "../console/views/wellness.js";
 import { renderCognitiveView } from "../console/views/cognitive.js";
 import { renderEmotionalView } from "../console/views/emotional.js";
 import { renderCrewView } from "../console/views/crew.js";
@@ -150,6 +149,8 @@ const appHelpers = {
 const SECTION_REDIRECTS = {
   "body-explorer": "mission-control",
   "mission-analytics": "mission-control",
+  // El cuestionario de bienestar psicológico vive ahora en "Registrar medición" (se abre ya elegido)
+  "wellness-center": "my-health-check",
 };
 
 /* Escribe texto en un elemento solo si existe (el antiguo encabezado hdr-* ya no está en el HTML) */
@@ -177,9 +178,8 @@ function setMoreMenu(open, { focusButton = false } = {}) {
 }
 
 /* Secciones sin entrada propia en la navegación que cuelgan de una pestaña: se marca la pestaña madre.
- * Bienestar psicológico, Evaluación cognitiva y Check-in emocional se abren desde Bienestar → Hoy. */
+ * Evaluación cognitiva y Check-in emocional se abren desde Bienestar → Hoy. */
 const NAV_PARENT = {
-  "wellness-center": "wellbeing-hub",
   "cognitive-center": "wellbeing-hub",
   "emotional-center": "wellbeing-hub",
 };
@@ -438,6 +438,7 @@ async function refreshGlobalHeaderAndSummary() {
 }
 
 async function navigateToSection(sectionId) {
+  if (sectionId === "wellness-center") openMeasureItem(WELLNESS_QUESTIONNAIRE);
   sectionId = SECTION_REDIRECTS[sectionId] || sectionId;
   appState.currentSection = sectionId;
   document.body.classList.toggle(
@@ -464,8 +465,6 @@ async function navigateToSection(sectionId) {
       await renderWellbeingView(container, appState, expansionHelpers);
     } else if (sectionId === "my-health-check") {
       await renderMeasureView(container, appState, expansionHelpers);
-    } else if (sectionId === "wellness-center") {
-      await renderWellnessView(container, appState, expansionHelpers);
     } else if (sectionId === "communication-center") {
       await renderMessagesView(container, appState, expansionHelpers);
     } else if (sectionId === "cognitive-center") {

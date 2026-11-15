@@ -4,7 +4,8 @@
  *
  * Subsecciones (pestañas internas WAI-ARIA, la elegida se recuerda en la sesión):
  *   - Hoy: check-in rápido (sueño, ánimo, energía, aislamiento, nota privada) + tarjeta de sueño
- *     y accesos al cuestionario completo, check-in emocional, evaluación cognitiva y respiración.
+ *     y accesos al check-in emocional y a la evaluación cognitiva (el cuestionario de bienestar
+ *     psicológico está en "Registrar medición").
  *   - Contacto con Tierra: tarjeta informativa (recomendación, no funcionalidad) sobre el contacto
  *     asíncrono con seres queridos frente al aislamiento; enlaza a Mensajes (canal de misión).
  *   - Tiempo libre: hobbies breves con filtros, pasos, fuente NASA y registro "Lo hice".
@@ -110,15 +111,11 @@ const DICT = {
     noteShort: "Nota",
     // Hoy · herramientas
     toolsTitle: "Más herramientas de bienestar",
-    toolWellness: "Cuestionario completo de bienestar",
-    toolWellnessSub: "Unos 5 minutos · con historial y recomendaciones",
     toolEmotional: "Check-in emocional",
     toolEmotionalSub: "Cuestionarios que te envía el equipo de apoyo",
     toolPending: "{n} pendientes",
     toolCognitive: "Evaluación cognitiva",
     toolCognitiveSub: "Atención, memoria y tiempo de reacción",
-    toolBreath: "Respiración guiada 4-4-4-4",
-    toolBreathSub: "Dentro del cuestionario completo · 2 minutos para bajar el ritmo",
     // Contacto con Tierra (recomendación; no es una funcionalidad de la app)
     earthTitle: "Contacto con Tierra",
     earthTag: "Recomendación",
@@ -269,15 +266,11 @@ const DICT = {
     isolatedShort: "Isolation",
     noteShort: "Note",
     toolsTitle: "More well-being tools",
-    toolWellness: "Full well-being questionnaire",
-    toolWellnessSub: "About 5 minutes · with history and recommendations",
     toolEmotional: "Emotional check-in",
     toolEmotionalSub: "Questionnaires sent by the support team",
     toolPending: "{n} pending",
     toolCognitive: "Cognitive assessment",
     toolCognitiveSub: "Attention, memory and reaction time",
-    toolBreath: "4-4-4-4 guided breathing",
-    toolBreathSub: "Inside the full questionnaire · 2 minutes to slow down",
     earthTitle: "Contact with Earth",
     earthTag: "Recommendation",
     earthWhy: "Feeling close to the people you love helps a lot when you live isolated in a small space. NASA's Human Research Program (HRP) identifies isolation and confinement as a risk to mood, sleep and getting along with others, and support from loved ones is one of the things that cushions it most.",
@@ -626,11 +619,9 @@ function toolsHTML(T, appState, own) {
   return `<section class="av-panel" aria-labelledby="av-wb-tools-h">
       <div class="av-panel-head"><h3 class="av-h3" id="av-wb-tools-h">${esc(T.toolsTitle)}</h3></div>
       <ul class="av-wb-tools">
-        ${tool("wellness-center", T.toolWellness, T.toolWellnessSub)}
         ${tool("emotional-center", T.toolEmotional, T.toolEmotionalSub,
           pending > 0 ? ` <span class="av-wb-count">${esc(fmtT(T.toolPending, { n: pending }))}</span>` : "")}
         ${tool("cognitive-center", T.toolCognitive, T.toolCognitiveSub)}
-        ${tool("wellness-center", T.toolBreath, T.toolBreathSub)}
       </ul>
     </section>`;
 }
