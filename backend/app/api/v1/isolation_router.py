@@ -40,7 +40,9 @@ from backend.app.security.auth import (
     utcnow,
     verify_astronaut_access,
 )
-from backend.app.rules.early_warnings import SOURCE_CHECKIN, checkin_needs_earth_contact, create_earth_contact_alert
+from backend.app.rules.early_warnings import (
+    SOURCE_CHECKIN, checkin_needs_earth_contact, create_earth_contact_alert, refresh_wellbeing_reminders,
+)
 from backend.app.services.gamification import award_activity_xp, record_gamification_mission
 
 isolation_router = APIRouter()
@@ -55,6 +57,16 @@ def _role(user: User) -> str:
 
 def _iso(dt: Optional[datetime]) -> Optional[str]:
     return ensure_aware(dt).isoformat() if dt else None
+
+
+def _refresh_reminders(db: Session, astronaut_ids: List[int]) -> None:
+    """Recordatorios de tiempo libre y tripulación (rules/early_warnings.py, issue #44): tras cada acción se
+    crean o se retiran. La acción ya está guardada: un fallo aquí nunca la deshace ni cambia la respuesta."""
+    try:
+        refresh_wellbeing_reminders(db, astronaut_ids)
+        db.commit()
+    except Exception:
+        db.rollback()
 
 
 # ============================================================================
@@ -345,6 +357,7 @@ def log_leisure_activity(
     db.add(row)
     db.commit()
     db.refresh(row)
+    _refresh_reminders(db, [user.id])  # retira el recordatorio de tiempo libre (issue #44)
     return {
         "id": row.id,
         "code": row.activity_code,
@@ -661,6 +674,7 @@ def create_crew_activity(
         )
     db.commit()
     db.refresh(act)
+    _refresh_reminders(db, _crew_ids(db, act.mission_id))  # recordatorios de tripulación (issue #44)
     return _serialize_activity(db, act, user.id)
 
 
@@ -681,6 +695,7 @@ def respond_crew_activity(
     part.responded_at = utcnow()
     db.commit()
     db.refresh(act)
+    _refresh_reminders(db, _crew_ids(db, act.mission_id))  # recordatorios de tripulación (issue #44)
     return _serialize_activity(db, act, user.id)
 
 
@@ -717,6 +732,7 @@ def attend_crew_activity(
     _finalize_activity(db, act.id)
     db.expire_all()
     act = db.query(CrewActivity).filter(CrewActivity.id == activity_id).first()
+    _refresh_reminders(db, _crew_ids(db, act.mission_id))  # recordatorios de tripulación (issue #44)
     return _serialize_activity(db, act, user.id)
 
 
@@ -744,6 +760,7 @@ def cancel_crew_activity(
     act.cancelled_at = utcnow()
     db.commit()
     db.refresh(act)
+    _refresh_reminders(db, _crew_ids(db, act.mission_id))  # recordatorios de tripulación (issue #44)
     return _serialize_activity(db, act, user.id)
 
 
@@ -789,4 +806,5 @@ def complete_crew_activity(
     _finalize_activity(db, act.id)
     db.expire_all()
     act = db.query(CrewActivity).filter(CrewActivity.id == activity_id).first()
+    _refresh_reminders(db, _crew_ids(db, act.mission_id))
     return _serialize_activity(db, act, user.id)

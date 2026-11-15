@@ -647,6 +647,31 @@ export const EXACT = {
   "Sin videollamadas: con el retardo de la comunicación una conversación en directo resulta frustrante. Repite el check-in de Bienestar en 24 h; si las señales continúan, coméntalo con tu especialista de apoyo en el próximo contacto con Tierra.":
     "No video calls: with the communication delay, a live conversation becomes frustrating. Repeat the Wellbeing check-in in 24 h; if the signs continue, talk it over with your support specialist at the next contact with Earth.",
 
+  /* ---------- rules/early_warnings.py: recordatorios de tiempo libre y tripulación (issue #44) ---------- */
+  "[RECORDATORIO] Tiempo libre pendiente": "[REMINDER] Free time pending",
+  "No hay ninguna actividad de tiempo libre registrada en las últimas 48 horas. El programa de investigación humana de la NASA (HRP) recomienda reservar cada día un rato breve para aficiones (plantas, lectura, música, dibujo, fotografía...) como contramedida frente a la fatiga y la monotonía del aislamiento.":
+    "No free-time activity has been logged in the last 48 hours. NASA's Human Research Program (HRP) recommends setting aside a short time every day for hobbies (plants, reading, music, drawing, photography...) as a countermeasure against the fatigue and monotony of isolation.",
+  "Recomendación: elige hoy una actividad breve (10–30 min) en Bienestar → Tiempo libre y, al terminar, pulsa «Lo hice» para registrarla.":
+    "Recommendation: pick a short activity today (10–30 min) in Wellbeing → Free time and, when you finish, press “I did it” to log it.",
+  "El aviso se retira solo en cuanto registras una actividad de tiempo libre.":
+    "The reminder clears itself as soon as you log a free-time activity.",
+  "Retirada automática: se registró una actividad de tiempo libre.":
+    "Cleared automatically: a free-time activity was logged.",
+  "[RECORDATORIO] Actividad de tripulación pendiente de respuesta": "[REMINDER] Crew activity awaiting your answer",
+  "[RECORDATORIO] Meta semanal de tripulación sin cumplir": "[REMINDER] Weekly crew goal not met",
+  "Hay una actividad de integración de la tripulación que empieza en las próximas 48 horas (o ya está en curso) y aún no has respondido si te unes. Las actividades en grupo son una contramedida del riesgo de aislamiento y confinamiento (NASA HRP): mejoran la cohesión y la comunicación del equipo.":
+    "There is a crew bonding activity starting in the next 48 hours (or already under way) and you have not said yet whether you are joining. Group activities are a countermeasure for the isolation and confinement risk (NASA HRP): they improve team cohesion and communication.",
+  "La tripulación no ha completado ninguna actividad de integración esta semana y no hay ninguna programada. La meta es al menos una por semana: las actividades en grupo son una contramedida del riesgo de aislamiento y confinamiento (NASA HRP).":
+    "The crew has not completed any bonding activity this week and none is scheduled. The goal is at least one a week: group activities are a countermeasure for the isolation and confinement risk (NASA HRP).",
+  "Recomendación: abre Bienestar → Tripulación y responde si te unes a la actividad; si te unes, marca tu asistencia cuando empiece.":
+    "Recommendation: open Wellbeing → Crew and answer whether you are joining the activity; if you join, mark your attendance when it starts.",
+  "Recomendación: propón en Bienestar → Tripulación una actividad breve para esta semana (comida compartida, película, observación de la Tierra...).":
+    "Recommendation: propose a short activity for this week in Wellbeing → Crew (shared meal, movie, Earth observation...).",
+  "El aviso se retira solo cuando respondes a la invitación o la tripulación programa o completa una actividad.":
+    "The reminder clears itself when you answer the invitation or the crew schedules or completes an activity.",
+  "Retirada automática: la actividad de tripulación ya no está pendiente.":
+    "Cleared automatically: the crew activity is no longer pending.",
+
   /* ---------- rules/prediction_alerts.py: alerta temprana del pronóstico (issue #30) ---------- */
   "El último valor registrado sigue en rango normal.": "The last recorded value is still within the normal range.",
   "Es una proyección exploratoria de la tendencia, no una medición ni un diagnóstico.":

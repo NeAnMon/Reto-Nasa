@@ -55,7 +55,9 @@ from backend.app.rules.engine import (
     evaluate_measurement,
     upsert_alert_for_measurement,
 )
-from backend.app.rules.early_warnings import EARLY_RULE_PREFIX, is_early_rule
+from backend.app.rules.early_warnings import (
+    CREW_RULE, EARLY_RULE_PREFIX, LEISURE_RULE, is_early_rule, refresh_wellbeing_reminders,
+)
 from backend.app.rules.alert_sources import (
     SOURCE_ENGINES,
     alert_source_engine,
@@ -1431,7 +1433,38 @@ def get_health_summary(
     db: Session = Depends(get_db),
 ):
     target_user, mission = _resolve_target_astronaut_and_mission(db, user, astronaut_id, mission_id)
-    return _build_astronaut_health_summary(db, target_user, mission)
+    refresh_reminders_safely(db, [target_user.id])
+    summary = _build_astronaut_health_summary(db, target_user, mission)
+    summary["wellbeing_reminders"] = _open_wellbeing_reminders(db, user, target_user.id)
+    return summary
+
+
+def _open_wellbeing_reminders(db: Session, user: User, astronaut_id: int) -> Dict[str, bool]:
+    """Recordatorios abiertos de Bienestar (marcan las pestañas Tiempo libre y Tripulación). Mismo criterio
+    de privacidad que las alertas tempranas: el líder no los ve si el astronauta no comparte sus señales."""
+    if _early_alert_hidden_astronauts(db, user, [astronaut_id]):
+        return {"leisure": False, "crew": False}
+    rules = {
+        r[0]
+        for r in db.query(Alert.rule_code)
+        .filter(
+            Alert.astronaut_id == astronaut_id,
+            Alert.rule_code.in_([LEISURE_RULE, CREW_RULE]),
+            Alert.status != "RESOLVED",
+        )
+        .all()
+    }
+    return {"leisure": LEISURE_RULE in rules, "crew": CREW_RULE in rules}
+
+
+def refresh_reminders_safely(db: Session, astronaut_ids: List[int]) -> None:
+    """Recordatorios de tiempo libre y tripulación (rules/early_warnings.py, issue #44). Se evalúan al
+    consultar porque no hay planificador; un fallo nunca impide responder la consulta."""
+    try:
+        refresh_wellbeing_reminders(db, astronaut_ids)
+        db.commit()
+    except Exception:
+        db.rollback()
 
 
 @router.get("/health/measurements")
@@ -2161,6 +2194,7 @@ def list_alerts(
     if not filter_ids:
         return {"alerts": []}
 
+    refresh_reminders_safely(db, filter_ids)
     query = db.query(Alert).filter(Alert.astronaut_id.in_(filter_ids))
     if mission_id:
         query = query.filter(Alert.mission_id == mission_id)
