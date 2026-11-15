@@ -100,7 +100,12 @@ from backend.app.api.v1.expansion_router import (
     expansion_router,
 )
 
+from backend.app.api.v1.prediction_router import router as prediction_router
+
 router = APIRouter(prefix="/api/v1")
+
+
+router.include_router(prediction_router)
 
 
 BODY_REGIONS_CATALOG = [

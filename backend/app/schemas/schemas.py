@@ -389,3 +389,51 @@ class CrewActivityCreate(BaseModel):
 
 class CrewActivityRespond(BaseModel):
     response: str = Field(..., pattern="^(JOINED|DECLINED)$")
+
+
+
+# ============================================================================
+# MODULE: PHYSIOLOGICAL PREDICTIONS - SEMSA
+# ============================================================================
+
+class ForecastPoint(BaseModel):
+    """One daily physiological forecast."""
+
+    date: str
+    t: int
+    value: float
+    out_of_valid_range: bool
+    z_score: Optional[float] = None
+    z_band: Optional[str] = None
+    direction: Optional[str] = None
+
+
+class PredictionResponse(BaseModel):
+    """Response from the physiological prediction service."""
+
+    status: str
+    indicator_code: str
+    unit: Optional[str] = None
+
+    phase_code: Optional[str] = None
+    environment_code: Optional[str] = None
+
+    n_days: int
+
+    beta0: Optional[float] = None
+    beta1: Optional[float] = None
+
+    mae_ols: Optional[float] = None
+    mae_naive: Optional[float] = None
+
+    forecast: List[ForecastPoint] = Field(default_factory=list)
+
+    z_score: Optional[float] = None
+    z_band: Optional[str] = None
+    direction: Optional[str] = None
+
+    baseline_status: str
+    baseline_is_simulated: Optional[bool] = None
+
+    disclaimer: str
+

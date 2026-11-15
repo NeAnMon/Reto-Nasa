@@ -68,19 +68,20 @@ const DICT = {
     tlxLevel: { ok: "Turno manejable", warn: "Turno exigente", high: "Turno muy exigente" },
     tlxNote: "Media simple de las seis escalas (Raw TLX), sin la ponderación del índice oficial.",
     pvtTitle: "Test de reacción (tipo PVT)",
-    pvtIntro: "Pulsa el recuadro (o Espacio) en cuanto aparezca «¡YA!». No te adelantes.",
+    pvtIntro: "Pulsa Empezar test y, después, pulsa el recuadro (o Espacio) en cuanto aparezca «¡YA!». No te adelantes.",
     pvtLen: "Duración",
     pvtLens: { 60: "1 minuto (rápido, no validado)", 180: "3 minutos (duración del PVT-B)", 300: "5 minutos" },
-    pvtStart: "Pulsa aquí para empezar",
+    pvtStart: "Empezar test",
+    pvtAgain: "Repetir test",
     pvtWait: "Espera… ({s} s restantes)",
     pvtGo: "¡YA!",
     pvtEarly: "Demasiado pronto. Espera a «¡YA!»",
     pvtMs: "{ms} ms",
     pvtMiss: "Sin respuesta",
-    pvtDone: "Test completado. Pulsa para repetir.",
-    pvtFew: "Muy pocas respuestas para puntuar. Pulsa para repetir.",
+    pvtDone: "Test completado.",
+    pvtFew: "Muy pocas respuestas para puntuar. Repite el test.",
     pvtStop: "Detener test",
-    pvtStopped: "Test detenido. Pulsa para empezar de nuevo.",
+    pvtStopped: "Test detenido.",
     pvtAria: "Área del test de reacción",
     pvtNone: "Aún no has hecho el test en este chequeo (es opcional).",
     pvtMean: "Tiempo medio de reacción",
@@ -133,19 +134,20 @@ const DICT = {
     tlxLevel: { ok: "Manageable shift", warn: "Demanding shift", high: "Very demanding shift" },
     tlxNote: "Plain mean of the six scales (Raw TLX), without the weighting step of the official index.",
     pvtTitle: "Reaction test (PVT-style)",
-    pvtIntro: "Press the box (or Space) as soon as \"GO!\" appears. Don't jump the gun.",
+    pvtIntro: "Press Start test, then press the box (or Space) as soon as \"GO!\" appears. Don't jump the gun.",
     pvtLen: "Duration",
     pvtLens: { 60: "1 minute (quick, not validated)", 180: "3 minutes (length of the PVT-B)", 300: "5 minutes" },
-    pvtStart: "Press here to start",
+    pvtStart: "Start test",
+    pvtAgain: "Repeat test",
     pvtWait: "Wait… ({s} s left)",
     pvtGo: "GO!",
     pvtEarly: "Too early. Wait for \"GO!\"",
     pvtMs: "{ms} ms",
     pvtMiss: "No response",
-    pvtDone: "Test complete. Press to repeat.",
-    pvtFew: "Too few responses to score. Press to repeat.",
+    pvtDone: "Test complete.",
+    pvtFew: "Too few responses to score. Repeat the test.",
     pvtStop: "Stop test",
-    pvtStopped: "Test stopped. Press to start again.",
+    pvtStopped: "Test stopped.",
     pvtAria: "Reaction test area",
     pvtNone: "You haven't taken the test in this check yet (it's optional).",
     pvtMean: "Mean reaction time",
@@ -313,11 +315,15 @@ function pvtHTML(T) {
         <label for="av-sc-pvt-len">${esc(T.pvtLen)}</label>
         <select class="av-input" id="av-sc-pvt-len">${opts}</select>
       </div>
-      <button type="button" class="av-sc-pvt" id="av-sc-pvt" data-sc-pvt aria-label="${esc(T.pvtAria)}" aria-describedby="av-sc-pvt-live">
-        <span data-sc-pvt-txt>${esc(sc.pvtResult ? T.pvtDone : T.pvtStart)}</span>
+      <div class="av-mx-btns">
+        <button type="button" class="av-btn av-btn-primary" data-sc-pvt-start>${esc(sc.pvtResult ? T.pvtAgain : T.pvtStart)}</button>
+        <button type="button" class="av-btn" data-sc-pvt-stop hidden>${esc(T.pvtStop)}</button>
+      </div>
+      <button type="button" class="av-sc-pvt" id="av-sc-pvt" data-sc-pvt aria-label="${esc(T.pvtAria)}" aria-describedby="av-sc-pvt-live" hidden>
+        <span data-sc-pvt-txt></span>
       </button>
+      <p class="av-mx-p av-sub" data-sc-pvt-msg>${sc.pvtResult ? esc(T.pvtDone) : ""}</p>
       <span class="av-mx-sr" id="av-sc-pvt-live" aria-live="assertive" data-sc-pvt-live></span>
-      <div><button type="button" class="av-btn av-btn-sm" data-sc-pvt-stop hidden>${esc(T.pvtStop)}</button></div>
       <div data-sc-pvt-res>${pvtResultHTML(T)}</div>
       <p class="av-mx-p av-sub">${esc(T.pvtDevice)}</p>
     </fieldset>`;
@@ -451,22 +457,40 @@ export function bindShiftCheck(box, { today }) {
     syncTlx();
     const res = form.querySelector("[data-sc-pvt-res]");
     if (res) res.innerHTML = pvtResultHTML(t);
-    const txt = form.querySelector("[data-sc-pvt-txt]");
-    if (txt) txt.textContent = t.pvtStart;
+    const startBtn = form.querySelector("[data-sc-pvt-start]");
+    if (startBtn) startBtn.textContent = t.pvtStart;
+    const msg = form.querySelector("[data-sc-pvt-msg]");
+    if (msg) msg.textContent = "";
     const hist = box.querySelector("[data-sc-hist]");
     if (hist) hist.innerHTML = historyHTML(t);
   });
 }
 
-/* Test de reacción: pointerdown / Espacio-Enter para no sumar el retardo del evento click */
+/* Test de reacción. "Empezar test" es un botón primario como los del resto de la app (issue #26);
+ * el recuadro de respuesta solo aparece mientras corre el test y responde con pointerdown /
+ * Espacio-Enter para no sumar el retardo del evento click. */
 function bindPvt(form) {
   const btn = form.querySelector("[data-sc-pvt]");
   const txt = form.querySelector("[data-sc-pvt-txt]");
   const live = form.querySelector("[data-sc-pvt-live]");
+  const start = form.querySelector("[data-sc-pvt-start]");
   const stop = form.querySelector("[data-sc-pvt-stop]");
+  const msg = form.querySelector("[data-sc-pvt-msg]");
   const lenSel = form.querySelector("#av-sc-pvt-len");
   const resBox = form.querySelector("[data-sc-pvt-res]");
-  if (!btn) return;
+  if (!btn || !start) return;
+  /* Fin del test (completado, pocas respuestas o detenido): se oculta el recuadro, vuelve "Empezar/Repetir" */
+  const idle = (text) => {
+    btn.hidden = true;
+    btn.classList.remove("is-wait", "is-go");
+    stop.hidden = true;
+    start.hidden = false;
+    start.textContent = sc.pvtResult ? T().pvtAgain : T().pvtStart;
+    lenSel.disabled = false;
+    msg.textContent = text;
+    live.textContent = text;
+    start.focus();
+  };
   const T = () => tr(DICT);
   const alive = () => {
     if (!btn.isConnected) { stopShiftCheck(); return false; } // la pestaña cambió: se abandona el test
@@ -491,10 +515,8 @@ function bindPvt(form) {
   const finish = () => {
     const r = sc.run;
     stopShiftCheck();
-    stop.hidden = true;
-    lenSel.disabled = false;
     if (r.trials.length < PVT.minResponses) {
-      setBox(null, T().pvtFew, true);
+      idle(T().pvtFew);
       return;
     }
     sc.pvtResult = {
@@ -506,7 +528,7 @@ function bindPvt(form) {
       false_starts: r.falseStarts,
     };
     resBox.innerHTML = pvtResultHTML(T());
-    setBox(null, T().pvtDone, true);
+    idle(T().pvtDone);
   };
 
   const nextTrial = () => {
@@ -528,18 +550,24 @@ function bindPvt(form) {
     }, PVT.waitMin + Math.random() * PVT.waitSpan);
   };
 
+  start.addEventListener("click", () => {
+    if (sc.run) return;
+    sc.pvtResult = null;
+    resBox.innerHTML = pvtResultHTML(T());
+    const v = Number(lenSel.value);
+    sc.run = { state: "PAUSE", seconds: PVT.durations.includes(v) ? v : 60, t0: performance.now(), goAt: 0, trials: [], misses: 0, falseStarts: 0, timer: null };
+    msg.textContent = "";
+    start.hidden = true;
+    stop.hidden = false;
+    lenSel.disabled = true;
+    btn.hidden = false;
+    btn.focus({ preventScroll: true }); // Espacio/Enter responden en el recuadro desde el primer ensayo
+    nextTrial();
+  });
+
   const press = () => {
     const r = sc.run;
-    if (!r) {
-      sc.pvtResult = null;
-      resBox.innerHTML = pvtResultHTML(T());
-      const v = Number(lenSel.value);
-      sc.run = { state: "PAUSE", seconds: PVT.durations.includes(v) ? v : 60, t0: performance.now(), goAt: 0, trials: [], misses: 0, falseStarts: 0, timer: null };
-      stop.hidden = false;
-      lenSel.disabled = true;
-      nextTrial();
-      return;
-    }
+    if (!r) return; // el recuadro solo responde con el test en marcha (se empieza con "Empezar test")
     if (r.state === "WAIT") {
       r.falseStarts += 1;
       r.state = "PAUSE";
@@ -571,9 +599,6 @@ function bindPvt(form) {
   btn.addEventListener("click", (e) => e.preventDefault());
   stop.addEventListener("click", () => {
     stopShiftCheck();
-    stop.hidden = true;
-    lenSel.disabled = false;
-    setBox(null, T().pvtStopped, true);
-    btn.focus();
+    idle(T().pvtStopped);
   });
 }

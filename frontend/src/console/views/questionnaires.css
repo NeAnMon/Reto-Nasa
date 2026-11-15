@@ -50,10 +50,12 @@
 .av-sc-len .av-input { min-height: 44px; }
 .av-sc-len option { background: var(--av-panel); color: var(--av-text); }
 
-/* Área del test de reacción: el estado se lee por texto (y por contraste), nunca solo por color */
+/* Área del test de reacción: solo se ve con el test en marcha (se empieza con el botón primario
+   "Empezar test", issue #26). El estado se lee por texto (y por contraste), nunca solo por color. */
+.av-sc-pvt[hidden] { display: none; }
 .av-sc-pvt {
   width: 100%; min-height: 132px; padding: 12px; display: flex; align-items: center; justify-content: center;
-  border: 1px dashed var(--av-strong); background: var(--av-raised); color: var(--av-text); cursor: pointer;
+  border: 1px solid var(--av-strong); background: var(--av-raised); color: var(--av-text); cursor: pointer;
   font: 600 16px/1.3 "IBM Plex Sans", system-ui, sans-serif; text-align: center; overflow-wrap: anywhere;
   touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
 }
