@@ -250,6 +250,9 @@ class HealthIndicatorDefinition(Base):
     educational_summary = Column(Text, nullable=False)
     spaceflight_risk_explanation = Column(Text, nullable=False)
     supported_environments_csv = Column(Text, default="ALL", nullable=False)
+    # Catálogo de UI de la vista "Registrar medición" (JSON: nombre corto ES/EN, pasos, tipo de entrada,
+    # campo secundario, botones rápidos, etiquetas de escala). NULL = no aparece en esa vista.
+    measure_ui_json = Column(Text, nullable=True)
 
 
 class HealthBaseline(Base):

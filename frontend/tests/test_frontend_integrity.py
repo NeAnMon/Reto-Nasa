@@ -696,3 +696,179 @@ def test_predictions_view_follows_calibrated_forecast_contract():
     assert '!("threshold_projection" in p) && !("recommendation" in p)' in view_js
     assert 't && typeof t === "object"' in view_js
     assert "innerHTML" in view_js and "${rec.text}" not in view_js and "${ev.note}" not in view_js
+
+
+def _function_body(source, signature):
+    """Texto de una función de primer nivel: desde su firma hasta la siguiente llave de cierre en columna 0."""
+    start = source.index(signature)
+    return source[start:source.index("\n}\n", start)]
+
+
+def test_crew_selector_lives_in_status_bar_and_old_topbar_selector_is_gone():
+    """La celda "Tripulante" de la barra de estado es el selector del astronauta mostrado (líder y
+    administración); el selector anterior de la fila de pestañas (#topbar-crew-select) ya no existe."""
+    console_js = (FRONTEND_ROOT / "src" / "console" / "console.js").read_text(encoding="utf-8")
+    index_html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+    app_js = (FRONTEND_ROOT / "src" / "app" / "app.js").read_text(encoding="utf-8")
+    console_css = (FRONTEND_ROOT / "src" / "console" / "console.css").read_text(encoding="utf-8")
+
+    # 1. El selector se pinta en la barra de estado, con rótulo y ayuda accesible asociados
+    cell = _function_body(console_js, "function crewCellHTML(appState, sessionName)")
+    assert '<select id="av-crew-select"' in cell
+    assert '<label class="av-lbl" for="av-crew-select">' in cell
+    assert 'aria-describedby="av-crew-help"' in cell and '<span id="av-crew-help"' in cell
+    assert "${crewCellHTML(appState, crew)}" in _function_body(console_js, "function statusBarHTML(appState, d, alerts)")
+    assert ".av-crew-select" in console_css
+
+    # 2. Solo líder y administración: un astronauta no recibe selector (texto fijo con su sesión)
+    selectable = _function_body(console_js, "function selectableAstronauts(appState)")
+    assert '=== "ASTRONAUT") return [];' in selectable
+    assert 'filter((u) => u.role_code === "ASTRONAUT")' in selectable
+    assert "if (!list.length) {" in cell
+
+    # 3. Los datos de usuario (id, nombre, código) se escapan al pintar las opciones
+    assert 'value="${esc(a.id)}"' in cell
+    assert '${esc(`${a.full_name || "—"}${a.crew_code ? ` · ${a.crew_code}` : ""}`)}</option>' in cell
+    assert "${a.full_name}" not in cell and ">${a." not in cell  # nada de datos de usuario sin esc()
+
+    # 4. Listener delegado en el encabezado (la barra se reescribe): solo ids numéricos, vía helpers.selectAstronaut
+    init = _function_body(console_js, "export function initChrome(appState, helpers = {})")
+    assert 'root.addEventListener("change", (ev) => {' in init
+    assert 'ev.target.closest("#av-crew-select")' in init
+    assert r"if (!sel || !/^\d+$/.test(sel.value)) return;" in init
+    assert "setSelectedAstronaut(Number(sel.value));" in init
+    assert "await hp.selectAstronaut(id);" in _function_body(console_js, "async function setSelectedAstronaut(id)")
+
+    # 5. El repintado de la barra es por celdas y devuelve el foco al selector que lo tenía
+    render = _function_body(console_js, "export function renderChrome(appState)")
+    assert "setStatusHTML(statusEl, statusBarHTML(st, d, alerts));" in render
+    assert 'focusedId === "av-env-select" || focusedId === "av-crew-select"' in render
+    assert "function setStatusHTML(el, html)" in console_js
+
+    # 6. Sin restos del selector anterior ni de su clave i18n en todo el frontend
+    hits = []
+    for path in [FRONTEND_ROOT / "index.html", *(FRONTEND_ROOT / "src").rglob("*"), *(FRONTEND_ROOT / "dev").rglob("*")]:
+        if path.suffix not in {".js", ".css", ".html"} or not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8")
+        hits += [f"{path.relative_to(FRONTEND_ROOT)}: {word}" for word in ("topbar-crew", '"crew.label"') if word in text]
+        if re.search(r"\.av-crew(?![\w-])", text) or re.search(r'class="[^"]*\bav-crew(?![\w-])', text):
+            hits.append(f"{path.relative_to(FRONTEND_ROOT)}: .av-crew")
+    assert not hits, f"Restos del selector de tripulante anterior: {hits}"
+    assert "topbar-crew-select" not in index_html and "topbar-crew-select" not in app_js
+
+
+def test_select_astronaut_updates_mission_and_is_shared_by_views():
+    """Cambiar de tripulante fija también una misión suya, invalida el resumen anterior y, si falla,
+    vuelve al estado anterior; el encabezado y las vistas usan el mismo helper (appHelpers.selectAstronaut)."""
+    app_js = (FRONTEND_ROOT / "src" / "app" / "app.js").read_text(encoding="utf-8")
+    views_dir = FRONTEND_ROOT / "src" / "console" / "views"
+    router_py = (PROJECT_ROOT / "backend" / "app" / "api" / "v1" / "router.py").read_text(encoding="utf-8")
+
+    # 1. selectAstronaut: astronauta + misión + resumen invalidado antes de pedir el nuevo
+    select = _function_body(app_js, "async function selectAstronaut(astronautId, { section, navigate = true } = {})")
+    assert "appState.selectedAstronautId = id;" in select
+    assert "appState.selectedMissionId = missionIdForAstronaut(id);" in select
+    assert "appState.healthSummary = null;" in select
+    assert select.index("appState.selectedMissionId = missionIdForAstronaut(id);") < select.index("await refreshGlobalHeaderAndSummary();")
+    # un astronauta no puede cambiar a otro tripulante
+    assert 'if (role === "ASTRONAUT" && id !== Number(appState.currentUser?.id)) return false;' in select
+
+    # 2. Dos cambios seguidos: gana el último; ante un error se restaura el último estado coherente
+    assert "const seq = ++selectAstronautSeq;" in select and select.count("if (seq !== selectAstronautSeq) return false;") == 2
+    assert "const prev = selectAstronautStable || {" in select
+    for line in ("appState.selectedAstronautId = prev.astronautId;", "appState.selectedMissionId = prev.missionId;",
+                 "appState.healthSummary = prev.summary;", "showToast(fmt(tr(DICT).crewChangeFailed"):
+        assert line in select, f"selectAstronaut must restore the previous crew member: {line}"
+    refresh = _function_body(app_js, "async function refreshGlobalHeaderAndSummary()")
+    assert "if (appState.selectedAstronautId !== astronautId || appState.selectedMissionId !== missionId) return;" in refresh
+    assert refresh.index("!== missionId) return;") < refresh.index("appState.healthSummary = summary;")
+
+    # 3. La misión sale de las asignaciones del usuario (GET /users → missions[].mission_id, _serialize_user)
+    mission = _function_body(app_js, "function missionIdForAstronaut(astronautId)")
+    assert "((user && user.missions) || []).map((m) => m.mission_id)" in mission
+    assert "if (!ids.length) return current;" in mission
+    assert '"mission_id": ma.mission.id,' in router_py and '"missions": missions_assigned,' in router_py
+    # al abrir la sesión la misión también es una del astronauta mostrado
+    assert "appState.selectedMissionId = missionIdForAstronaut(appState.selectedAstronautId);" in _function_body(
+        app_js, "async function onAuthenticated(user)")
+
+    # 4. El helper llega al encabezado y a las vistas; fmt (toast de error) está importado
+    helpers = app_js[app_js.index("const appHelpers = {"):app_js.index("};", app_js.index("const appHelpers = {"))]
+    assert "  selectAstronaut,\n" in helpers
+    assert "initChrome(appState, appHelpers);" in app_js
+    assert re.search(r'import \{[^}]*\bfmt\b[^}]*\} from "\.\./i18n/i18n\.js";', app_js)
+    alerts_js = (views_dir / "alerts.js").read_text(encoding="utf-8")
+    crew_js = (views_dir / "crew.js").read_text(encoding="utf-8")
+    assert "return helpers.selectAstronaut(astronautId, { navigate: false });" in alerts_js
+    assert alerts_js.count("if (!(await selectAstronautIfNeeded(ctx, Number(btn.getAttribute(\"data-al-astro\"))))) return;") == 2
+    assert 'helpers.selectAstronaut?.(Number(btn.getAttribute("data-cr-inspect")), { section: "mission-control" })' in crew_js
+    for name, text in (("alerts.js", alerts_js), ("crew.js", crew_js)):
+        assert "appState.selectedAstronautId =" not in text, f"{name} must change crew member through helpers.selectAstronaut"
+
+
+def test_crew_selector_texts_exist_in_spanish_and_english():
+    """Textos nuevos del selector de tripulante (console.js) y del aviso de error (app.js), en ES y EN."""
+    console_js = (FRONTEND_ROOT / "src" / "console" / "console.js").read_text(encoding="utf-8")
+    app_js = (FRONTEND_ROOT / "src" / "app" / "app.js").read_text(encoding="utf-8")
+    i18n_js = (FRONTEND_ROOT / "src" / "i18n" / "i18n.js").read_text(encoding="utf-8")
+
+    es_block, en_block = _dict_blocks(console_js)
+    for key in ("crewMember", "crewSession", "crewSelectHelp", "crewSrHelp"):
+        assert key in _keys(es_block, 4), f"console.js DICT.es needs {key}"
+        assert key in _keys(en_block, 4), f"console.js DICT.en needs {key}"
+    assert 'crewMember: "Tripulante",' in es_block and 'crewMember: "Crew member",' in en_block
+    assert 'crewSession: "Sesión iniciada: {name}",' in es_block and 'crewSession: "Signed in: {name}",' in en_block
+    for block in (es_block, en_block):  # la ayuda incluye quién tiene la sesión iniciada
+        for key in ("crewSelectHelp", "crewSrHelp"):
+            assert re.search(r"^    " + key + r': "[^"\n]*\{session\}[^"\n]*",$', block, re.M), f"{key} needs {{session}}"
+
+    app_es, app_en = _dict_blocks(app_js)
+    assert 'crewChangeFailed: "No se pudo cambiar de tripulante: {msg}",' in app_es
+    assert 'crewChangeFailed: "Could not switch crew member: {msg}",' in app_en
+
+    # la clave estática del selector anterior (index.html) se retiró de ambos idiomas
+    assert '"crew.label"' not in i18n_js
+
+
+def test_crew_name_can_be_edited_from_the_status_bar_context_menu():
+    """Clic derecho sobre la celda "Tripulante" (o el botón ✎) abre "Editar nombre"; se guarda con
+    PATCH /users/{id} y el nombre nuevo se refleja en el estado local sin recargar."""
+    console_js = (FRONTEND_ROOT / "src" / "console" / "console.js").read_text(encoding="utf-8")
+    console_css = (FRONTEND_ROOT / "src" / "console" / "console.css").read_text(encoding="utf-8")
+
+    # 1. La celda se marca como editable y trae un botón accesible (táctil / teclado)
+    cell = _function_body(console_js, "function crewCellHTML(appState, sessionName)")
+    assert "data-crew-cell" in cell
+    assert 'data-act="crew-rename"' in cell and 'aria-label="${esc(T.crewRename)}"' in cell
+
+    # 2. Menú contextual delegado en el encabezado y botón ✎ en el manejador de clics
+    init = _function_body(console_js, "export function initChrome(appState, helpers = {})")
+    assert 'root.addEventListener("contextmenu", (ev) => {' in init
+    assert '[data-crew-cell]' in init and "ev.preventDefault();" in init and "openCrewMenu(" in init
+    assert 'act === "crew-rename"' in init and "openCrewRename(" in init
+
+    # 3. El diálogo escapa el nombre, exige uno no vacío y guarda por la API
+    rename = _function_body(console_js, "function openCrewRename(x, y)")
+    assert 'value="${esc(target.full_name || "")}"' in rename
+    assert "apiService.updateUserProfile(target.id, { full_name: name })" in rename
+    assert "if (!name) { fail(T.crewRenameEmpty)" in rename
+    assert "applyCrewName(target.id" in rename
+
+    # 4. El estado local se actualiza (lista, sesión y resumen) y se repinta la barra
+    apply = _function_body(console_js, "function applyCrewName(userId, name)")
+    assert "u.full_name = name" in apply and "st.currentUser.full_name = name" in apply and "renderChrome();" in apply
+
+    # 5. A quién se renombra: el astronauta mostrado (líder/administración) o uno mismo (astronauta)
+    target = _function_body(console_js, "function crewRenameTarget()")
+    assert "return st.currentUser || null;" in target
+    assert "Number(a.id) === Number(st.selectedAstronautId)" in target
+
+    # 6. Textos en español e inglés, y estilos del menú y del diálogo
+    en_start = console_js.index("  en: {")
+    for key in ("crewRename", "crewRenameHint", "crewRenameTitle", "crewRenameLabel", "crewRenameSave",
+                "crewRenameCancel", "crewRenameEmpty", "crewRenamed"):
+        assert f"    {key}: " in console_js[:en_start], key
+        assert f"    {key}: " in console_js[en_start:], key
+    for cls in (".av-crew-pop", ".av-crew-menu-item", ".av-crew-rename", ".av-crew-edit"):
+        assert cls in console_css, cls

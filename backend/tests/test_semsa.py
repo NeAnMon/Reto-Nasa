@@ -879,3 +879,117 @@ def test_09_module3_emotional_assessment_requests_privacy_and_urgent_protocol(cl
     assert "communication_analytics" in an_ov.json()
     assert "cognitive_analytics" in an_ov.json()
     assert "emotional_analytics" in an_ov.json()
+
+
+def test_generic_crew_is_seeded_and_leader_can_rename_only_assigned_astronauts(client: TestClient):
+    """Tripulación genérica (Astronauta 1..6) en la misión principal, y cambio de nombre desde la consola:
+    el líder puede renombrar a los astronautas de sus misiones (solo el nombre); un astronauta no puede
+    renombrar a otro, y el líder no puede tocar a quien no tiene asignado ni otros campos del perfil."""
+    leader = login_as(client, settings.DEMO_LEADER_EMAIL, settings.DEMO_LEADER_PASSWORD)
+    elena = login_as(client, settings.DEMO_ASTRONAUT1_EMAIL, settings.DEMO_ASTRONAUT1_PASSWORD)
+    kenji = login_as(client, settings.DEMO_ASTRONAUT3_EMAIL, settings.DEMO_ASTRONAUT3_PASSWORD)
+
+    # 1. El líder ve a los seis astronautas genéricos, con nombre por defecto y datos propios
+    users = client.get("/api/v1/users", headers=leader["headers"]).json()["users"]
+    generic = sorted((u for u in users if u["crew_code"].startswith("AST-40")), key=lambda u: u["crew_code"])
+    assert [u["crew_code"] for u in generic] == [f"AST-40{i}" for i in range(1, 7)]
+    assert all(u["role_code"] == "ASTRONAUT" and u["missions"] for u in generic)
+    target = generic[0]
+    summary = client.get(f"/api/v1/health/summary?astronaut_id={target['id']}", headers=leader["headers"])
+    assert summary.status_code == 200
+
+    # 2. El líder cambia el nombre (se normalizan los espacios) y la lista lo refleja
+    original = target["full_name"]
+    try:
+        renamed = client.patch(
+            f"/api/v1/users/{target['id']}", json={"full_name": "  Valentina   Ruiz "}, headers=leader["headers"]
+        )
+        assert renamed.status_code == 200, renamed.text
+        assert renamed.json()["user"]["full_name"] == "Valentina Ruiz"
+        again = client.get("/api/v1/users", headers=leader["headers"]).json()["users"]
+        assert next(u for u in again if u["id"] == target["id"])["full_name"] == "Valentina Ruiz"
+
+        # 3. Nombre vacío: rechazado
+        empty = client.patch(f"/api/v1/users/{target['id']}", json={"full_name": "   "}, headers=leader["headers"])
+        assert empty.status_code == 422
+
+        # 4. El líder no puede cambiar otros campos del perfil de un astronauta…
+        other_field = client.patch(
+            f"/api/v1/users/{target['id']}", json={"full_name": "X", "callsign": "Y"}, headers=leader["headers"]
+        )
+        assert other_field.status_code == 403
+        # …ni renombrar a un astronauta de una misión que no supervisa
+        not_assigned = client.patch(
+            f"/api/v1/users/{kenji['user']['id']}", json={"full_name": "Otro"}, headers=leader["headers"]
+        )
+        assert not_assigned.status_code == 403
+
+        # 5. Un astronauta no puede renombrar a otro
+        peer = client.patch(f"/api/v1/users/{target['id']}", json={"full_name": "Otro"}, headers=elena["headers"])
+        assert peer.status_code == 403
+    finally:
+        client.patch(f"/api/v1/users/{target['id']}", json={"full_name": original}, headers=leader["headers"])
+
+
+MEASURE_CODES = [
+    "HEART_RATE", "BLOOD_PRESSURE", "BODY_TEMP", "SPO2", "RESP_RATE", "BLOOD_GLUCOSE",
+    "SLEEP_DURATION", "HYDRATION", "PHYSICAL_ACTIVITY", "PERCEIVED_FATIGUE", "MOOD_WELLNESS",
+    "RADIATION_EXPOSURE",
+]
+MEASURE_KEYS = {
+    "order", "name", "name_en", "input", "step", "device", "device_en", "how_to", "how_to_en",
+    "secondary", "quick_add", "low", "low_en", "high", "high_en", "unit_short",
+}
+
+
+def test_health_indicators_expose_measure_catalog(client: TestClient):
+    """
+    GET /health/indicators sirve el catálogo de la vista "Registrar medición" desde BD (clave "measure")
+    y los umbrales vigentes en primer nivel, sin alterar el objeto "rule".
+    """
+    elena = login_as(client, settings.DEMO_ASTRONAUT1_EMAIL, settings.DEMO_ASTRONAUT1_PASSWORD)
+    resp = client.get("/api/v1/health/indicators", headers=elena["headers"])
+    assert resp.status_code == 200, resp.text
+    by_code = {i["code"]: i for i in resp.json()["indicators"]}
+
+    for code in MEASURE_CODES:
+        assert code in by_code, code
+    orders = []
+    for code in MEASURE_CODES:
+        item = by_code[code]
+        m = item["measure"]
+        assert m is not None, code
+        assert set(m.keys()) == MEASURE_KEYS, (code, set(m.keys()) ^ MEASURE_KEYS)
+        assert isinstance(m["order"], int) and 1 <= m["order"] <= 12
+        orders.append(m["order"])
+        assert isinstance(m["name"], str) and m["name"]
+        assert isinstance(m["name_en"], str) and m["name_en"]
+        assert m["input"] in ("number", "pair", "scale")
+        assert isinstance(m["step"], (int, float))
+        assert isinstance(m["how_to"], list) and m["how_to"] and all(isinstance(s, str) for s in m["how_to"])
+        assert isinstance(m["how_to_en"], list) and len(m["how_to_en"]) == len(m["how_to"])
+        assert m["quick_add"] is None or all(isinstance(v, (int, float)) for v in m["quick_add"])
+        if m["secondary"] is not None:
+            for k in ("label", "label_en", "min", "max", "required"):
+                assert k in m["secondary"], (code, k)
+        # Umbrales en primer nivel = los del objeto "rule" (versión vigente)
+        for k in ("normal_min", "normal_max", "monitor_min", "monitor_max", "warning_min", "warning_max"):
+            assert k in item, (code, k)
+            assert item[k] == item["rule"][k], (code, k)
+        assert item["normal_min"] is not None
+    assert sorted(orders) == list(range(1, 13))
+
+    bp = by_code["BLOOD_PRESSURE"]["measure"]
+    assert bp["input"] == "pair"
+    assert bp["secondary"] is not None and bp["secondary"]["required"] is True
+    assert by_code["HYDRATION"]["measure"]["quick_add"] == [250, 500]
+    assert by_code["PERCEIVED_FATIGUE"]["measure"]["input"] == "scale"
+    assert by_code["HEART_RATE"]["measure"]["name"] == "Pulso"
+    # Umbrales servidos = los calibrados con el dataset (versión vigente de la regla)
+    from backend.app.rules.calibration import CALIBRATION
+    assert by_code["HEART_RATE"]["normal_min"] == CALIBRATION["HEART_RATE"].normal[0]
+
+    # Indicadores fuera de la vista de medición conservan measure = null
+    for code, item in by_code.items():
+        if code not in MEASURE_CODES:
+            assert item["measure"] is None, code

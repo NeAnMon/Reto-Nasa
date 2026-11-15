@@ -288,16 +288,13 @@ def test_unbacked_thresholds_are_labelled_and_nothing_unverified_is_presented_as
         assert "verificado" in CALIBRATION[code].source and "equipo" in CALIBRATION[code].provenance
 
 
-def test_frontend_demo_thresholds_match_calibration():
-    """measure-demo.json (vista "Registrar medición" en modo demo) copia los umbrales calibrados."""
-    demo = json.loads((REPO_ROOT / "frontend" / "src" / "console" / "data" / "measure-demo.json").read_text("utf-8"))
-    by_code = {ind["code"]: ind for ind in demo["indicators"]}
-    assert set(by_code) == set(CALIBRATION)
-    for code, cal in CALIBRATION.items():
-        ind = by_code[code]
-        got = (ind["normal_min"], ind["normal_max"], ind["monitor_min"], ind["monitor_max"],
-               ind["warning_min"], ind["warning_max"])
-        assert got == pytest.approx(cal.normal + cal.monitor + cal.warning), code
+def test_measure_catalog_covers_calibrated_indicators():
+    """La vista "Registrar medición" ya no usa JSON: su catálogo (seed.MEASURE_UI_DATA) cubre los
+    indicadores calibrados, y los umbrales los sirve /health/indicators desde la regla vigente."""
+    from backend.app.database.seed import MEASURE_UI_DATA
+
+    assert not (REPO_ROOT / "frontend" / "src" / "console" / "data" / "measure-demo.json").exists()
+    assert set(MEASURE_UI_DATA) == set(CALIBRATION)
 
 
 # --------------------------------------------------------------------------------------------------

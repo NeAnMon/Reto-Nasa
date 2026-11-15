@@ -19,7 +19,7 @@ import { renderAdminView } from "../console/views/admin.js";
 import { renderSettingsView } from "../console/views/settings.js";
 import { renderEnvironmentsView } from "../console/views/environments.js";
 import { renderWellbeingView, openWellbeingSub } from "../console/views/wellbeing.js";
-import { initI18n, onLangChange, tr } from "../i18n/i18n.js";
+import { initI18n, onLangChange, tr, fmt } from "../i18n/i18n.js";
 import { bt } from "/src/i18n/backend.js";
 
 /* Textos propios de app.js (los errores `detail` del backend pasan por bt() para verse en el idioma actual) */
@@ -31,7 +31,11 @@ const DICT = {
     sectionError: "Error al cargar la sección",
     sessionRenewed: "Sesión renovada automáticamente.",
     sessionLost: "No se pudo abrir la sesión con el servidor.",
+    crewChangeFailed: "No se pudo cambiar de tripulante: {msg}",
     retry: "Reintentar",
+    toastInfo: "Confirmado",
+    toastError: "Error",
+    toastClose: "Cerrar aviso",
     states: {
       NORMAL: "● NORMAL",
       MONITOR: "▲ VIGILAR",
@@ -59,7 +63,11 @@ const DICT = {
     sectionError: "Could not load this section",
     sessionRenewed: "Session renewed automatically.",
     sessionLost: "Could not open a session with the server.",
+    crewChangeFailed: "Could not switch crew member: {msg}",
     retry: "Retry",
+    toastInfo: "Confirmed",
+    toastError: "Error",
+    toastClose: "Dismiss notice",
     states: {
       NORMAL: "● NOMINAL",
       MONITOR: "▲ ADVISORY",
@@ -107,15 +115,44 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
-function showToast(message) {
+/* Aviso flotante (issue #34: más grande y visible, con el estilo del HUD).
+   kind: "info" (por defecto) | "error". Los errores usan role="alert" y duran más.
+   Iconos SVG constantes (sin datos del usuario); el mensaje va siempre como texto. */
+const TOAST_ICONS = {
+  info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"><path d="M4 12.5l5 5L20 6.5"/></svg>',
+  error: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"><path d="M12 5v9M12 18v1.5"/></svg>',
+  close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+};
+function showToast(message, kind = "info") {
   const container = document.getElementById("toast-container");
   if (!container) return;
+  const T = tr(DICT);
+  const type = kind === "error" ? "error" : "info";
   const div = document.createElement("div");
-  div.className = "toast";
-  div.setAttribute("role", "status");
-  div.textContent = message;
+  div.className = `toast toast-${type}`;
+  div.setAttribute("role", type === "error" ? "alert" : "status");
+  const icon = document.createElement("span");
+  icon.className = "toast-icon";
+  icon.setAttribute("aria-hidden", "true");
+  icon.innerHTML = TOAST_ICONS[type];
+  const body = document.createElement("div");
+  body.className = "toast-body";
+  const label = document.createElement("span");
+  label.className = "toast-label";
+  label.textContent = type === "error" ? T.toastError : T.toastInfo;
+  const text = document.createElement("span");
+  text.className = "toast-text";
+  text.textContent = message;
+  body.append(label, text);
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "toast-close";
+  close.setAttribute("aria-label", T.toastClose);
+  close.innerHTML = TOAST_ICONS.close;
+  close.addEventListener("click", () => div.remove());
+  div.append(icon, body, close);
   container.appendChild(div);
-  setTimeout(() => div.remove(), 4800);
+  setTimeout(() => div.remove(), type === "error" ? 8000 : 6000);
 }
 
 function formatDateUTC(isoStr) {
@@ -142,6 +179,7 @@ const appHelpers = {
   refreshGlobalHeaderAndSummary,
   navigateToSection,
   updateRoleNavigation,
+  selectAstronaut,
 };
 
 /* Secciones antiguas ya cubiertas por la consola: su id sigue funcionando y lleva al equivalente.
@@ -231,9 +269,11 @@ function syncNavigationState(sectionId) {
    ========================================================================= */
 
 /* Sin pantalla de acceso: la consola abre sola una sesión con la cuenta demo (datos SIMULADOS del seed
- * del backend, backend/app/core/config.py → DEMO_ASTRONAUT1_*). La API sigue exigiendo token Bearer + CSRF,
- * así que se hace un /auth/login silencioso. Sustituir antes de cualquier despliegue real. */
-const DEMO_SESSION = { email: "elena.rostova@semsa.demo", password: "AstroCrew!2026" };
+ * del backend, backend/app/core/config.py → DEMO_LEADER_*). Entra como líder de misión (LDR-101): el panel
+ * principal es el de supervisión y el selector "Tripulante" de la barra de estado elige de qué astronauta
+ * se muestran las métricas. La API sigue exigiendo token Bearer + CSRF, así que se hace un /auth/login
+ * silencioso. Sustituir antes de cualquier despliegue real. */
+const DEMO_SESSION = { email: "leader@semsa.demo", password: "AstroLeader!2026" };
 const REAUTH_COOLDOWN_MS = 15000; // evita bucles si el backend devuelve 401 de forma persistente
 let autoLoginInFlight = null;
 let lastReauthAt = 0;
@@ -254,12 +294,14 @@ function autoLogin() {
   return autoLoginInFlight;
 }
 
-/* Reutiliza la sesión guardada si sigue siendo válida; si no, auto-login. */
+/* Reutiliza la sesión guardada si sigue siendo válida y es de la cuenta de acceso directo; si no, auto-login.
+ * (Un navegador con la sesión guardada de otra cuenta demo, p. ej. la astronauta de versiones anteriores,
+ * debe pasar a la cuenta actual en vez de seguir con la antigua hasta que caduque el token.) */
 async function startSession() {
   if (apiService.getToken()) {
     try {
       const me = await apiService.getMe();
-      if (me?.user) return me.user;
+      if (me?.user && String(me.user.email || "").toLowerCase() === DEMO_SESSION.email) return me.user;
     } catch {
       // token caducado o inválido (api.js ya limpió la sesión): se abre una nueva
     }
@@ -280,7 +322,7 @@ async function reauthenticate() {
     showToast(tr(DICT).sessionRenewed);
     await navigateToSection(appState.currentSection);
   } catch (err) {
-    showToast(`${tr(DICT).sessionLost} ${bt(err.message) || ""}`.trim());
+    showToast(`${tr(DICT).sessionLost} ${bt(err.message) || ""}`.trim(), "error");
   }
 }
 
@@ -343,6 +385,10 @@ async function onAuthenticated(user) {
   if (appState.missionsList.length > 0) {
     appState.selectedMissionId = appState.missionsList[0].id;
   }
+  // la misión debe ser una del astronauta mostrado (p. ej. alguien asignado solo a la segunda misión)
+  if (appState.selectedAstronautId) {
+    appState.selectedMissionId = missionIdForAstronaut(appState.selectedAstronautId);
+  }
 
   updateRoleNavigation();
   syncThemeButton();
@@ -369,20 +415,71 @@ function updateRoleNavigation() {
     }
   });
 
-  const crewSelectorWrap = document.getElementById("topbar-crew-selector-wrap");
-  const crewSelect = document.getElementById("topbar-crew-select");
-  if (role === "ASTRONAUT") {
-    crewSelectorWrap.classList.add("hidden");
-  } else {
-    crewSelectorWrap.classList.remove("hidden");
-    const astronauts = appState.usersList.filter((u) => u.role_code === "ASTRONAUT");
-    crewSelect.innerHTML = astronauts
-      .map(
-        (a) =>
-          `<option value="${a.id}" ${a.id === Number(appState.selectedAstronautId) ? "selected" : ""}>${a.full_name} (${a.crew_code})</option>`
-      )
-      .join("");
+  // El selector de tripulante vive en la barra de estado (celda "Tripulante", console.js):
+  // se repinta para reflejar cambios en la lista de usuarios (p. ej. una cuenta nueva).
+  if (appState.healthSummary) renderChrome(appState);
+}
+
+/* Misión con la que se consultan los datos de un astronauta: se conserva la seleccionada si está
+ * asignado a ella; si no, la primera de sus misiones activas (GET /users → missions[].mission_id).
+ * Sin asignaciones conocidas se deja la actual (o la primera de la lista de misiones). */
+function missionIdForAstronaut(astronautId) {
+  const user = appState.usersList.find((u) => Number(u.id) === Number(astronautId));
+  const ids = ((user && user.missions) || []).map((m) => m.mission_id).filter((id) => id !== undefined && id !== null);
+  const current = appState.selectedMissionId ?? appState.missionsList[0]?.id ?? null;
+  if (!ids.length) return current;
+  return ids.some((id) => Number(id) === Number(current)) ? current : ids[0];
+}
+
+/* Cambio de astronauta mostrado (selector "Tripulante" de la barra de estado, "Inspeccionar" en
+ * Monitoreo de tripulación, enlaces del Centro de alertas): selección + misión + refresco del
+ * encabezado y, salvo navigate: false, recarga de la sección. El resumen anterior se invalida
+ * para no pintar datos de otro astronauta; si se cambia dos veces seguidas, el último gana.
+ * Devuelve true si la consola quedó mostrando al astronauta pedido. */
+let selectAstronautSeq = 0;
+let selectAstronautStable = null; // último estado coherente (astronauta + misión + resumen) mientras hay cambios en curso
+async function selectAstronaut(astronautId, { section, navigate = true } = {}) {
+  const id = Number(astronautId);
+  if (!id) return false;
+  const role = appState.currentUser?.role_code || "ASTRONAUT";
+  // un astronauta solo puede ver sus propios datos (el backend responde 403 con los de otro)
+  if (role === "ASTRONAUT" && id !== Number(appState.currentUser?.id)) return false;
+  const go = async () => {
+    if (navigate) await navigateToSection(section || appState.currentSection);
+  };
+  if (Number(appState.selectedAstronautId) === id) {
+    await go();
+    return true;
   }
+  // Con un cambio aún en curso, el estado "anterior" es el de antes de ese cambio (el actual tiene
+  // el resumen invalidado): así, si este falla, no se vuelve a un tripulante a medio cargar.
+  const prev = selectAstronautStable || {
+    astronautId: appState.selectedAstronautId,
+    missionId: appState.selectedMissionId,
+    summary: appState.healthSummary,
+  };
+  selectAstronautStable = prev;
+  const seq = ++selectAstronautSeq;
+  appState.selectedAstronautId = id;
+  appState.selectedMissionId = missionIdForAstronaut(id);
+  appState.healthSummary = null;
+  try {
+    await refreshGlobalHeaderAndSummary();
+  } catch (err) {
+    if (seq !== selectAstronautSeq) return false; // ya hay un cambio posterior en curso
+    // sin resumen del nuevo astronauta: se vuelve al anterior (con su resumen) para no mezclar datos
+    selectAstronautStable = null;
+    appState.selectedAstronautId = prev.astronautId;
+    appState.selectedMissionId = prev.missionId;
+    appState.healthSummary = prev.summary;
+    renderChrome(appState);
+    showToast(fmt(tr(DICT).crewChangeFailed, { msg: bt(err.message) || "" }));
+    return false;
+  }
+  if (seq !== selectAstronautSeq) return false; // hubo un cambio posterior: ese es el que navega
+  selectAstronautStable = null;
+  await go();
+  return true;
 }
 
 async function refreshGlobalHeaderAndSummary() {
@@ -390,10 +487,11 @@ async function refreshGlobalHeaderAndSummary() {
     renderChrome(appState);
     return;
   }
-  const summary = await apiService.getHealthSummary(
-    appState.selectedAstronautId,
-    appState.selectedMissionId
-  );
+  const astronautId = appState.selectedAstronautId;
+  const missionId = appState.selectedMissionId;
+  const summary = await apiService.getHealthSummary(astronautId, missionId);
+  // si mientras tanto se eligió otro tripulante (o misión), esta respuesta ya no aplica: el último cambio gana
+  if (appState.selectedAstronautId !== astronautId || appState.selectedMissionId !== missionId) return;
   appState.healthSummary = summary;
 
   // Antiguo encabezado hdr-* (ya no está en el HTML; setText ignora los ids ausentes)
@@ -537,12 +635,7 @@ function bindStaticEvents() {
     });
   }
 
-  // Topbar Crew Selector (for Leader & Admin)
-  document.getElementById("topbar-crew-select")?.addEventListener("change", async (e) => {
-    appState.selectedAstronautId = Number(e.target.value);
-    await refreshGlobalHeaderAndSummary();
-    await navigateToSection(appState.currentSection);
-  });
+  // El selector de tripulante (líder y administración) está en la barra de estado: lo gestiona initChrome (console.js)
 
   // Theme quick toggle
   document.getElementById("btn-quick-theme")?.addEventListener("click", () => {

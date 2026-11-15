@@ -612,14 +612,25 @@ def update_user_profile(
     db: Session = Depends(get_db),
 ):
     if actor.role.code != "ADMINISTRATOR" and actor.id != user_id:
-        raise HTTPException(status_code=403, detail="Solo puede editar su propio perfil o ser Administrador.")
+        # Un líder de misión puede cambiar SOLO el nombre visible de los astronautas de sus misiones
+        # (selector de tripulante de la consola); el resto del perfil sigue siendo de cada persona.
+        only_name = payload.model_dump(exclude_unset=True, exclude_none=True).keys() <= {"full_name"}
+        if not (
+            actor.role.code == "MISSION_LEADER"
+            and only_name
+            and user_id in get_authorized_astronaut_ids(db, actor)
+        ):
+            raise HTTPException(status_code=403, detail="Solo puede editar su propio perfil o ser Administrador.")
 
     target = db.query(User).filter(User.id == user_id).first()
     if not target:
         raise HTTPException(status_code=404, detail="Usuario no encontrado.")
 
     if payload.full_name is not None:
-        target.full_name = payload.full_name.strip()
+        new_name = " ".join(payload.full_name.split())
+        if not new_name or len(new_name) > 150:
+            raise HTTPException(status_code=422, detail="El nombre debe tener entre 1 y 150 caracteres.")
+        target.full_name = new_name
     if payload.preferred_theme is not None:
         target.preferred_theme = payload.preferred_theme
     if payload.share_wellness_signals_with_leader is not None:
@@ -1013,6 +1024,12 @@ def list_health_indicators(
             if rule
             else None
         )
+        measure = None
+        if d.measure_ui_json:
+            try:
+                measure = json.loads(d.measure_ui_json)
+            except (TypeError, ValueError):
+                measure = None
         out.append(
             {
                 "code": d.code,
@@ -1028,6 +1045,15 @@ def list_health_indicators(
                 "step_by_step_instructions": d.step_by_step_instructions,
                 "educational_summary": d.educational_summary,
                 "spaceflight_risk_explanation": d.spaceflight_risk_explanation,
+                # Catálogo de UI de "Registrar medición" (null si el indicador no aparece en esa vista)
+                "measure": measure,
+                # Umbrales de la versión vigente, también en primer nivel (atajo para la vista de medición)
+                "normal_min": ver.normal_min if ver else None,
+                "normal_max": ver.normal_max if ver else None,
+                "monitor_min": ver.monitor_min if ver else None,
+                "monitor_max": ver.monitor_max if ver else None,
+                "warning_min": ver.warning_min if ver else None,
+                "warning_max": ver.warning_max if ver else None,
                 "rule": {
                     "rule_code": rule.rule_code if rule else None,
                     "version": ver.version_number if ver else None,
