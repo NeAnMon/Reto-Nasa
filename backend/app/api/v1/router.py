@@ -1001,6 +1001,12 @@ def list_health_indicators(
             if rule
             else None
         )
+        measure = None
+        if d.measure_ui_json:
+            try:
+                measure = json.loads(d.measure_ui_json)
+            except (TypeError, ValueError):
+                measure = None
         out.append(
             {
                 "code": d.code,
@@ -1016,6 +1022,15 @@ def list_health_indicators(
                 "step_by_step_instructions": d.step_by_step_instructions,
                 "educational_summary": d.educational_summary,
                 "spaceflight_risk_explanation": d.spaceflight_risk_explanation,
+                # Catálogo de UI de "Registrar medición" (null si el indicador no aparece en esa vista)
+                "measure": measure,
+                # Umbrales de la versión vigente, también en primer nivel (atajo para la vista de medición)
+                "normal_min": ver.normal_min if ver else None,
+                "normal_max": ver.normal_max if ver else None,
+                "monitor_min": ver.monitor_min if ver else None,
+                "monitor_max": ver.monitor_max if ver else None,
+                "warning_min": ver.warning_min if ver else None,
+                "warning_max": ver.warning_max if ver else None,
                 "rule": {
                     "rule_code": rule.rule_code if rule else None,
                     "version": ver.version_number if ver else None,

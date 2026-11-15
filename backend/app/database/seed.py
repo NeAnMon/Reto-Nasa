@@ -1032,6 +1032,7 @@ def seed_database(db: Session, force_reseed_sim: bool = False) -> None:
     db.flush()
     # Reglas del motor: una por indicador, con la versión calibrada con el dataset como vigente
     sync_clinical_rules(db)
+    sync_measure_ui(db)
 
     # 5. Daily Missions, Badges & Wellness Catalog
     for code, title, cat, desc, xp, envs, contra, edu in DAILY_MISSIONS_DATA:
@@ -2515,6 +2516,145 @@ ISOLATION_XP_MISSIONS_DATA = [
 ]
 
 
+# ----------------------------------------------------------------------------------------------------
+# Catálogo de UI de la vista "Registrar medición" (antes frontend/src/console/data/measure-demo.json).
+# Se guarda como JSON en health_indicator_definitions.measure_ui_json y lo sirve GET /health/indicators
+# bajo la clave "measure". Unidad, rangos válidos, caducidad, dispositivo requerido y umbrales NO van aquí:
+# salen de la definición y de la versión vigente de la regla clínica (fuente de verdad).
+# ----------------------------------------------------------------------------------------------------
+MEASURE_UI_KEYS_DEFAULT_NULL = (
+    "device", "device_en", "secondary", "quick_add", "low", "low_en", "high", "high_en",
+    "unit_short",  # unidad corta para la vista cuando la de la definición es larga (p. ej. "mL/día" → "mL")
+)
+
+MEASURE_UI_DATA = {
+    "HEART_RATE": {
+        "order": 1, "name": "Pulso", "name_en": "Heart rate",
+        "input": "number", "step": 1,
+        "device": "Sensor de pulso o contar latidos en la muñeca", "device_en": "Pulse sensor or count beats at the wrist",
+        "how_to": ["Descansa 3 minutos.", "Cuenta los latidos durante 60 segundos o usa el sensor.", "Escribe el número de latidos."],
+        "how_to_en": ["Rest for 3 minutes.", "Count beats for 60 seconds or use the sensor.", "Enter the number of beats."],
+    },
+    "BLOOD_PRESSURE": {
+        "order": 2, "name": "Presión arterial", "name_en": "Blood pressure",
+        "input": "pair", "step": 1,
+        "device": "Monitor de brazo calibrado", "device_en": "Calibrated arm monitor",
+        "how_to": ["Descansa 5 minutos sin cruzar las piernas.", "Ajusta el brazalete a la altura del corazón.", "Escribe la alta (sistólica) y la baja (diastólica)."],
+        "how_to_en": ["Rest 5 minutes without crossing your legs.", "Place the cuff at heart level.", "Enter the high (systolic) and low (diastolic) numbers."],
+        "secondary": {"label": "Baja (diastólica)", "label_en": "Low (diastolic)", "min": 30, "max": 160, "required": True},
+    },
+    "BODY_TEMP": {
+        "order": 3, "name": "Temperatura", "name_en": "Temperature",
+        "input": "number", "step": 0.1,
+        "device": "Termómetro", "device_en": "Thermometer",
+        "how_to": ["No bebas nada caliente ni frío en los 15 minutos previos.", "Toma la temperatura con el termómetro.", "Escribe los grados."],
+        "how_to_en": ["Avoid hot or cold drinks for 15 minutes before.", "Take your temperature with the thermometer.", "Enter the degrees."],
+    },
+    "SPO2": {
+        "order": 4, "name": "Oxígeno en sangre", "name_en": "Blood oxygen",
+        "input": "number", "step": 1,
+        "device": "Pulsioxímetro de dedo", "device_en": "Finger pulse oximeter",
+        "how_to": ["Mantén la mano quieta y tibia.", "Ponte el pulsioxímetro en el dedo índice.", "Espera a que el número se estabilice y escríbelo."],
+        "how_to_en": ["Keep your hand still and warm.", "Put the oximeter on your index finger.", "Wait for the number to settle and enter it."],
+    },
+    "RESP_RATE": {
+        "order": 5, "name": "Respiración", "name_en": "Breathing rate",
+        "input": "number", "step": 1,
+        "device": "Solo un reloj", "device_en": "Just a clock",
+        "how_to": ["En reposo, cuenta cuántas veces sube el pecho en 60 segundos.", "Escribe el número."],
+        "how_to_en": ["At rest, count how many times your chest rises in 60 seconds.", "Enter the number."],
+    },
+    "BLOOD_GLUCOSE": {
+        "order": 6, "name": "Glucosa", "name_en": "Blood glucose",
+        "input": "number", "step": 1,
+        "device": "Glucómetro", "device_en": "Glucose meter",
+        "how_to": ["Anota si estás en ayunas o después de comer.", "Haz la lectura con el glucómetro.", "Escribe el valor."],
+        "how_to_en": ["Note whether you are fasting or after a meal.", "Take the reading with the meter.", "Enter the value."],
+    },
+    "SLEEP_DURATION": {
+        "order": 7, "name": "Sueño", "name_en": "Sleep",
+        "input": "number", "step": 0.5,
+        "how_to": ["Escribe cuántas horas dormiste en el último descanso.", "Si quieres, marca qué tan bien dormiste."],
+        "how_to_en": ["Enter how many hours you slept in your last rest period.", "Optionally, rate how well you slept."],
+        "secondary": {
+            "label": "¿Qué tan bien dormiste?", "label_en": "How well did you sleep?",
+            "min": 1, "max": 10, "required": False, "scale": True,
+            "low": "Muy mal", "low_en": "Very poorly", "high": "Muy bien", "high_en": "Very well",
+        },
+    },
+    "HYDRATION": {
+        "order": 8, "name": "Agua bebida", "name_en": "Water intake",
+        "unit_short": "mL",
+        "input": "number", "step": 250, "quick_add": [250, 500],
+        "how_to": ["Suma lo que has bebido hoy (agua y bebidas).", "Usa los botones +250 / +500 o escribe el total."],
+        "how_to_en": ["Add up what you have drunk today (water and drinks).", "Use the +250 / +500 buttons or type the total."],
+    },
+    "PHYSICAL_ACTIVITY": {
+        "order": 9, "name": "Ejercicio", "name_en": "Exercise",
+        "unit_short": "min",
+        "input": "number", "step": 5,
+        "how_to": ["Escribe los minutos de ejercicio que hiciste hoy (cinta, bicicleta o pesas)."],
+        "how_to_en": ["Enter the minutes of exercise you did today (treadmill, bike or resistive)."],
+    },
+    "PERCEIVED_FATIGUE": {
+        "order": 10, "name": "Cansancio", "name_en": "Fatigue",
+        "unit_short": "/10",
+        "input": "scale", "step": 1,
+        "low": "Descansado", "low_en": "Rested", "high": "Agotado", "high_en": "Exhausted",
+        "how_to": ["¿Qué tan cansado te sientes ahora? Responde con honestidad: no hay penalización."],
+        "how_to_en": ["How tired do you feel right now? Be honest: there is no penalty."],
+    },
+    "MOOD_WELLNESS": {
+        "order": 11, "name": "Ánimo", "name_en": "Mood",
+        "unit_short": "/10",
+        "input": "scale", "step": 1,
+        "low": "Mal", "low_en": "Low", "high": "Excelente", "high_en": "Great",
+        "how_to": ["¿Cómo te sientes hoy, en general?"],
+        "how_to_en": ["How do you feel today, overall?"],
+    },
+    "RADIATION_EXPOSURE": {
+        "order": 12, "name": "Radiación", "name_en": "Radiation",
+        "unit_short": "mSv",
+        "input": "number", "step": 0.01,
+        "device": "Dosímetro personal", "device_en": "Personal dosimeter",
+        "how_to": ["Mira la lectura de 24 h en tu dosímetro.", "Escribe el valor en mSv."],
+        "how_to_en": ["Check the 24 h reading on your dosimeter.", "Enter the value in mSv."],
+    },
+}
+
+
+def measure_ui_payload(code: str):
+    """Entrada completa del contrato "measure" (claves opcionales a None) o None si el código no está en la vista."""
+    data = MEASURE_UI_DATA.get(code)
+    if data is None:
+        return None
+    payload = {k: None for k in MEASURE_UI_KEYS_DEFAULT_NULL}
+    payload.update(data)
+    return payload
+
+
+def sync_measure_ui(db: Session) -> int:
+    """
+    Rellena/actualiza health_indicator_definitions.measure_ui_json para los códigos de MEASURE_UI_DATA.
+    Idempotente: solo escribe si el JSON difiere. Los demás indicadores no se tocan (quedan NULL).
+    Hace commit si cambió algo. Devuelve el número de filas actualizadas.
+    """
+    changed = 0
+    defs = (
+        db.query(HealthIndicatorDefinition)
+        .filter(HealthIndicatorDefinition.code.in_(list(MEASURE_UI_DATA.keys())))
+        .all()
+    )
+    for d in defs:
+        serialized = json.dumps(measure_ui_payload(d.code), ensure_ascii=False, sort_keys=True)
+        if d.measure_ui_json != serialized:
+            d.measure_ui_json = serialized
+            changed += 1
+    if changed:
+        db.commit()
+    return changed
+
+
 # Rol de una versión previa con canal familiar (retirado; ver docs/CONTRATO_AISLAMIENTO.md §4)
 LEGACY_RETIRED_ROLE_CODE = "FAMILY_MEMBER"
 
@@ -2657,6 +2797,13 @@ def apply_lightweight_migrations(db: Session) -> None:
                 db.execute(text("DROP INDEX IF EXISTS ix_conversations_channel"))
                 db.execute(text("ALTER TABLE conversations DROP COLUMN channel"))
             db.commit()
+
+    if "health_indicator_definitions" in tables:
+        hid_cols = {c["name"] for c in insp.get_columns("health_indicator_definitions")}
+        if "measure_ui_json" not in hid_cols:
+            db.execute(text("ALTER TABLE health_indicator_definitions ADD COLUMN measure_ui_json TEXT"))
+            db.commit()
+        sync_measure_ui(db)
 
     _migrate_branding(db)
 
