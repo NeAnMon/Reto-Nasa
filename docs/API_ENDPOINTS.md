@@ -54,8 +54,8 @@ La API de **SEMSA** sigue principios RESTful bajo el prefijo versionado `/api/v1
 | `GET` | `/api/v1/health/body-regions` | Autenticado (alcance verificado) | Devuelve las 10 regiones anatómicas del Body Explorer SVG, su estado visual agregado, indicadores vinculados y alertas activas. |
 | `GET` | `/api/v1/health/summary` | Autenticado (alcance verificado) | Sintetiza el dashboard principal (`Mission Control`), tarjetas de indicadores, tendencias, cobertura temporal y telemetría ambiental. |
 | `GET` | `/api/v1/health/measurements` | Autenticado (alcance verificado) | Consulta el historial de mediciones con filtros por indicador, fase, entorno, fuente y estado. |
-| `POST` | `/api/v1/health/measurements` | Autenticado (propio o autorizado) | Valida y persiste una medición, ejecuta el motor determinista de reglas (`NORMAL`, `MONITOR`, `WARNING`, `CRITICAL`, `UNKNOWN`, `STALE`, `INVALID`), genera alertas si corresponde y acredita participación en gamificación. |
-| `POST` | `/api/v1/health/measurements/import` | Autenticado | Importa lotes de mediciones en formato `CSV` o `JSON` con validación de límites y calidad. |
+| `POST` | `/api/v1/health/measurements` | Autenticado (propio o autorizado) | Valida y persiste una medición, ejecuta el motor determinista de reglas (`NORMAL`, `MONITOR`, `WARNING`, `CRITICAL`, `UNKNOWN`, `INVALID`), crea o actualiza la alerta del indicador y acredita participación en gamificación. Ver "Motor de alertas calibrado" más abajo. |
+| `POST` | `/api/v1/health/measurements/import` | Autenticado | Importa lotes de mediciones en formato `CSV` o `JSON` con validación de límites y calidad. `alerts_generated` cuenta las alertas distintas creadas o actualizadas (una por indicador), no las lecturas anómalas. |
 | `GET` | `/api/v1/health/measurements/{id}` | Autenticado (alcance verificado) | Obtiene el detalle de una medición específica. |
 | `GET` | `/api/v1/health/explain/{indicator_code}` | Autenticado (alcance verificado) | Genera una explicación educativa descriptiva de tendencias y riesgos espaciales sin realizar diagnósticos médicos. |
 
@@ -70,6 +70,15 @@ La API de **SEMSA** sigue principios RESTful bajo el prefijo versionado `/api/v1
 | `POST` | `/api/v1/alerts/{alert_id}/acknowledge` | Autenticado (alcance verificado) | Registra el reconocimiento de la alerta y la actuación inmediata del astronauta o líder. |
 | `POST` | `/api/v1/alerts/{alert_id}/followup` | Autenticado (alcance verificado) | Registra notas de seguimiento o marca la alerta como `RESOLVED`. |
 | `POST` | `/api/v1/alerts/{alert_id}/escalate` | Autenticado (alcance verificado) | Escala la alerta al protocolo de Medicina de Vuelo (`ESCALATED`) y audita la actuación. |
+
+### Motor de alertas calibrado (versión de regla `2.0-DATASET`)
+
+- **Umbrales**: salen del dataset del proyecto (`astronaut-health-dataset`) y su procedencia está en `backend/app/rules/calibration.py`; `GET /health/indicators` y `GET /admin/rules` devuelven la fuente en `protocol_source` (los umbrales sin base en el dataset dicen "sin respaldo en el dataset"). `normal_*`/`monitor_*`/`warning_*` son rangos dentro de rango: fuera de `monitor_*` es zona amarilla y fuera de `warning_*` zona roja; un extremo igual al límite físico de validación significa que no hay umbral en esa dirección.
+- **Dos capas**: umbral absoluto + desvío frente a la línea base personal (z con la desviación estándar de la persona). `CRITICAL` = zona roja; `WARNING` = zona amarilla alejada de la línea base (o sin línea base válida) o desvío personal |z| ≥ 3; `MONITOR` = zona amarilla habitual para la persona, o desvío personal |z| ≥ 2 confirmado por la lectura anterior. El sueño se evalúa sobre la media de 7 noches (mínimo 4) y la radiación también sobre la dosis acumulada frente al límite de carrera de 600 mSv.
+- **`STALE` ya no se guarda** en `calculated_state`: lo calcula `GET /health/summary` según la antigüedad del último dato. Una medición antigua lleva el aviso en `evaluation_reasons`.
+- **Una sola alerta abierta por astronauta + indicador + regla**: una lectura anómala nueva actualiza la alerta abierta (último valor, motivos, recomendación y `updated_at`); el nivel y la prioridad solo suben, y si sube a `CRITICAL` pasa a `ESCALATED`. Tras `RESOLVED`, la siguiente lectura anómala crea una alerta nueva.
+- **Respuesta de `POST /health/measurements`**: `alert_generated` conserva `id`, `priority`, `title` e `immediate_action` y añade `followup_recommendation` e `is_new` (`false` cuando se actualizó una alerta ya abierta). `recommended_next_step` es la acción inmediata de esa alerta.
+- **Recomendación por alerta**: `immediate_action` (dos pasos: qué hacer ahora y qué implica el nivel) y `followup_recommendation` (cómo mejorar el indicador en los próximos días, cuándo avisar al médico de vuelo y la fuente) salen de `backend/app/rules/recommendations.py`, por indicador × dirección × nivel. No es un diagnóstico médico.
 
 ---
 
