@@ -20,7 +20,7 @@ import { isEarlyAlert } from "./alert-classes.js";
 
 /* ───────────────────────── motor de origen ───────────────────────── */
 
-export const ENGINES = Object.freeze(["PREDICTION", "COGNITIVE", "EMOTIONAL", "ISOLATION", "RADIATION", "RULES"]);
+export const ENGINES = Object.freeze(["PREDICTION", "COGNITIVE", "EMOTIONAL", "ISOLATION", "RADIATION", "ENVIRONMENT", "RULES"]);
 
 /* Sinónimos aceptados (campo explícito o primer término de rule_code tras RULE_ / RULE_EARLY_) */
 const ENGINE_ALIAS = {
@@ -29,6 +29,7 @@ const ENGINE_ALIAS = {
   EMOTIONAL: "EMOTIONAL", EMOTION: "EMOTIONAL", EMO: "EMOTIONAL", SUPPORT: "EMOTIONAL", PSYCH: "EMOTIONAL", WELLNESS: "EMOTIONAL",
   ISOLATION: "ISOLATION", EARTH: "ISOLATION", ISO: "ISOLATION",
   RADIATION: "RADIATION", RAD: "RADIATION", HERA: "RADIATION",
+  ENVIRONMENT: "ENVIRONMENT", ENV: "ENVIRONMENT", CABIN: "ENVIRONMENT",
   RULES: "RULES", RULE: "RULES", RULE_ENGINE: "RULES", RULES_ENGINE: "RULES", CLINICAL: "RULES", ENGINE: "RULES", VITALS: "RULES",
 };
 const normEngine = (v) => ENGINE_ALIAS[String(v || "").trim().toUpperCase().replace(/[\s-]+/g, "_")] || null;
@@ -66,6 +67,7 @@ export const MODULE_GO = Object.freeze({
 export function moduleOf(a) {
   const eng = engineOf(a);
   if (eng === "ISOLATION" || eng === "EMOTIONAL" || eng === "COGNITIVE" || eng === "RADIATION") return eng;
+  if (eng === "ENVIRONMENT") return String(a?.indicator_code || "").toUpperCase().startsWith("RADIATION") ? "RADIATION" : "OTHER";
   const ind = String(a?.indicator_code || "");
   if (ind.startsWith("RADIATION")) return "RADIATION";
   if (VITAL_CODES.has(ind)) return "VITALS";
@@ -109,6 +111,7 @@ const DICT = {
       EMOTIONAL: "Motor emocional",
       ISOLATION: "Aislamiento",
       RADIATION: "Radiación",
+      ENVIRONMENT: "Entorno de cabina",
       RULES: "Motor de reglas",
     },
     counter: {
@@ -139,6 +142,7 @@ const DICT = {
       EMOTIONAL: "Emotional engine",
       ISOLATION: "Isolation",
       RADIATION: "Radiation",
+      ENVIRONMENT: "Cabin environment",
       RULES: "Rules engine",
     },
     counter: {
