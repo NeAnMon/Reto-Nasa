@@ -385,6 +385,21 @@ button.av-pop-row:hover { background: var(--av-hover); }
 .av-env-sync-ok { border-color: var(--av-border); color: var(--av-muted); }
 .av-env-sync-local { border-color: var(--av-s); color: var(--av-s); }
 .av-env-sync-pending { border-style: dashed; }
+/* Banner del entorno (tras "Enlace con Tierra"): imagen de la escena con fundido al cambiar */
+/* Ocupa todo el hueco hasta las alertas: toma el sitio del separador .av-grow */
+.av-status > .av-st-banner { flex: 1 1 0; min-width: 180px; justify-content: center; border-right: 0; }
+.av-status > .av-st-banner:not(:empty) + .av-grow { display: none; }
+.av-st-banner:empty { display: none; }
+.av-env-banner { display: flex; align-items: center; gap: 10px; height: 42px; width: 100%; }
+.av-env-banner-logo { flex: 0 0 auto; height: 100%; width: auto; }
+body[data-theme="daylight-clean"] .av-env-banner-logo { content: url("../assets/env/semsa-logo.webp?v=2"); }
+.av-env-banner-scene { position: relative; flex: 1 1 auto; align-self: stretch; min-width: 0; border-radius: 4px; overflow: hidden; border: 1px solid var(--av-border); background: var(--av-raised); }
+.av-env-banner-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: var(--av-env-focus, 50% 50%); opacity: 0; transition: opacity .35s ease; }
+.av-env-banner-img.is-on { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .av-env-banner-img { transition: none; } }
+@media (max-width: 1440px) { .av-env-banner { height: 36px; } }
+/* sin sitio en la barra (y en móvil, donde la barra pasa a filas): se oculta */
+@media (max-width: 1279px) { .av-status > .av-st-banner { display: none; } .av-status > .av-st-banner + .av-grow { display: block; } }
 .av-input.av-env-select {
   width: auto; min-width: 150px; max-width: 220px; min-height: 28px; padding: 1px 26px 1px 6px;
   font: 600 13px/1.2 "IBM Plex Mono", monospace; color: var(--av-text); background-color: var(--av-bg); cursor: pointer;
