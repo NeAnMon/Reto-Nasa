@@ -5,6 +5,10 @@
  * - Histórico: línea continua con puntos pequeños, cortada en los huecos (value null).
  * - Pronóstico: línea discontinua de otro color que arranca en el último punto del
  *   histórico; los puntos con out_of_valid_range se marcan en rojo (aviso).
+ * - Bandas de predicción al 80 % y 95 % (lower_80/upper_80/lower_95/upper_95 de cada punto del
+ *   pronóstico, opcionales): áreas translúcidas del color del pronóstico, la del 80 % más marcada.
+ *   El eje Y las incluye; aparecen en la leyenda, el tooltip, el anuncio de teclado y el resumen.
+ *   Sin bandas (servidor anterior) la gráfica se dibuja igual que antes.
  * - Línea base: horizontal discontinua con etiqueta.
  * - Frontera "hoy": línea vertical fina entre el histórico y el pronóstico, con la zona
  *   del pronóstico ligeramente sombreada.
@@ -106,6 +110,14 @@ function normalizeHistory(history) {
   return out;
 }
 
+/* Banda [inferior, superior] de un punto del pronóstico; null si falta o no contiene al valor */
+function bandOf(lower, upper, v) {
+  if (!isNum(lower) || !isNum(upper)) return null;
+  const lo = Number(lower);
+  const hi = Number(upper);
+  return lo <= v && v <= hi ? [lo, hi] : null;
+}
+
 function normalizeForecast(forecast) {
   const out = [];
   for (const p of forecast || []) {
@@ -115,7 +127,11 @@ function normalizeForecast(forecast) {
       if (out.length && out[out.length - 1] !== null) out.push(null);
       continue;
     }
-    out.push({ t: d.t, ht: d.ht, v: Number(p.value), kind: "f", oor: p.out_of_valid_range === true });
+    const v = Number(p.value);
+    out.push({
+      t: d.t, ht: d.ht, v, kind: "f", oor: p.out_of_valid_range === true,
+      b80: bandOf(p.lower_80, p.upper_80, v), b95: bandOf(p.lower_95, p.upper_95, v),
+    });
   }
   while (out.length && out[out.length - 1] === null) out.pop();
   return out;
@@ -142,6 +158,11 @@ function chartGeometry(width, real, baseline, fmt) {
   const W = Math.max(240, Math.round(width));
   const H = W < 520 ? 230 : 290;
   const vals = real.map((p) => p.v);
+  // el dominio del eje Y incluye los extremos de las bandas de predicción
+  for (const p of real) {
+    if (p.b80) vals.push(p.b80[0], p.b80[1]);
+    if (p.b95) vals.push(p.b95[0], p.b95[1]);
+  }
   if (isNum(baseline)) vals.push(Number(baseline));
   let lo = Math.min(...vals);
   let hi = Math.max(...vals);
@@ -212,6 +233,32 @@ function segments(list) {
   return segs;
 }
 
+/* Tramos consecutivos de puntos del pronóstico que traen la banda `key` ("b80" / "b95") */
+function bandRuns(fc, key) {
+  const runs = [];
+  let cur = [];
+  for (const p of fc) {
+    if (p && p[key]) cur.push(p);
+    else { if (cur.length) runs.push(cur); cur = []; }
+  }
+  if (cur.length) runs.push(cur);
+  return runs;
+}
+
+/* Área de una banda: por arriba de izquierda a derecha y de vuelta por abajo.
+ * Con un solo día (horizonte 1) no hay anchura que rellenar: se dibuja una barra vertical. */
+function bandArea(cls, run, key, g) {
+  if (run.length === 1) {
+    const p = run[0];
+    const top = g.y(p[key][1]);
+    const bottom = g.y(p[key][0]);
+    return `<rect class="${cls}" x="${(g.x(p.t) - 5).toFixed(1)}" y="${top.toFixed(1)}" width="10" height="${Math.max(0, bottom - top).toFixed(1)}"></rect>`;
+  }
+  const upper = run.map((p) => `${g.x(p.t).toFixed(1)},${g.y(p[key][1]).toFixed(1)}`);
+  const lower = run.map((p) => `${g.x(p.t).toFixed(1)},${g.y(p[key][0]).toFixed(1)}`).reverse();
+  return `<polygon class="${cls}" points="${[...upper, ...lower].join(" ")}"></polygon>`;
+}
+
 function chartSVG(g, data, fmt) {
   const { W, H, pad, lo, hi, x, y } = g;
   const { hist, fc, baseline, unit, labels } = data;
@@ -276,8 +323,12 @@ function chartSVG(g, data, fmt) {
       : `<circle class="av-pc-fdot" cx="${cx}" cy="${cy}" r="3"></circle>`;
   }).join("");
 
+  // bandas de predicción: la del 95 % debajo y la del 80 % encima (el solape la hace más marcada)
+  const bands = bandRuns(fc, "b95").map((run) => bandArea("av-pc-band av-pc-band95", run, "b95", g)).join("")
+    + bandRuns(fc, "b80").map((run) => bandArea("av-pc-band av-pc-band80", run, "b80", g)).join("");
+
   return `<svg class="av-pc-svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(labels.ariaLabel || "")}" focusable="false">
-    ${zone}${grid}${unitTxt}${axisX}${xTicks}${base}${histPath}${histDots}${fcPath}${fcDots}
+    ${zone}${grid}${unitTxt}${axisX}${xTicks}${bands}${base}${histPath}${histDots}${fcPath}${fcDots}
     <g class="av-pc-cursor" style="display:none">
       <line class="av-pc-cursor-line" x1="0" x2="0" y1="${yt}" y2="${yb}"></line>
       <circle class="av-pc-cursor-dot" cx="0" cy="0" r="5"></circle>
@@ -290,9 +341,16 @@ function legendHTML(data, fmt) {
   const items = [];
   if (hist.some(Boolean)) items.push(`<li><span class="av-pc-key av-pc-key-h" aria-hidden="true"></span>${esc(labels.history)}</li>`);
   if (fc.some(Boolean)) items.push(`<li><span class="av-pc-key av-pc-key-f" aria-hidden="true"></span>${esc(labels.forecast)}</li>`);
+  if (labels.band80 && fc.some((p) => p && p.b80)) items.push(`<li><span class="av-pc-key av-pc-key-band av-pc-key-b80" aria-hidden="true"></span>${esc(labels.band80)}</li>`);
+  if (labels.band95 && fc.some((p) => p && p.b95)) items.push(`<li><span class="av-pc-key av-pc-key-band av-pc-key-b95" aria-hidden="true"></span>${esc(labels.band95)}</li>`);
   if (isNum(baseline)) items.push(`<li><span class="av-pc-key av-pc-key-base" aria-hidden="true"></span>${esc(labels.baseline)} <span class="av-pc-mono">${esc(`${fmt.value(baseline)} ${unit}`.trim())}</span></li>`);
   if (fc.some((p) => p && p.oor)) items.push(`<li><span class="av-pc-key av-pc-key-oor" aria-hidden="true"></span>${esc(labels.outOfRange)}</li>`);
   return items.length ? `<ul class="av-pc-legend">${items.join("")}</ul>` : "";
+}
+
+/* "63,4 – 78,3 lpm" para una banda [inferior, superior] */
+function bandText(band, unit, fmt) {
+  return `${fmt.value(band[0])} – ${fmt.value(band[1])} ${unit}`.trim();
 }
 
 /* Resumen textual para lectores de pantalla (sin palabras fijas: solo las etiquetas recibidas) */
@@ -309,6 +367,13 @@ function summaryText(data, fmt) {
   range(hist.filter(Boolean), labels.history);
   const fcReal = fc.filter(Boolean);
   range(fcReal, labels.forecast);
+  // bandas del último día pronosticado (las más anchas)
+  const lastF = fcReal[fcReal.length - 1];
+  if (lastF) {
+    for (const [key, name] of [["b80", labels.band80], ["b95", labels.band95]]) {
+      if (lastF[key] && name) parts.push(`${name}, ${fmt.date(lastF)}: ${bandText(lastF[key], unit, fmt)}`);
+    }
+  }
   const oor = fcReal.filter((p) => p.oor).length;
   if (oor) parts.push(`${labels.outOfRange}: ${oor}`);
   if (isNum(baseline)) parts.push(`${labels.baseline}: ${fmt.value(baseline)} ${unit}`.trim());
@@ -348,8 +413,13 @@ function bindChart(wrap, live, view, real, data, fmt) {
     const val = `${fmt.value(p.v)} ${unit}`.trim();
     const kind = p.kind === "f" ? labels.forecast : labels.history;
     const date = fmt.date(p);
+    // bandas de predicción del punto (solo en el pronóstico y si el servidor las envía)
+    const bandRows = [["b80", labels.band80], ["b95", labels.band95]]
+      .filter(([key, name]) => p[key] && name)
+      .map(([key, name]) => `${name}: ${bandText(p[key], unit, fmt)}`);
     tip.innerHTML = `<strong class="av-pc-mono">${esc(val)}</strong><span>${esc(date)}</span>`
       + `<span class="av-pc-tip-kind av-pc-tip-${p.kind}">${esc(kind)}</span>`
+      + bandRows.map((row) => `<span class="av-pc-tip-band">${esc(row)}</span>`).join("")
       + (p.oor ? `<span class="av-pc-tip-oor">${esc(labels.outOfRange)}</span>` : "");
     tip.hidden = false;
     // posición en píxeles del contenedor (el SVG se escala al ancho de la caja)
@@ -360,7 +430,10 @@ function bindChart(wrap, live, view, real, data, fmt) {
     if (left + tw > ww - 4) left = px * scale - tw - 12;
     tip.style.left = `${Math.max(4, Math.min(left, ww - tw - 4))}px`;
     tip.style.top = `${Math.max(4, py * scale - tip.offsetHeight - 10)}px`;
-    if (announce && live) live.textContent = `${kind}: ${date}, ${val}${p.oor ? `, ${labels.outOfRange}` : ""}. ${i + 1}/${real.length}`;
+    if (announce && live) {
+      const bandsTxt = bandRows.length ? `, ${bandRows.join(", ")}` : "";
+      live.textContent = `${kind}: ${date}, ${val}${bandsTxt}${p.oor ? `, ${labels.outOfRange}` : ""}. ${i + 1}/${real.length}`;
+    }
   };
   const hide = () => {
     active = -1;
@@ -424,7 +497,7 @@ export function renderPredictionChart(container, {
   if (prev) prev.destroy();
 
   const L = {
-    history: "", forecast: "", baseline: "", outOfRange: "", ariaLabel: "",
+    history: "", forecast: "", band80: "", band95: "", baseline: "", outOfRange: "", ariaLabel: "",
     ...(labels || {}),
   };
   const data = {

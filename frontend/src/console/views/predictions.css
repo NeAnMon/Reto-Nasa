@@ -106,6 +106,20 @@ body[data-theme="daylight-clean"] .av-pr-badge.av-pr-tone-mon { color: #8a6500; 
 .av-pr-disc { border-left: 4px solid var(--av-muted); }
 .av-pr-srvlbl { font-weight: 600; }
 
+/* Proyección frente a umbrales y recomendación preventiva (el tono acompaña siempre al texto del estado) */
+.av-pr-proj { border-left: 4px solid var(--av-strong); }
+.av-pr-proj.av-pr-tone-ok { border-left-color: var(--av-pr-ok); }
+.av-pr-proj.av-pr-tone-mon { border-left-color: var(--av-y); }
+.av-pr-proj.av-pr-tone-alert { border-left-color: var(--av-r); }
+.av-pr-proj.av-pr-tone-na { border-left-color: var(--av-muted); }
+.av-pr-projrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-width: 0; }
+.av-pr-projmain { font-weight: 600; }
+.av-pr-rec {
+  display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; min-width: 0;
+  background: var(--av-raised); border: 1px solid var(--av-border); border-radius: 6px;
+}
+.av-pr-rec-text { white-space: pre-line; }
+
 /* Responsive */
 @media (max-width: 900px) {
   .av-pr-form { grid-template-columns: 1fr 1fr; }

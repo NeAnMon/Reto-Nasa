@@ -1,8 +1,14 @@
 /* SEMSA · Consola · Vista "Predicciones fisiológicas" (issue #28)
  *
- * - Pide GET /predictions/indicators/{code} (apiService.getIndicatorPrediction): regresión OLS
- *   validada con MAE frente a una referencia ingenua y puntaje Z frente a la línea base individual.
+ * - Pide GET /predictions/indicators/{code} (apiService.getIndicatorPrediction): pronóstico de la
+ *   tendencia del indicador con nivel robusto (plano salvo que una tendencia domine al ruido), bandas
+ *   de predicción al 80 % y 95 %, compuerta de fiabilidad (¿mejora a repetir el último valor en la
+ *   validación dentro de la serie?), proyección contra los umbrales de la regla vigente con
+ *   recomendación preventiva y puntaje Z frente a la línea base individual. No es un diagnóstico.
  *   Solo responde al rol ASTRONAUT con asignación activa (el backend deduce astronaut_id de la sesión).
+ * - Contrato aditivo: `trend`, `threshold_projection`, `recommendation`, `empirical_validation` y las
+ *   bandas de `forecast[]` son opcionales. Si el servidor no los envía, la vista se pinta como antes
+ *   (tendencia desde `beta1`, sin bandas ni bloque de proyección).
  * - La respuesta no trae histórico ni el valor de la línea base: se piden a GET /analytics/timeseries
  *   (apiService.getAnalyticsTimeseries) filtrando por la fase y el entorno que usó el modelo, y se
  *   agregan a medianas diarias (fecha UTC), igual que el servicio. Sin "incluir simulados" se descartan
@@ -46,7 +52,7 @@ const DICT = {
     noAccess: "Solo las personas astronautas con una asignación activa a la misión pueden ver sus predicciones.",
     resultFor: "{name} · horizonte de {h}",
     chartH: "Histórico y pronóstico",
-    chartSub: "Mediana diaria (UTC) del segmento analizado. El pronóstico prolonga la recta de regresión (OLS).",
+    chartSub: "Mediana diaria (UTC) del segmento analizado. El pronóstico es el nivel robusto de los días recientes: plano, salvo que una tendencia domine claramente al ruido. Las bandas marcan dónde se espera el valor real el 80 % y el 95 % de las veces.",
     noHistory: "No se pudo cargar el histórico de mediciones: se muestra solo el pronóstico.",
     noChartData: "No hay mediciones que dibujar en este segmento.",
     metricsH: "Métricas del modelo",
@@ -55,7 +61,7 @@ const DICT = {
       status: "Estado del modelo",
       nDays: "Días analizados",
       trend: "Tendencia",
-      error: "Error del modelo (MAE)",
+      error: "Error en la validación (MAE)",
       z: "Desviación de la línea base",
       direction: "Dirección",
       baseline: "Línea base",
@@ -70,7 +76,14 @@ const DICT = {
     trendUp: "Al alza",
     trendDown: "A la baja",
     trendFlat: "Estable",
-    maeVal: "OLS {ols} · referencia {naive}",
+    trendUnknown: "Sin determinar",
+    trendProjected: "Tendencia significativa: se proyecta en el pronóstico",
+    trendNotProjected: "Tendencia detectada; no se proyecta porque no reduce el error",
+    trendNone: "Sin tendencia significativa: pronóstico plano",
+    trendSig: "Tendencia significativa",
+    trendNotSig: "Sin tendencia significativa",
+    trendFew: "Pocos días recientes para evaluarla",
+    maeVal: "Método {model} · último valor {naive}",
     maeBetter: "Mejora a repetir el último valor",
     maeWorse: "No mejora a repetir el último valor",
     zVal: "Z = {z}",
@@ -92,15 +105,42 @@ const DICT = {
       invalid_baseline: "Línea base no válida",
       invalid_std_dev: "Desviación típica no válida",
       available_unverified: "Disponible (sin verificar)",
+      placeholder_std_dev: "Desviación de relleno: no se calcula Z",
     },
     baselineHint: "Valor de referencia previo a la misión",
     insufficientH: "Todavía no hay datos suficientes",
     insufficientP: "Se necesitan al menos 10 días con mediciones válidas en un mismo segmento (fase y entorno) para estimar una tendencia. Ahora hay {n}.",
     insufficientSim: "En modo demostración puedes incluir los datos simulados.",
     unreliableH: "El modelo no es fiable para este indicador",
-    unreliableP: "En los 3 días de validación, la recta de regresión se equivocó tanto o más (MAE {ols}) que repetir el último valor medido (MAE {naive}). Por eso no se muestra pronóstico.",
+    unreliableP: "En la validación dentro de la propia serie, el método no mejora a repetir el último valor medido (MAE {model} frente a {naive}). Por eso no se muestra pronóstico.",
+    unreliableNoVal: "No hay suficientes días seguidos para validar el método dentro de la propia serie. Por eso no se muestra pronóstico.",
+    projH: "Proyección frente a umbrales y recomendación",
+    projCurrent: "Estado actual",
+    projRange: "Rango normal: {lo} – {hi} {unit}",
+    projState: {
+      NORMAL: "Normal",
+      MONITOR: "Vigilar",
+      WARNING: "Precaución",
+      CRITICAL: "Crítico",
+    },
+    projDir: {
+      above: "por encima de {thr} {unit}",
+      below: "por debajo de {thr} {unit}",
+      both: "a ambos lados del rango normal",
+    },
+    projExpected: "Cruce previsto: el valor esperado pasaría a «{state}» el {date} (en {days}){detail}.",
+    projPossible: "Cruce posible: la banda del 80 % alcanza «{state}» el {date} (en {days}){detail}.",
+    projStillIn: "El valor esperado se mantiene en rango normal.",
+    projNow: "El último valor medido ya está en «{state}»{detail}.",
+    projNone: "No se prevé ningún cruce de umbral en este horizonte: el valor esperado y la banda del 80 % se mantienen en rango normal.",
+    projNoRule: "Este indicador no tiene una regla vigente: no se puede proyectar contra umbrales.",
+    recH: "Recomendación preventiva",
+    recSource: "Protocolo {rule} · versión {ver}",
+    valYes: "Indicador validado con datos reales",
+    valNo: "Indicador sin validación empírica",
     interpH: "Interpretación",
-    interpOk: "Con la tendencia actual, {name} se estima en {value} {unit} el {date}.",
+    interpOk: "El pronóstico sitúa {name} en {value} {unit} el {date}.",
+    interpBand: "Banda de predicción al 80 %: {lo80} – {hi80} {unit}; al 95 %: {lo95} – {hi95} {unit}.",
     interpZ: "Respecto a tu línea base: {band}, {dir} (Z = {z}).",
     interpNoZ: "No se puede comparar con tu línea base: {status}.",
     outOfRange: "Algún valor pronosticado queda fuera del rango válido del indicador: la extrapolación no es plausible.",
@@ -122,6 +162,8 @@ const DICT = {
     chart: {
       history: "Mediciones (mediana diaria)",
       forecast: "Pronóstico",
+      band80: "Banda de predicción 80 %",
+      band95: "Banda de predicción 95 %",
       baseline: "Línea base individual",
       outOfRange: "Fuera del rango válido",
       aria: "Gráfica de {name}: {n} días de histórico y {h} días de pronóstico",
@@ -150,7 +192,7 @@ const DICT = {
     noAccess: "Only astronauts with an active mission assignment can see their predictions.",
     resultFor: "{name} · {h} horizon",
     chartH: "History and forecast",
-    chartSub: "Daily median (UTC) of the analysed segment. The forecast extends the regression line (OLS).",
+    chartSub: "Daily median (UTC) of the analysed segment. The forecast is the robust level of recent days: flat, unless a trend clearly dominates the noise. The bands mark where the real value is expected 80% and 95% of the time.",
     noHistory: "The measurement history couldn't be loaded: only the forecast is shown.",
     noChartData: "There are no measurements to plot in this segment.",
     metricsH: "Model metrics",
@@ -159,7 +201,7 @@ const DICT = {
       status: "Model status",
       nDays: "Days analysed",
       trend: "Trend",
-      error: "Model error (MAE)",
+      error: "Validation error (MAE)",
       z: "Deviation from baseline",
       direction: "Direction",
       baseline: "Baseline",
@@ -174,7 +216,14 @@ const DICT = {
     trendUp: "Rising",
     trendDown: "Falling",
     trendFlat: "Stable",
-    maeVal: "OLS {ols} · reference {naive}",
+    trendUnknown: "Undetermined",
+    trendProjected: "Significant trend: it is projected in the forecast",
+    trendNotProjected: "Trend detected; not projected because it doesn't reduce the error",
+    trendNone: "No significant trend: flat forecast",
+    trendSig: "Significant trend",
+    trendNotSig: "No significant trend",
+    trendFew: "Too few recent days to assess it",
+    maeVal: "Method {model} · last value {naive}",
     maeBetter: "Beats repeating the last value",
     maeWorse: "Doesn't beat repeating the last value",
     zVal: "Z = {z}",
@@ -196,15 +245,42 @@ const DICT = {
       invalid_baseline: "Invalid baseline",
       invalid_std_dev: "Invalid standard deviation",
       available_unverified: "Available (unverified)",
+      placeholder_std_dev: "Placeholder deviation: Z isn't computed",
     },
     baselineHint: "Pre-mission reference value",
     insufficientH: "Not enough data yet",
     insufficientP: "At least 10 days with valid measurements in a single segment (phase and environment) are needed to estimate a trend. There are {n} now.",
     insufficientSim: "In demo mode you can include the simulated data.",
     unreliableH: "The model isn't reliable for this indicator",
-    unreliableP: "Over the 3 validation days, the regression line was as wrong or worse (MAE {ols}) than repeating the last measured value (MAE {naive}). That's why no forecast is shown.",
+    unreliableP: "In the validation within the series itself, the method doesn't beat repeating the last measured value (MAE {model} versus {naive}). That's why no forecast is shown.",
+    unreliableNoVal: "There aren't enough consecutive days to validate the method within the series itself. That's why no forecast is shown.",
+    projH: "Projection against thresholds and recommendation",
+    projCurrent: "Current state",
+    projRange: "Normal range: {lo} – {hi} {unit}",
+    projState: {
+      NORMAL: "Nominal",
+      MONITOR: "Advisory",
+      WARNING: "Caution",
+      CRITICAL: "Warning",
+    },
+    projDir: {
+      above: "above {thr} {unit}",
+      below: "below {thr} {unit}",
+      both: "on both sides of the normal range",
+    },
+    projExpected: "Expected crossing: the expected value would move to “{state}” on {date} (in {days}){detail}.",
+    projPossible: "Possible crossing: the 80% band reaches “{state}” on {date} (in {days}){detail}.",
+    projStillIn: "The expected value stays within the normal range.",
+    projNow: "The last measured value is already in “{state}”{detail}.",
+    projNone: "No threshold crossing is expected within this horizon: the expected value and the 80% band stay within the normal range.",
+    projNoRule: "This indicator has no rule in force: it can't be projected against thresholds.",
+    recH: "Preventive recommendation",
+    recSource: "Protocol {rule} · version {ver}",
+    valYes: "Indicator validated with real data",
+    valNo: "Indicator without empirical validation",
     interpH: "Interpretation",
-    interpOk: "Following the current trend, {name} is estimated at {value} {unit} on {date}.",
+    interpOk: "The forecast places {name} at {value} {unit} on {date}.",
+    interpBand: "80% prediction band: {lo80} – {hi80} {unit}; 95%: {lo95} – {hi95} {unit}.",
     interpZ: "Compared with your baseline: {band}, {dir} (Z = {z}).",
     interpNoZ: "It can't be compared with your baseline: {status}.",
     outOfRange: "Some forecast values fall outside the indicator's valid range: the extrapolation isn't plausible.",
@@ -226,6 +302,8 @@ const DICT = {
     chart: {
       history: "Measurements (daily median)",
       forecast: "Forecast",
+      band80: "80% prediction band",
+      band95: "95% prediction band",
       baseline: "Individual baseline",
       outOfRange: "Outside valid range",
       aria: "{name} chart: {n} days of history and {h} days of forecast",
@@ -536,6 +614,125 @@ function cardHTML(lbl, value, hint, tone = "neutral") {
     </div>`;
 }
 
+/* Tarjeta de tendencia: dirección, pendiente por día, si es significativa y si se extrapoló (objeto `trend`).
+ * Un servidor anterior no envía `trend`: se cae a la pendiente `beta1`, como antes. */
+function trendCardHTML(p, unit) {
+  const T = tr(DICT);
+  const perDay = (v) => fmt(T.perDay, { v: signed2(v), unit }).replace(" /", "/");
+  const t = p.trend;
+  if (t && typeof t === "object") {
+    const dir = t.direction;
+    const word = dir === "rising" ? T.trendUp : dir === "falling" ? T.trendDown : dir === "stable" ? T.trendFlat : T.trendUnknown;
+    const sig = t.significant === true;
+    let hint;
+    if (dir !== "rising" && dir !== "falling" && dir !== "stable") hint = T.trendFew;
+    else if (p.status !== "ok") hint = sig ? T.trendSig : T.trendNotSig;
+    else if (!sig) hint = T.trendNone;
+    else hint = t.extrapolated === true ? T.trendProjected : T.trendNotProjected;
+    // La pendiente solo se muestra si es significativa: una pendiente no significativa es ruido
+    const value = sig && isNum(t.slope_per_day) ? `${word} · ${perDay(t.slope_per_day)}` : word;
+    return cardHTML(T.m.trend, value, hint, "neutral");
+  }
+  if (p.status !== "ok") return "";
+  const b1 = Number(p.beta1);
+  const flat = !isNum(p.beta1) || Math.abs(b1) < 0.005;
+  const word = !isNum(p.beta1) ? "" : flat ? T.trendFlat : b1 > 0 ? T.trendUp : T.trendDown;
+  return cardHTML(T.m.trend, perDay(p.beta1), word, "neutral");
+}
+
+/* Tono de un estado operativo de la regla (el texto del estado acompaña siempre al color) */
+function stateTone(state) {
+  if (state === "NORMAL") return "ok";
+  if (state === "MONITOR") return "mon";
+  if (state === "WARNING" || state === "CRITICAL") return "alert";
+  return "na";
+}
+
+/* ", por encima de 100 lpm" para un cruce {direction, threshold}; "" si no hay datos */
+function crossDetail(c, unit) {
+  const T = tr(DICT);
+  if (!c) return "";
+  if (c.direction === "both") return `, ${T.projDir.both}`;
+  if ((c.direction === "above" || c.direction === "below") && isNum(c.threshold)) {
+    return `, ${fmt(T.projDir[c.direction], { thr: num1(c.threshold), unit }).trim()}`;
+  }
+  return "";
+}
+
+/* Proyección frente a los umbrales de la regla vigente y recomendación preventiva.
+ * Solo con el contrato nuevo: un servidor anterior no envía estas claves y el bloque no se pinta. */
+function projectionHTML(r) {
+  const T = tr(DICT);
+  const p = r.pred;
+  if (!("threshold_projection" in p) && !("recommendation" in p)) return "";
+  const tp = p.threshold_projection && typeof p.threshold_projection === "object" ? p.threshold_projection : null;
+  const rec = p.recommendation && typeof p.recommendation === "object" ? p.recommendation : null;
+  const unit = bt(r.unit || "");
+  if (!tp) {
+    return `<section class="av-panel av-pr-sec av-pr-proj av-pr-tone-na" aria-labelledby="av-pr-proj-h">
+      <h3 class="av-h2" id="av-pr-proj-h">${esc(T.projH)}</h3>
+      <p class="av-pr-p">${esc(T.projNoRule)}</p>
+    </section>`;
+  }
+  const expected = tp.first_expected_crossing && typeof tp.first_expected_crossing === "object" ? tp.first_expected_crossing : null;
+  const possible = tp.first_possible_crossing && typeof tp.first_possible_crossing === "object" ? tp.first_possible_crossing : null;
+  const outNow = !!tp.current_state && tp.current_state !== "NORMAL";
+  const basis = (rec && rec.basis) || (outNow ? "currently_out_of_range" : expected ? "expected_crossing" : possible ? "possible_crossing" : "none");
+  const stateName = (s) => label(T.projState, s);
+  const when = (c) => ({
+    state: stateName(c.state),
+    date: fmtDate(c.date),
+    days: isNum(c.days_ahead) ? horizonText(c.days_ahead) : T.na,
+    detail: crossDetail(c, unit),
+  });
+
+  const lines = [];
+  let tone = "ok";
+  if (basis === "currently_out_of_range") {
+    const state = (rec && rec.state) || tp.current_state;
+    tone = stateTone(state);
+    lines.push(fmt(T.projNow, { state: stateName(state), detail: crossDetail(rec, unit) }));
+  } else if (basis === "expected_crossing" && expected) {
+    tone = stateTone(expected.state);
+    lines.push(fmt(T.projExpected, when(expected)));
+    if (possible) lines.push(fmt(T.projPossible, when(possible)));
+  } else if (basis === "possible_crossing" && possible) {
+    tone = "mon";
+    lines.push(`${fmt(T.projPossible, when(possible))} ${T.projStillIn}`);
+  } else {
+    lines.push(T.projNone);
+  }
+
+  const normal = tp.ranges && Array.isArray(tp.ranges.normal) ? tp.ranges.normal : null;
+  const range = normal && isNum(normal[0]) && isNum(normal[1])
+    ? fmt(T.projRange, { lo: num1(normal[0]), hi: num1(normal[1]), unit }).trim()
+    : "";
+  const current = tp.current_state
+    ? `<div class="av-pr-projrow">
+        <span class="av-lbl">${esc(T.projCurrent)}</span>
+        <span class="av-pr-badge av-pr-tone-${stateTone(tp.current_state)}">${esc(stateName(tp.current_state))}</span>
+        ${range ? `<span class="av-sub">${esc(range)}</span>` : ""}
+      </div>`
+    : "";
+  const recText = rec && typeof rec.text === "string" && rec.text.trim() ? rec.text : "";
+  const source = rec && rec.rule_code
+    ? fmt(T.recSource, { rule: rec.rule_code, ver: rec.rule_version || T.na })
+    : "";
+  const recBox = recText
+    ? `<div class="av-pr-rec">
+        <span class="av-lbl">${esc(T.recH)}</span>
+        <p class="av-pr-p av-pr-rec-text">${esc(bt(recText))}</p>
+        ${source ? `<span class="av-sub">${esc(source)}</span>` : ""}
+      </div>`
+    : "";
+  return `<section class="av-panel av-pr-sec av-pr-proj av-pr-tone-${tone}" aria-labelledby="av-pr-proj-h">
+      <h3 class="av-h2" id="av-pr-proj-h">${esc(T.projH)}</h3>
+      ${current}
+      ${lines.map((l, i) => `<p class="av-pr-p${i === 0 ? " av-pr-projmain" : ""}">${esc(l)}</p>`).join("")}
+      ${recBox}
+    </section>`;
+}
+
 function cardsHTML(r) {
   const T = tr(DICT);
   const p = r.pred;
@@ -543,15 +740,11 @@ function cardsHTML(r) {
   const cards = [];
   cards.push(cardHTML(T.m.status, label(T.status, p.status), "", statusTone(p.status)));
   cards.push(cardHTML(T.m.nDays, String(isNum(p.n_days) ? fmtNum(p.n_days, 0) : T.na), T.nDaysHint, Number(p.n_days) >= 10 ? "neutral" : "na"));
-  if (p.status === "ok") {
-    const b1 = Number(p.beta1);
-    const flat = !isNum(p.beta1) || Math.abs(b1) < 0.005;
-    const word = !isNum(p.beta1) ? "" : flat ? T.trendFlat : b1 > 0 ? T.trendUp : T.trendDown;
-    cards.push(cardHTML(T.m.trend, fmt(T.perDay, { v: signed2(p.beta1), unit }).replace(" /", "/"), word, "neutral"));
-  }
+  cards.push(trendCardHTML(p, unit));
   if (p.status === "ok" || p.status === "model_not_reliable") {
+    // mae_ols conserva el nombre por compatibilidad: es el MAE del método en la validación dentro de la serie
     const better = isNum(p.mae_ols) && isNum(p.mae_naive) && Number(p.mae_ols) < Number(p.mae_naive);
-    cards.push(cardHTML(T.m.error, fmt(T.maeVal, { ols: num2(p.mae_ols), naive: num2(p.mae_naive) }), better ? T.maeBetter : T.maeWorse, better ? "ok" : "mon"));
+    cards.push(cardHTML(T.m.error, fmt(T.maeVal, { model: num2(p.mae_ols), naive: num2(p.mae_naive) }), better ? T.maeBetter : T.maeWorse, better ? "ok" : "mon"));
   }
   if (p.status === "ok") {
     const hasZ = isNum(p.z_score);
@@ -559,7 +752,10 @@ function cardsHTML(r) {
     cards.push(cardHTML(T.m.direction, p.direction ? label(T.dir, p.direction) : T.na, hasZ ? T.zAtEnd : "", hasZ ? zTone(p.z_band) : "na"));
   }
   const bOk = p.baseline_status === "available_unverified";
-  const bHint = bOk && isNum(r.baselineValue) ? `${num1(r.baselineValue)} ${unit} · ${T.baselineHint}` : T.baselineHint;
+  // Con desviación de relleno el valor de la línea base sigue siendo válido (solo falta el puntaje Z)
+  const bShown = bOk || p.baseline_status === "placeholder_std_dev";
+  const bVal = isNum(r.baselineValue) ? r.baselineValue : p.baseline_value;
+  const bHint = bShown && isNum(bVal) ? `${num1(bVal)} ${unit} · ${T.baselineHint}` : T.baselineHint;
   cards.push(cardHTML(T.m.baseline, label(T.baselineSt, p.baseline_status), bHint, bOk ? "ok" : "na"));
   return `<section class="av-panel av-pr-sec">
       <h3 class="av-h2">${esc(T.metricsH)}</h3>
@@ -575,6 +771,11 @@ function interpretationHTML(r, name) {
   if (!lastF) return "";
   const unit = bt(r.unit || "");
   const lines = [fmt(T.interpOk, { name, value: num1(lastF.value), unit, date: fmtDate(lastF.date) }).replace(/\s{2,}/g, " ")];
+  if (["lower_80", "upper_80", "lower_95", "upper_95"].every((k) => isNum(lastF[k]))) {
+    lines.push(fmt(T.interpBand, {
+      lo80: num1(lastF.lower_80), hi80: num1(lastF.upper_80), lo95: num1(lastF.lower_95), hi95: num1(lastF.upper_95), unit,
+    }).replace(/\s+([;.])/g, "$1"));
+  }
   if (isNum(p.z_score)) {
     lines.push(fmt(T.interpZ, { band: label(T.zBand, p.z_band).toLowerCase(), dir: label(T.dir, p.direction).toLowerCase(), z: signed2(p.z_score) }));
   } else {
@@ -591,9 +792,17 @@ function interpretationHTML(r, name) {
 function disclaimerHTML(r) {
   const T = tr(DICT);
   const server = r.pred && r.pred.disclaimer;
+  // Validación empírica del método para este indicador (la nota llega del backend en español: bt())
+  const ev = r.pred && r.pred.empirical_validation && typeof r.pred.empirical_validation === "object" ? r.pred.empirical_validation : null;
+  const validated = !!ev && ev.validated_with_real_data === true;
+  const validation = ev
+    ? `<p class="av-pr-p"><span class="av-pr-badge av-pr-tone-${validated ? "ok" : "mon"}"><span class="av-pr-dot" aria-hidden="true"></span>${esc(validated ? T.valYes : T.valNo)}</span></p>
+      ${ev.note ? `<p class="av-pr-p av-sub">${esc(bt(String(ev.note)))}</p>` : ""}`
+    : "";
   return `<section class="av-panel av-pr-sec av-pr-disc" aria-labelledby="av-pr-disc-h">
       <h3 class="av-h2" id="av-pr-disc-h">${esc(T.disclaimerH)}</h3>
       <p class="av-pr-p"><strong>${esc(T.note)}</strong></p>
+      ${validation}
       ${server ? `<p class="av-pr-p av-sub" lang="en"><span class="av-pr-srvlbl">${esc(T.serviceNote)}:</span> ${esc(server)}</p>` : ""}
     </section>`;
 }
@@ -603,6 +812,10 @@ function badgesHTML(r) {
   const out = [];
   if (r.query.sim) out.push(`<span class="av-pr-badge av-pr-badge-sim">${esc(T.simBadge)}</span>`);
   if (r.pred && r.pred.baseline_is_simulated) out.push(`<span class="av-pr-badge av-pr-badge-sim">${esc(T.simBaselineBadge)}</span>`);
+  const ev = r.pred && r.pred.empirical_validation;
+  if (ev && typeof ev === "object" && ev.validated_with_real_data === false) {
+    out.push(`<span class="av-pr-badge av-pr-tone-mon"><span class="av-pr-dot" aria-hidden="true"></span>${esc(T.valNo)}</span>`);
+  }
   if (r.pred) out.push(`<span class="av-pr-badge av-pr-tone-${statusTone(r.pred.status)}"><span class="av-pr-dot" aria-hidden="true"></span>${esc(label(T.status, r.pred.status))}</span>`);
   return out.length ? `<div class="av-pr-badges">${out.join("")}</div>` : "";
 }
@@ -624,7 +837,16 @@ function mountChart(r, name) {
   const p = r.pred;
   const forecast = (p.status === "ok" ? p.forecast || [] : [])
     .filter((f) => f && isNum(f.value))
-    .map((f) => ({ date: f.date, value: Number(f.value), out_of_valid_range: !!f.out_of_valid_range }));
+    .map((f) => ({
+      date: f.date,
+      value: Number(f.value),
+      out_of_valid_range: !!f.out_of_valid_range,
+      // bandas de predicción (opcionales: un servidor anterior no las envía y la gráfica las omite)
+      lower_80: f.lower_80,
+      upper_80: f.upper_80,
+      lower_95: f.lower_95,
+      upper_95: f.upper_95,
+    }));
   const history = r.history || [];
   if (!history.some((h) => h.value !== null) && !forecast.length) {
     host.innerHTML = `<p class="av-sub av-pr-p">${esc(T.noChartData)}</p>`;
@@ -636,11 +858,14 @@ function mountChart(r, name) {
     st.chart = renderPredictionChart(host, {
       history,
       forecast,
-      baseline: baselineOk && isNum(r.baselineValue) ? r.baselineValue : null,
+      // valor de /analytics/timeseries o, si no se pudo cargar, el que trae la predicción (contrato nuevo)
+      baseline: baselineOk && isNum(r.baselineValue) ? r.baselineValue : baselineOk && isNum(p.baseline_value) ? Number(p.baseline_value) : null,
       unit: bt(r.unit || ""),
       labels: {
         history: T.chart.history,
         forecast: T.chart.forecast,
+        band80: T.chart.band80,
+        band95: T.chart.band95,
         baseline: T.chart.baseline,
         outOfRange: T.chart.outOfRange,
         ariaLabel: fmt(T.chart.aria, { name, n: nHist, h: forecast.length }),
@@ -695,10 +920,13 @@ function renderResult() {
 
   let body = "";
   if (p.status === "ok") {
-    body = chartPanelHTML(r) + cardsHTML(r) + interpretationHTML(r, name);
+    // La proyección y la recomendación van primero: son la orientación útil de la vista
+    body = projectionHTML(r) + chartPanelHTML(r) + cardsHTML(r) + interpretationHTML(r, name);
   } else if (p.status === "model_not_reliable") {
-    body = stateHTML("mon", T.unreliableH, fmt(T.unreliableP, { ols: num2(p.mae_ols), naive: num2(p.mae_naive) }))
-      + chartPanelHTML(r) + cardsHTML(r);
+    const why = isNum(p.mae_ols) && isNum(p.mae_naive)
+      ? fmt(T.unreliableP, { model: num2(p.mae_ols), naive: num2(p.mae_naive) })
+      : T.unreliableNoVal;
+    body = stateHTML("mon", T.unreliableH, why) + chartPanelHTML(r) + cardsHTML(r);
   } else {
     // insufficient_data (y cualquier estado desconocido): sin pronóstico
     const extra = r.query.sim ? "" : `<p class="av-pr-p av-sub">${esc(T.insufficientSim)}</p>`;

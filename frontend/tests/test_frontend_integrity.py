@@ -533,3 +533,66 @@ def test_predictions_view_wired_and_handles_all_states():
     assert 'from "./prediction-chart.js"' in view_js
     assert not re.search(r'["/]chart(\.umd)?(\.min)?\.js', index_html, re.I), "no external Chart.js"
     assert "new Chart(" not in view_js
+
+
+def test_predictions_view_follows_calibrated_forecast_contract():
+    """La vista de Predicciones describe el método calibrado (nivel robusto, no una recta OLS) y pinta lo
+    que añade el contrato: tendencia, bandas de predicción, proyección contra umbrales, recomendación y
+    validación empírica. Todo lo nuevo es opcional: con un servidor anterior se pinta como antes."""
+    views_dir = FRONTEND_ROOT / "src" / "console" / "views"
+    view_js = (views_dir / "predictions.js").read_text(encoding="utf-8")
+    chart_js = (views_dir / "prediction-chart.js").read_text(encoding="utf-8")
+    chart_css = (views_dir / "prediction-chart.css").read_text(encoding="utf-8")
+    view_css = (views_dir / "predictions.css").read_text(encoding="utf-8")
+    es_block, en_block = _dict_blocks(view_js)
+
+    # 1. Textos coherentes con el método: ni OLS, ni recta de regresión, ni "3 días de validación"
+    for block in (es_block, en_block):
+        assert not re.search(r"OLS|regresi[oó]n|regression|3 días de validación|3 validation days", block), (
+            "predictions.js DICT still describes the OLS line"
+        )
+        assert "{model}" in block and "{ols}" not in block
+    assert "repetir el último valor" in es_block and "validación dentro de la propia serie" in es_block
+    assert "nivel robusto" in es_block and "robust level" in en_block
+
+    # 2. Tendencia desde el objeto `trend`; el corte sobre beta1 queda solo como respaldo del servidor anterior
+    assert "function trendCardHTML" in view_js
+    for field in ("p.trend", "t.direction", "t.significant", "t.extrapolated", "t.slope_per_day"):
+        assert field in view_js, f"predictions.js must read {field}"
+    assert "p.beta1" in view_js
+    trend_keys = {"trendUp", "trendDown", "trendFlat", "trendUnknown", "trendProjected", "trendNotProjected", "trendNone"}
+    assert trend_keys <= _keys(es_block, 4)
+    assert "no se proyecta porque no reduce el error" in es_block
+
+    # 3. Línea base con desviación de relleno
+    assert es_block.count("placeholder_std_dev:") == 1 and en_block.count("placeholder_std_dev:") == 1
+
+    # 4. Bandas de predicción en la gráfica: datos, área, leyenda, tooltip y eje Y
+    for field in ("lower_80", "upper_80", "lower_95", "upper_95"):
+        assert field in view_js and field in chart_js, f"prediction bands need {field}"
+    assert {"band80", "band95"} <= _keys(es_block, 6)
+    for cls in ("av-pc-band80", "av-pc-band95", "av-pc-key-b80", "av-pc-key-b95", "av-pc-tip-band"):
+        assert cls in chart_js and cls in chart_css, f"prediction-chart needs {cls}"
+    assert "vals.push(p.b95[0], p.b95[1])" in chart_js  # el dominio del eje Y incluye las bandas
+    assert "function bandOf" in chart_js and "return lo <= v && v <= hi ? [lo, hi] : null" in chart_js
+
+    # 5. Proyección contra umbrales y recomendación, antes de la gráfica
+    assert "function projectionHTML" in view_js
+    for field in ("threshold_projection", "first_expected_crossing", "first_possible_crossing", "current_state",
+                  "recommendation", "rec.basis", "rec.text", "days_ahead"):
+        assert field in view_js, f"predictions.js must read {field}"
+    assert "projectionHTML(r) + chartPanelHTML(r)" in view_js
+    assert {"projH", "projExpected", "projPossible", "projNow", "projNone", "projNoRule", "recH"} <= _keys(es_block, 4)
+    assert {"NORMAL", "MONITOR", "WARNING", "CRITICAL", "above", "below", "both"} <= _keys(es_block, 6)
+    assert "esc(bt(recText))" in view_js  # el texto de la regla llega del backend: se traduce y se escapa
+    assert ".av-pr-proj" in view_css and ".av-pr-rec" in view_css
+
+    # 6. Validación empírica: validado con datos reales o no
+    assert "empirical_validation" in view_js and "validated_with_real_data" in view_js
+    assert {"valYes", "valNo"} <= _keys(es_block, 4)
+    assert "esc(bt(String(ev.note)))" in view_js
+
+    # 7. Tolerancia: sin los campos nuevos no se pinta el bloque ni las bandas, y no hay errores
+    assert '!("threshold_projection" in p) && !("recommendation" in p)' in view_js
+    assert 't && typeof t === "object"' in view_js
+    assert "innerHTML" in view_js and "${rec.text}" not in view_js and "${ev.note}" not in view_js
