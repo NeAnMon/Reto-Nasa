@@ -103,7 +103,7 @@ const DICT = {
     baselineSt: {
       missing: "Sin línea base",
       invalid_baseline: "Línea base no válida",
-      invalid_std_dev: "Desviación típica no válida",
+      invalid_std_dev: "Sin desviación personal válida: no se calcula Z",
       available_unverified: "Disponible (sin verificar)",
       placeholder_std_dev: "Desviación de relleno: no se calcula Z",
     },
@@ -117,6 +117,9 @@ const DICT = {
     projH: "Proyección frente a umbrales y recomendación",
     projCurrent: "Estado actual",
     projRange: "Rango normal: {lo} – {hi} {unit}",
+    projPersonal: "Tu banda habitual (línea base ± 2 DE): {lo} – {hi} {unit}",
+    projPersonalLow: "Desvío personal por debajo de {lo} {unit} (línea base − 2 DE)",
+    projRefPersonal: " (límite de tu banda habitual)",
     projState: {
       NORMAL: "Normal",
       MONITOR: "Vigilar",
@@ -135,6 +138,7 @@ const DICT = {
     projNone: "No se prevé ningún cruce de umbral en este horizonte: el valor esperado y la banda del 80 % se mantienen en rango normal.",
     projNoRule: "Este indicador no tiene una regla vigente: no se puede proyectar contra umbrales.",
     recH: "Recomendación preventiva",
+    recNowH: "Qué hacer ahora",
     recSource: "Protocolo {rule} · versión {ver}",
     valYes: "Indicador validado con datos reales",
     valNo: "Indicador sin validación empírica",
@@ -243,7 +247,7 @@ const DICT = {
     baselineSt: {
       missing: "No baseline",
       invalid_baseline: "Invalid baseline",
-      invalid_std_dev: "Invalid standard deviation",
+      invalid_std_dev: "No valid personal deviation: Z isn't computed",
       available_unverified: "Available (unverified)",
       placeholder_std_dev: "Placeholder deviation: Z isn't computed",
     },
@@ -257,6 +261,9 @@ const DICT = {
     projH: "Projection against thresholds and recommendation",
     projCurrent: "Current state",
     projRange: "Normal range: {lo} – {hi} {unit}",
+    projPersonal: "Your usual band (baseline ± 2 SD): {lo} – {hi} {unit}",
+    projPersonalLow: "Personal deviation below {lo} {unit} (baseline − 2 SD)",
+    projRefPersonal: " (edge of your usual band)",
     projState: {
       NORMAL: "Nominal",
       MONITOR: "Advisory",
@@ -275,6 +282,7 @@ const DICT = {
     projNone: "No threshold crossing is expected within this horizon: the expected value and the 80% band stay within the normal range.",
     projNoRule: "This indicator has no rule in force: it can't be projected against thresholds.",
     recH: "Preventive recommendation",
+    recNowH: "What to do now",
     recSource: "Protocol {rule} · version {ver}",
     valYes: "Indicator validated with real data",
     valNo: "Indicator without empirical validation",
@@ -654,7 +662,9 @@ function crossDetail(c, unit) {
   if (!c) return "";
   if (c.direction === "both") return `, ${T.projDir.both}`;
   if ((c.direction === "above" || c.direction === "below") && isNum(c.threshold)) {
-    return `, ${fmt(T.projDir[c.direction], { thr: num1(c.threshold), unit }).trim()}`;
+    // el umbral puede ser el del rango de la regla o el de la banda personal (línea base ± Z·DE)
+    const ref = c.reference === "personal_baseline" ? T.projRefPersonal : "";
+    return `, ${fmt(T.projDir[c.direction], { thr: num1(c.threshold), unit }).trim()}${ref}`;
   }
   return "";
 }
@@ -707,21 +717,33 @@ function projectionHTML(r) {
   const range = normal && isNum(normal[0]) && isNum(normal[1])
     ? fmt(T.projRange, { lo: num1(normal[0]), hi: num1(normal[1]), unit }).trim()
     : "";
+  // Banda personal del motor de alertas (línea base ± 2 DE); el lado superior es null si solo alerta el desvío a la baja
+  const band = tp.ranges && Array.isArray(tp.ranges.personal_yellow) ? tp.ranges.personal_yellow : null;
+  const personal = band && isNum(band[0])
+    ? (isNum(band[1])
+      ? fmt(T.projPersonal, { lo: num1(band[0]), hi: num1(band[1]), unit })
+      : fmt(T.projPersonalLow, { lo: num1(band[0]), unit })).replace(/\s{2,}/g, " ").replace(/\s+([:)])/g, "$1").trim()
+    : "";
   const current = tp.current_state
     ? `<div class="av-pr-projrow">
         <span class="av-lbl">${esc(T.projCurrent)}</span>
         <span class="av-pr-badge av-pr-tone-${stateTone(tp.current_state)}">${esc(stateName(tp.current_state))}</span>
         ${range ? `<span class="av-sub">${esc(range)}</span>` : ""}
+        ${personal ? `<span class="av-sub">${esc(personal)}</span>` : ""}
       </div>`
     : "";
+  // Acción inmediata: solo llega cuando el último valor ya está fuera de rango
+  const nowText = rec && typeof rec.immediate_action === "string" && rec.immediate_action.trim() ? rec.immediate_action : "";
   const recText = rec && typeof rec.text === "string" && rec.text.trim() ? rec.text : "";
   const source = rec && rec.rule_code
     ? fmt(T.recSource, { rule: rec.rule_code, ver: rec.rule_version || T.na })
     : "";
-  const recBox = recText
+  const recBox = recText || nowText
     ? `<div class="av-pr-rec">
-        <span class="av-lbl">${esc(T.recH)}</span>
-        <p class="av-pr-p av-pr-rec-text">${esc(bt(recText))}</p>
+        ${nowText ? `<span class="av-lbl">${esc(T.recNowH)}</span>
+        <p class="av-pr-p av-pr-rec-text">${esc(bt(nowText))}</p>` : ""}
+        ${recText ? `<span class="av-lbl">${esc(T.recH)}</span>
+        <p class="av-pr-p av-pr-rec-text">${esc(bt(recText))}</p>` : ""}
         ${source ? `<span class="av-sub">${esc(source)}</span>` : ""}
       </div>`
     : "";
