@@ -765,3 +765,40 @@ def test_finalize_is_atomic_and_self_heals_stale_activities(client, users):
     stale_attend = _insert_stale_activity(pair)
     r = client.post(f"/api/v1/crew-activities/{stale_attend}/attend", headers=elena["headers"])
     assert r.status_code == 200 and r.json()["status"] == "COMPLETED"
+
+
+def test_messages_only_daily_missions_are_retired(tmp_path):
+    """Issue #15: sin módulo Mensajes, sus misiones diarias no se ofrecen (ni en BD nuevas ni en las ya sembradas)."""
+    from backend.app.database.seed import RETIRED_DAILY_MISSION_CODES, seed_isolation_module
+
+    db = IsoSession()
+    try:
+        for code in RETIRED_DAILY_MISSION_CODES:
+            dm = db.query(DailyMission).filter(DailyMission.code == code).first()
+            assert dm is not None and dm.is_active is False, code
+    finally:
+        db.close()
+
+    # BD anterior con la misión aún activa: el siguiente arranque la desactiva
+    eng = create_engine(f"sqlite:///{tmp_path / 'retired.db'}", future=True)
+    Base.metadata.create_all(bind=eng)
+    db = sessionmaker(bind=eng, autoflush=False, future=True)()
+    try:
+        db.add(DailyMission(code="REVIEW_MISSION_MESSAGES", title="Review Mission Messages", category="COMMUNICATION",
+                            description="x", xp_reward=20, compatible_environments_csv="ALL",
+                            contraindicated_on_critical_alert=False, educational_content="x", is_active=True))
+        db.commit()
+        seed_isolation_module(db)
+        dm = db.query(DailyMission).filter(DailyMission.code == "REVIEW_MISSION_MESSAGES").one()
+        assert dm.is_active is False
+    finally:
+        db.close()
+        eng.dispose()
+
+
+def test_daily_missions_endpoint_hides_messages_missions(client, users):
+    r = client.get("/api/v1/gamification/missions", headers=users["elena"]["headers"])
+    assert r.status_code == 200, r.text
+    codes = {m["code"] for m in r.json()["missions"]}
+    assert codes, "debe seguir habiendo contramedidas"
+    assert not codes & {"REVIEW_MISSION_MESSAGES", "RESPOND_SUPPORT_REQUEST"}

@@ -29,7 +29,7 @@ def test_frontend_files_exist_and_have_required_sections():
         "mission-control",
         "my-health-check",
         "wellbeing-hub",
-        "communication-center",
+        "recommendations",
         "daily-missions",
         "alerts-center",
         "crew-monitoring",
@@ -105,8 +105,8 @@ def test_frontend_files_exist_and_have_required_sections():
             f"wellbeing.js DICT es/en keys differ at indent {indent}: "
             f"{sorted(_keys(wb_es, indent) ^ _keys(wb_en, indent))}"
         )
-    # "Contacto con Tierra" es solo una tarjeta de recomendación: enlaza a Mensajes (misión) y a la fuente NASA
-    assert 'data-wb-go="communication-center">${esc(T.earthOpen)}' in wellbeing_js
+    # "Contacto con Tierra" es solo una tarjeta de recomendación: enlaza al módulo Recomendaciones y a la fuente NASA
+    assert 'data-wb-go="recommendations">${esc(T.earthOpen)}' in wellbeing_js
     assert 'const EARTH_SOURCE_URL = "https://www.nasa.gov/hrp/"' in wellbeing_js
     assert "getFamilyContacts" not in wellbeing_js
     # Enlaces externos seguros
@@ -128,7 +128,7 @@ def test_frontend_files_exist_and_have_required_sections():
     assert "js-emo-badge" in index_html[tab_start:index_html.index("</button>", tab_start)]
     assert index_html.count("js-emo-badge") == 1
 
-    # El antiguo expansion_views.js (sustituido por messages.js y las vistas del menú "Más") ya no existe
+    # El antiguo expansion_views.js (sustituido por las vistas del menú "Más") ya no existe
     assert not (FRONTEND_ROOT / "src" / "app" / "expansion_views.js").exists()
     assert "expansion_views" not in index_html
 
@@ -258,8 +258,6 @@ def test_wellbeing_limits_dedup_and_api_errors():
     assert "opensAt: start - ATTEND_OPENS_BEFORE_MS, closesAt: start + durMs + ATTEND_CLOSES_AFTER_END_MS" in wellbeing_js
     assert "Number(err.status) === 409" in wellbeing_js  # 409 por relojes desfasados → mensaje y repintado
 
-    # "Escribir a mi equipo de apoyo" abre Mensajes (solo existe el canal de misión)
-    assert 'data-wb-go="communication-center">${esc(T.careMessages)}' in wellbeing_js
 
     # Check-in: una dedup_key por envío, reutilizada al encolar
     assert "payload.dedup_key = newDedupKey()" in wellbeing_js
@@ -283,3 +281,65 @@ def test_family_channel_not_in_frontend():
         text = path.read_text(encoding="utf-8")
         hits += [f"{path.relative_to(FRONTEND_ROOT)}: {word}" for word in forbidden if word in text]
     assert not hits, f"Family channel leftovers in frontend/src: {hits}"
+
+
+def test_messages_module_replaced_by_recommendations():
+    """Issue #15: el módulo Mensajes se elimina y la última pestaña es "Recomendaciones" (cuadros desplegables)."""
+    index_html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+    app_js = (FRONTEND_ROOT / "src" / "app" / "app.js").read_text(encoding="utf-8")
+    i18n_src = (FRONTEND_ROOT / "src" / "i18n" / "i18n.js").read_text(encoding="utf-8")
+    views_dir = FRONTEND_ROOT / "src" / "console" / "views"
+
+    # Mensajes ya no existe: ni archivos, ni pestaña, ni ruta, ni insignia de no leídos
+    assert not (views_dir / "messages.js").exists()
+    assert not (views_dir / "messages.css").exists()
+    assert "messages.js" not in index_html and "messages.css" not in index_html
+    assert 'data-nav-section="communication-center"' not in index_html
+    assert "js-comm-badge" not in index_html and "js-comm-badge" not in app_js
+    assert 'sectionId === "communication-center"' not in app_js
+    assert "renderMessagesView" not in app_js
+    assert '"tab.messages"' not in i18n_src
+    # El id antiguo sigue funcionando: se redirige a Recomendaciones
+    assert '"communication-center": "recommendations"' in app_js
+    # Nada en la interfaz enlaza ya a Mensajes
+    for path in (FRONTEND_ROOT / "src").rglob("*.js"):
+        text = path.read_text(encoding="utf-8")
+        for needle in ('data-nav="communication-center"', 'data-wb-go="communication-center"', 'navigateToSection("communication-center")'):
+            assert needle not in text, f"{path.name} still links to Mensajes ({needle})"
+
+    # Recomendaciones: última pestaña de la barra global, con vista, hoja e importmap versionados
+    tabs = re.findall(r'class="av-tab"[^>]*data-nav-section="([\w-]+)"', index_html)
+    assert tabs[-1] == "recommendations", f"Recomendaciones must be the last tab, got {tabs}"
+    assert 'data-i18n="tab.recommendations"' in index_html
+    assert i18n_src.count('"tab.recommendations":') == 2, "tab.recommendations must exist in es and en"
+    assert '"/src/console/views/recommendations.js": "/src/console/views/recommendations.js?v=__BUILD__"' in index_html
+    assert "/src/console/views/recommendations.css?v=__BUILD__" in index_html
+    assert 'sectionId === "recommendations"' in app_js
+    assert "renderRecommendationsView" in app_js
+
+    rec_js = (views_dir / "recommendations.js").read_text(encoding="utf-8")
+    assert (views_dir / "recommendations.css").is_file()
+    assert "export async function renderRecommendationsView" in rec_js
+    assert rec_js.count("const DICT = {") == 1 and "tr(DICT)" in rec_js
+    es_block, en_block = _dict_blocks(rec_js)
+    for indent in (4, 6, 8):
+        assert _keys(es_block, indent) == _keys(en_block, indent), (
+            f"recommendations.js DICT es/en keys differ at indent {indent}: "
+            f"{sorted(_keys(es_block, indent) ^ _keys(en_block, indent))}"
+        )
+    # Mismas recomendaciones (mismos ids y en el mismo orden) en los dos idiomas
+    ids_es = re.findall(r'id: "([\w-]+)"', es_block)
+    ids_en = re.findall(r'id: "([\w-]+)"', en_block)
+    assert ids_es and ids_es == ids_en
+    assert "wearables" in ids_es, "Biometric integration must be one of the recommendations"
+    # Cuadros desplegables con el patrón plegable de la consola
+    assert '<details class="av-panel av-fold av-rec-card"' in rec_js
+    assert 'class="av-panel-head av-fold-head av-rec-head"' in rec_js
+    # La vista no usa atributos que escuchan console.js (data-act / data-nav) ni llama a la API
+    assert "data-act=" not in rec_js and "data-nav=" not in rec_js
+    assert "apiService" not in rec_js
+
+    # Resumen: el cuadro "Mensajes sin leer" pasa a ser un acceso a Recomendaciones
+    console_js = (FRONTEND_ROOT / "src" / "console" / "console.js").read_text(encoding="utf-8")
+    assert 'data-nav="recommendations"' in console_js
+    assert "unread_messages_count" not in console_js

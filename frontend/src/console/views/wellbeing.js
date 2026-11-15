@@ -6,7 +6,7 @@
  *   - Hoy: check-in rápido (sueño, ánimo, energía, aislamiento, nota privada) + tarjeta de sueño
  *     y accesos al cuestionario completo, check-in emocional, evaluación cognitiva y respiración.
  *   - Contacto con Tierra: tarjeta informativa (recomendación, no funcionalidad) sobre el contacto
- *     asíncrono con seres queridos frente al aislamiento; enlaza a Mensajes (canal de misión).
+ *     asíncrono con seres queridos frente al aislamiento; enlaza al módulo Recomendaciones (issue #15).
  *   - Tiempo libre: hobbies breves con filtros, pasos, fuente NASA y registro "Lo hice".
  *   - Tripulación: actividades de integración (proponer, unirse, asistencia, quórum, meta semanal).
  *
@@ -92,7 +92,6 @@ const DICT = {
     careTitle: "¿Hablamos?",
     careText: "Tus últimos registros sugieren que vendría bien un momento de apoyo. No es una alarma: el check-in emocional o una conversación con tu equipo pueden ayudar.",
     careEmotional: "Hacer el check-in emocional",
-    careMessages: "Escribir a mi equipo de apoyo",
     // Hoy · sueño
     sleepTitle: "Sueño y ritmo circadiano",
     avg7: "Media de sueño (7 días)",
@@ -129,9 +128,8 @@ const DICT = {
     earthNoVideo: "Sin videollamadas: con el retardo de la comunicación una conversación en directo resulta frustrante.",
     earthDelay: "Retardo estimado ahora mismo: {d} por trayecto.",
     earthDelayNone: "menos de 1 s",
-    earthMeanwhile: "Mientras tanto, puedes escribir a tu equipo en Tierra desde Mensajes: también están ahí para acompañarte.",
-    earthMeanwhileLeader: "Mientras tanto, Mensajes sigue siendo el canal para acompañar a la tripulación.",
-    earthOpen: "Abrir Mensajes",
+    earthMeanwhile: "Este canal todavía no existe en la app: figura, junto con otras mejoras previstas, en el módulo Recomendaciones.",
+    earthOpen: "Ver recomendaciones",
     earthSourceTitle: "Programa de Investigación Humana de la NASA (HRP)",
     // Tiempo libre
     leisureTitle: "Tiempo libre",
@@ -253,7 +251,6 @@ const DICT = {
     careTitle: "Shall we talk?",
     careText: "Your latest entries suggest a moment of support could help. This isn't an alarm: the emotional check-in or a chat with your team may help.",
     careEmotional: "Do the emotional check-in",
-    careMessages: "Write to my support team",
     sleepTitle: "Sleep and circadian rhythm",
     avg7: "Average sleep (7 days)",
     under6: "Nights under 6 h",
@@ -287,9 +284,8 @@ const DICT = {
     earthNoVideo: "No video calls: with the communication delay, a live conversation becomes frustrating.",
     earthDelay: "Estimated delay right now: {d} each way.",
     earthDelayNone: "under 1 s",
-    earthMeanwhile: "In the meantime, you can write to your team on Earth from Messages: they are there to support you too.",
-    earthMeanwhileLeader: "In the meantime, Messages remains the channel to support the crew.",
-    earthOpen: "Open Messages",
+    earthMeanwhile: "This channel does not exist in the app yet: it is listed, along with other planned improvements, in the Recommendations module.",
+    earthOpen: "View recommendations",
     earthSourceTitle: "NASA Human Research Program (HRP)",
     leisureTitle: "Free time",
     leisureSub: "Short breaks that help you switch off",
@@ -641,7 +637,6 @@ function careHTML(T) {
       <span>${esc(T.careText)}</span>
       <span class="av-mx-btns">
         <button type="button" class="av-btn av-btn-sm" data-wb-go="emotional-center">${esc(T.careEmotional)}</button>
-        <button type="button" class="av-btn av-btn-sm" data-wb-go="communication-center">${esc(T.careMessages)}</button>
       </span>
     </div>`;
 }
@@ -827,12 +822,11 @@ function bindCheckin(panel) {
 /* ───────────────────────── Contacto con Tierra (recomendación) ───────────────────────── */
 
 /* Tarjeta informativa: el canal con la familia NO existe en la app; solo se recomienda.
- * El botón abre Mensajes (canal de misión) con el manejador genérico data-wb-go de renderPanel. */
+ * El botón abre Recomendaciones (issue #15) con el manejador genérico data-wb-go de renderPanel. */
 const EARTH_SOURCE_URL = "https://www.nasa.gov/hrp/";
 
 async function renderEarth(panel) {
   const { appState } = ctx;
-  const isAstronaut = roleOf(appState) === "ASTRONAUT";
   const T = tr(DICT);
   const delay = delayText(appState.healthSummary?.context?.comms_delay_seconds);
 
@@ -848,8 +842,8 @@ async function renderEarth(panel) {
             <p class="av-mx-p"><strong>${esc(T.earthRecTitle)}:</strong> ${esc(T.earthRec)}</p>
             <ul class="av-wb-feat">${T.earthFeatures.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>
             <p class="av-mx-p">${esc(T.earthNoVideo)}${delay ? ` <span class="av-sub">${esc(fmtT(T.earthDelay, { d: delay }))}</span>` : ""}</p>
-            <p class="av-mx-note">${esc(isAstronaut ? T.earthMeanwhile : T.earthMeanwhileLeader)}</p>
-            <div><button type="button" class="av-btn av-btn-primary" data-wb-go="communication-center">${esc(T.earthOpen)}</button></div>
+            <p class="av-mx-note">${esc(T.earthMeanwhile)}</p>
+            <div><button type="button" class="av-btn av-btn-primary" data-wb-go="recommendations">${esc(T.earthOpen)}</button></div>
             <a class="av-wb-src" href="${esc(EARTH_SOURCE_URL)}" target="_blank" rel="noopener noreferrer">${esc(fmtT(T.source, { t: T.earthSourceTitle }))}<span class="av-mx-sr"> ${esc(T.newTab)}</span></a>
           </div>
         </section>

@@ -13,7 +13,7 @@
  *
  * Reemplaza a renderAlertsCenter (app.js) y conserva todas sus funciones: listado,
  * explicación, acción inmediata, seguimiento recomendado, reconocer, resolver, escalar,
- * contactar al líder en Tierra (prefill de mensaje) e historial de actuaciones.
+ * e historial de actuaciones (el contacto por Mensajes se retiró con ese módulo, issue #15).
  *
  * Importante: el contenedor de secciones es compartido y console.js tiene listeners
  * delegados que reaccionan a [data-act], [data-nav] y form[data-form] dentro de
@@ -142,16 +142,12 @@ const DICT = {
     openCrewConsole: "Abrir la consola de este tripulante",
     openConsole: "Abrir la consola de salud",
     remeasure: "Volver a medir",
-    openMessages: "Abrir mensajes sobre esta alerta",
-    contactLead: "Contactar al líder en Tierra",
     actions: "Acciones",
     minNote: "Las notas necesitan al menos 3 caracteres. Todo queda en el historial y en la auditoría.",
     history: "Historial",
     annRefreshing: "Actualizando alertas…",
     annRefreshFail: "No se pudieron actualizar las alertas.",
     annRefreshed: "Alertas actualizadas.",
-    prefillLeader: "[Consulta sobre Alerta #{id}: {title}] Te escribo para revisar esta alerta contigo.",
-    prefillCrew: "[Consulta sobre Alerta #{id}: {title}] Solicito revisión u orientación operativa al equipo en Tierra.",
     filterApplied: "Filtro aplicado: {n} {w} en el resumen.",
     alertOne: "alerta",
     alertMany: "alertas",
@@ -274,16 +270,12 @@ const DICT = {
     openCrewConsole: "Open this crew member's console",
     openConsole: "Open health console",
     remeasure: "Re-measure",
-    openMessages: "Open messages about this alert",
-    contactLead: "Contact ground lead",
     actions: "Actions",
     minNote: "Notes need at least 3 characters. Everything is kept in the history and the audit log.",
     history: "History",
     annRefreshing: "Refreshing alerts…",
     annRefreshFail: "Could not refresh alerts.",
     annRefreshed: "Alerts refreshed.",
-    prefillLeader: "[Query about Alert #{id}: {title}] Writing to review this alert with you.",
-    prefillCrew: "[Query about Alert #{id}: {title}] Requesting review or operational guidance from the ground team.",
     filterApplied: "Filter applied: {n} {w} in the summary.",
     alertOne: "alert",
     alertMany: "alerts",
@@ -791,7 +783,6 @@ function detailHTML(ctx, v) {
     <div class="av-al-btns">
       <button type="button" class="av-btn av-btn-sm" data-al-act="go-console" data-al-astro="${Number(a.astronaut_id)}">${esc(leader && otherCrew ? T.openCrewConsole : T.openConsole)}</button>
       <button type="button" class="av-btn av-btn-sm" data-al-act="go-measure" data-al-astro="${Number(a.astronaut_id)}">${esc(T.remeasure)}</button>
-      <button type="button" class="av-btn av-btn-sm" data-al-act="contact" data-al-id="${id}">${esc(leader ? T.openMessages : T.contactLead)}</button>
     </div>
   </section>
 
@@ -837,7 +828,7 @@ function setBusy(ctx, on) {
 }
 
 function bind(ctx) {
-  const { root, appState, helpers } = ctx;
+  const { root, helpers } = ctx;
 
   root.addEventListener("click", async (ev) => {
     const pick = ev.target.closest("[data-al-pick]");
@@ -863,17 +854,6 @@ function bind(ctx) {
     } else if (act === "go-console" || act === "go-measure") {
       await selectAstronautIfNeeded(ctx, Number(btn.getAttribute("data-al-astro")));
       helpers.navigateToSection(act === "go-console" ? "mission-control" : "my-health-check");
-    } else if (act === "contact") {
-      const v = ctx.list.find((x) => x.a.id === Number(btn.getAttribute("data-al-id")));
-      if (!v) return;
-      const T = tr(DICT);
-      // Mismo prefill que la vista anterior: lo consume el centro de comunicación.
-      // expansion_views.js lo inserta sin escapar dentro de un <textarea>, así que
-      // se quitan los caracteres que podrían cerrar la etiqueta o formar entidades.
-      const safeTitle = String(bt(v.a.title) || "").replace(/[<>&]/g, "");
-      appState.pendingAlertMessagePrefill = fmt(isLeader(appState) ? T.prefillLeader : T.prefillCrew, { id: Number(v.a.id), title: safeTitle });
-      appState.pendingAlertCategoryPrefill = "HEALTH_UPDATE";
-      helpers.navigateToSection("communication-center");
     }
   });
 
