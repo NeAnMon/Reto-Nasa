@@ -99,16 +99,23 @@
 .av-al-reco-mod { margin: 0; display: flex; align-items: baseline; gap: 8px; }
 .av-al-reco-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); }
+/* Issue #34: tarjeta con banda superior sólida y borde del color de su alerta, fondo tintado
+   sólido (sin degradados); título y bloque "Ahora" más grandes. */
 .av-al-reco-card {
-  border: 1px solid var(--av-border); border-left: 4px solid var(--av-text2); background: var(--av-raised);
-  padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0;
+  --reco-c: var(--av-strong);
+  border: 1px solid var(--reco-c); border-top-width: 6px; background: var(--av-raised);
+  padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; font-size: 14px;
 }
-.av-al-reco-card[data-cls="W"] { border-left-color: var(--av-r); }
-.av-al-reco-card[data-cls="C"] { border-left-color: var(--av-y); }
-.av-al-reco-head { display: flex; align-items: flex-start; gap: 8px; }
-.av-al-reco-t { font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
-.av-al-reco-now { border: 1px solid var(--av-border); background: var(--av-panel); padding: 6px 8px; }
-.av-al-reco-now .av-al-p { font-weight: 600; }
+.av-al-reco-card[data-cls="W"] { --reco-c: var(--av-r); background: color-mix(in srgb, var(--av-r) 14%, var(--av-panel)); }
+.av-al-reco-card[data-cls="C"] { --reco-c: var(--av-y); background: color-mix(in srgb, var(--av-y) 11%, var(--av-panel)); }
+.av-al-reco-head { display: flex; align-items: center; gap: 10px; }
+.av-al-reco-head > .av-badge { min-width: 28px; height: 28px; font-size: 14px; }
+.av-al-reco-t { font-weight: 600; font-size: 17px; line-height: 1.3; overflow-wrap: anywhere; }
+.av-al-reco-now { border: 1px solid var(--av-border); background: var(--av-panel); padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+.av-al-reco-now .av-lbl { color: var(--av-text); }
+.av-al-reco-card[data-cls="W"] .av-al-reco-now .av-lbl { color: var(--av-r-text); }
+.av-al-reco-card[data-cls="C"] .av-al-reco-now .av-lbl { color: var(--av-y); }
+.av-al-reco-now .av-al-p { font-weight: 600; font-size: 15px; }
 .av-al-reco-cm { color: var(--av-text); }
 .av-al-reco-more { align-self: flex-start; }
 
