@@ -6,7 +6,7 @@ import {
   renderChrome,
   refreshConsoleData,
 } from "../console/console.js";
-import { renderMeasureView, openMeasureItem, WELLNESS_QUESTIONNAIRE } from "../console/views/measure.js";
+import { renderMeasureView } from "../console/views/measure.js";
 import { renderCountermeasuresView } from "../console/views/countermeasures.js";
 import { renderAlertsView } from "../console/views/alerts.js";
 import { renderMessagesView } from "../console/views/messages.js";
@@ -17,7 +17,7 @@ import { renderCrewView } from "../console/views/crew.js";
 import { renderAdminView } from "../console/views/admin.js";
 import { renderSettingsView } from "../console/views/settings.js";
 import { renderEnvironmentsView } from "../console/views/environments.js";
-import { renderWellbeingView } from "../console/views/wellbeing.js";
+import { renderWellbeingView, openWellbeingSub } from "../console/views/wellbeing.js";
 import { initI18n, onLangChange, tr } from "../i18n/i18n.js";
 import { bt } from "/src/i18n/backend.js";
 
@@ -149,8 +149,8 @@ const appHelpers = {
 const SECTION_REDIRECTS = {
   "body-explorer": "mission-control",
   "mission-analytics": "mission-control",
-  // El cuestionario de bienestar psicológico vive ahora en "Registrar medición" (se abre ya elegido)
-  "wellness-center": "my-health-check",
+  // El cuestionario de bienestar psicológico vive en Bienestar → Cuestionarios (se abre esa pestaña)
+  "wellness-center": "wellbeing-hub",
 };
 
 /* Escribe texto en un elemento solo si existe (el antiguo encabezado hdr-* ya no está en el HTML) */
@@ -438,7 +438,7 @@ async function refreshGlobalHeaderAndSummary() {
 }
 
 async function navigateToSection(sectionId) {
-  if (sectionId === "wellness-center") openMeasureItem(WELLNESS_QUESTIONNAIRE);
+  if (sectionId === "wellness-center") openWellbeingSub("checks");
   sectionId = SECTION_REDIRECTS[sectionId] || sectionId;
   appState.currentSection = sectionId;
   document.body.classList.toggle(
