@@ -182,28 +182,65 @@ def predict_indicator(
     result.baseline_status = _baseline_status(baseline)
     result.baseline_is_simulated = baseline.is_simulated if baseline is not None else None
 
+    # Construct one eligible-measurement query. SQL filtering prevents old or
+    # rejected rows from consuming the MAX_ROWS safety limit.
     query = db.query(HealthMeasurement).filter(
         HealthMeasurement.astronaut_id == astronaut_id,
         HealthMeasurement.mission_id == mission_id,
         HealthMeasurement.indicator_code == indicator_code,
+        HealthMeasurement.measured_at.isnot(None),
         HealthMeasurement.data_quality.in_(VALID_QUALITIES),
         HealthMeasurement.calculated_state != "INVALID",
         HealthMeasurement.phase_code.notin_(EXCLUDED_PHASES),
+        HealthMeasurement.unit == indicator.unit,
+        HealthMeasurement.value >= indicator.min_valid_value,
+        HealthMeasurement.value <= indicator.max_valid_value,
     )
     if not include_simulated:
-        query = query.filter(MissionAssignment.is_simulated.is_(False),
-                             HealthMeasurement.data_quality == "VALIDATED")
+        query = query.filter(
+            HealthMeasurement.is_simulated.is_(False),
+            HealthMeasurement.data_quality == "VALIDATED",
+        )
+
+    # An explicit `now` selects a historical as-of window; otherwise anchor
+    # to the newest eligible observation so historical missions work.
     if now is not None:
-        query = query.filter(HealthMeasurement.measured_at <= _utc(now))
-    rows = query.order_by(HealthMeasurement.measured_at.desc(), HealthMeasurement.id.desc()).limit(MAX_ROWS + 1).all()
+        anchor = _utc(now)
+        query = query.filter(HealthMeasurement.measured_at <= anchor)
+    else:
+        latest = (
+            query.order_by(
+                HealthMeasurement.measured_at.desc(),
+                HealthMeasurement.id.desc(),
+            )
+            .first()
+        )
+        if latest is None:
+            return result
+        anchor = _utc(latest.measured_at)
+
+    cutoff = anchor - timedelta(days=MAX_HISTORY_DAYS)
+    query = query.filter(HealthMeasurement.measured_at >= cutoff)
+    rows = (
+        query.order_by(
+            HealthMeasurement.measured_at.desc(),
+            HealthMeasurement.id.desc(),
+        )
+        .limit(MAX_ROWS + 1)
+        .all()
+    )
     if len(rows) > MAX_ROWS:
-        raise ValueError("Too many measurements; narrow the analysis window")
+        raise ValueError(
+            "Too many eligible measurements in the 90-day window; "
+            "narrow the analysis window or aggregate high-frequency data first"
+        )
     if not rows:
         return result
 
-    anchor = _utc(now) if now is not None else _utc(rows[0].measured_at)
-    cutoff = anchor - timedelta(days=MAX_HISTORY_DAYS)
-    valid = [m for m in reversed(rows) if _utc(m.measured_at) >= cutoff and _valid_measurement(m, indicator)]
+    valid = [
+        measurement for measurement in reversed(rows)
+        if _valid_measurement(measurement, indicator)
+    ]
     segment = _latest_segment(valid)
     if not segment:
         return result
