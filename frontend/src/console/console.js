@@ -1071,6 +1071,7 @@ const consoleState = {
   pop: null, // región del mapa corporal con la ficha fijada (solo se muestra si coincide con sys)
   popFrom: null, // data-focus-id del control que fijó la ficha (para devolverle el foco)
   showAdv: false,
+  radFold: {}, // secciones plegadas de la vista Radiación (clave → false si está cerrada)
   layers: { mus: true, bon: true },
   proc: { step: 1, result: null },
   heraListener: null, // oyente HERA de la vista abierta (el del encabezado global es aparte)
@@ -2650,27 +2651,33 @@ function radLiveInner(d) {
         <p class="av-sub" style="margin:0;font-size:12px">${esc(T.thresholdsNote)}</p>
       </section>
 
-      ${shelter ? `<section class="av-panel" style="padding:0;border-color:${lvlLetter === "W" ? "var(--av-r)" : "var(--av-y)"}" aria-label="${esc(T.shelterAria)}">
-        <div style="padding:14px 16px;border-bottom:1px solid var(--av-border)"><div class="av-lbl">${esc(T.procedureDemo)}</div><h2 style="margin:4px 0 0;font-size:18px">${esc(T.shelterTitle)}</h2></div>
+      ${shelter ? radFold("shelter", esc(T.shelterTitle), esc(T.procedureDemo), `
         <ol class="av-steps">
           <li class="av-step ${lvl === "CAUTION" ? "av-step-active" : "av-step-done"}">${T.shelter1}</li>
           <li class="av-step ${lvl === "WARNING" ? "av-step-active" : lvl === "EMERGENCY" ? "av-step-done" : "av-step-todo"}">${T.shelter2}</li>
           <li class="av-step ${lvl === "EMERGENCY" ? "av-step-active" : "av-step-todo"}">${T.shelter3}</li>
           <li class="av-step av-step-todo">${T.shelter4}</li>
-        </ol>
-      </section>` : ""}
+        </ol>`, `border-color:${lvlLetter === "W" ? "var(--av-r)" : "var(--av-y)"}`) : ""}
 
-      <section aria-label="${esc(T.risksAria)}">
-        <div class="av-lbl" style="margin:0 0 6px 2px">${esc(T.risksLabel)}</div>
-        <div class="av-cards">
+      ${radFold("risks", esc(T.risksLabel), "", `
+        <div class="av-cards" style="padding:12px 12px 0">
           ${meterHTML(esc(T.mCarcTitle), d.career, CAREER_LIMIT_MSV, "mSv", esc(T.mCarcNote))}
           ${meterHTML(esc(T.mTissueTitle), bfo30, 250, "mGy-Eq", esc(T.mTissueNote))}
           ${meterHTML(esc(T.mCnsTitle), cns30, 500, "mGy", esc(T.mCnsNote))}
           ${meterHTML(esc(T.mArsTitle), d.eventMGyEq, 250, "mGy-Eq", esc(T.mArsNote), [[100, "100"]])}
         </div>
-        <p class="av-sub" style="font-size:12px;margin:6px 2px 0">${esc(T.risksNote)}</p>
-      </section>
+        <p class="av-sub" style="font-size:12px;margin:0;padding:6px 12px 12px">${esc(T.risksNote)}</p>`)}
   `;
+}
+
+/* Sección plegable de la vista Radiación (todas menos la gráfica HERA). El estado
+   abierto/cerrado vive en consoleState.radFold para sobrevivir al repintado en vivo. */
+function radFold(key, title, sub, inner, style = "") {
+  const open = consoleState.radFold[key] !== false;
+  return `<details class="av-panel av-fold" data-fold="${key}" ${open ? "open" : ""}${style ? ` style="${style}"` : ""}>
+        <summary class="av-panel-head av-fold-head"><h2 class="av-h2">${title}</h2>${sub ? `<span class="av-sub">${sub}</span>` : ""}</summary>
+        ${inner}
+      </details>`;
 }
 
 function radiationHTML(appState, d) {
@@ -2694,8 +2701,7 @@ function radiationHTML(appState, d) {
     <main class="av-col-b" id="av-rad-live">${radLiveInner(d)}</main>
 
     <aside class="av-col-c">
-      <section class="av-panel" style="padding:0" aria-label="${esc(T.dosimeterAria)}">
-        <div class="av-panel-head"><h2 class="av-h2">${esc(T.dosimeterTitle)}</h2><span class="av-sub">${esc(T.manualEntry)}</span></div>
+      ${radFold("dosimeter", esc(T.dosimeterTitle), esc(T.manualEntry), `
         <form data-form="cad" style="padding:12px;display:flex;flex-direction:column;gap:10px">
           <div class="av-form-grid">
             <div class="av-field"><label for="av-cad-dev">${esc(T.device)}</label><input id="av-cad-dev" name="device" class="av-input" required value="${esc(lastCad?.device || "CAD-0082")}"></div>
@@ -2716,10 +2722,8 @@ function radiationHTML(appState, d) {
         </div>
         ${entries.length ? `<div class="av-hscroll" style="border-top:1px solid var(--av-border)"><table class="av-table" style="font-size:13px"><thead><tr><th scope="col" style="padding-left:12px">GMT</th><th scope="col" style="text-align:right">mGy</th><th scope="col" style="text-align:right">µGy/h</th><th scope="col">${esc(T.place)}</th></tr></thead><tbody>
           ${entries.slice(-6).reverse().map((e) => `<tr><td class="av-mono" style="padding-left:12px">${gmt(new Date(e.utc), false)}</td><td class="av-mono" style="text-align:right">${num(e.mgy, 3)}</td><td class="av-mono" style="text-align:right">${e.rate ? num(e.rate, 1) : "—"}</td><td>${esc(T.cadLoc[e.loc] || e.loc)}</td></tr>`).join("")}
-        </tbody></table></div>` : ""}
-      </section>
-      <section class="av-panel" style="padding:12px;display:flex;flex-direction:column;gap:6px" aria-label="${esc(T.limitsAria)}">
-        <h2 class="av-h2">${esc(T.limitsTitle)}</h2>
+        </tbody></table></div>` : ""}`)}
+      ${radFold("limits", esc(T.limitsTitle), "", `<div style="padding:12px;display:flex;flex-direction:column;gap:6px">
         <table class="av-table" style="font-size:12px">
           <thead><tr><th scope="col">${esc(T.organ)}</th><th scope="col" style="text-align:right">30 d</th><th scope="col" style="text-align:right">${esc(T.year1)}</th><th scope="col" style="text-align:right">${esc(T.career)}</th></tr></thead>
           <tbody>
@@ -2732,7 +2736,7 @@ function radiationHTML(appState, d) {
           </tbody>
         </table>
         <span style="font-size:11px;color:var(--av-muted)">${esc(T.limitsSource)}</span>
-      </section>
+      </div>`)}
     </aside>
   </div>`;
 }
@@ -2746,6 +2750,12 @@ function bindOnce(container, appState, helpers) {
   }
   container.__avBound = true;
   container.__avCtx = { appState, helpers };
+
+  // "toggle" no burbujea: se escucha en captura para recordar las secciones plegadas
+  container.addEventListener("toggle", (ev) => {
+    const fold = ev.target instanceof Element ? ev.target.closest("details[data-fold]") : null;
+    if (fold === ev.target) consoleState.radFold[fold.dataset.fold] = fold.open;
+  }, true);
 
   container.addEventListener("click", async (ev) => {
     // solo dentro de la raíz propia de la consola (no en las vistas de src/console/views/)
