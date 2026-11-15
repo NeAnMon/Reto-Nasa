@@ -3,7 +3,7 @@ import io
 import json
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.orm import Session
@@ -244,6 +244,29 @@ def _serialize_user(db: Session, user: User) -> Dict[str, object]:
         "missions": missions_assigned,
         "astronaut_profile": astro_prof,
     }
+
+
+def _measurement_phase_and_environment(db: Session, mission: Mission, ctx: Dict[str, object]) -> Tuple[str, str]:
+    """Fase y entorno con los que se guarda una medición.
+
+    Con contexto operativo confirmado se usa ese contexto. Sin él (ContextResolver devuelve
+    UNKNOWN / UNKNOWN_ENVIRONMENT) se usa la fase vigente del plan de la misión y su entorno: así la
+    lectura continúa la serie de su fase en vez de abrir un segmento "UNKNOWN" aparte, que dejaba el
+    pronóstico de ese indicador en datos insuficientes (misión análoga, que no tiene contexto
+    confirmado). El contexto que se muestra al usuario sigue siendo "no confirmado".
+    """
+    phase, env = ctx.get("phase_code"), ctx.get("environment_code")
+    if ctx.get("determination_source") != "UNCONFIRMED" and phase and env:
+        return str(phase), str(env)
+    current = (
+        db.query(MissionPhase)
+        .filter(MissionPhase.mission_id == mission.id, MissionPhase.is_current.is_(True))
+        .order_by(MissionPhase.sequence_order.desc())
+        .first()
+    )
+    if current is not None:
+        return current.phase_code, current.environment_code
+    return str(phase or mission.current_phase), str(env or "LUNAR_SURFACE")
 
 
 def _resolve_target_astronaut_and_mission(
@@ -1470,6 +1493,7 @@ def create_health_measurement(
         raise HTTPException(status_code=404, detail="Indicador de salud no encontrado.")
 
     ctx = ContextResolver.resolve_active_context(db, mission.id, target_user.id)
+    meas_phase, meas_env = _measurement_phase_and_environment(db, mission, ctx)
     meas_dt = ensure_aware(payload.measured_at) or utcnow()
 
     evaluation = evaluate_measurement(
@@ -1500,8 +1524,8 @@ def create_health_measurement(
         unit=defn.unit,
         measured_at=meas_dt,
         received_at=utcnow(),
-        phase_code=str(ctx.get("phase_code") or mission.current_phase),
-        environment_code=str(ctx.get("environment_code") or "LUNAR_SURFACE"),
+        phase_code=meas_phase,
+        environment_code=meas_env,
         source_code=payload.source_code,
         data_quality=quality,
         calculated_state=state,
@@ -1606,6 +1630,7 @@ def import_health_measurements(
         raise HTTPException(status_code=400, detail=f"Error al procesar archivo importado: {exc}")
 
     ctx = ContextResolver.resolve_active_context(db, mission.id, target_user.id)
+    meas_phase, meas_env = _measurement_phase_and_environment(db, mission, ctx)
     imported_count = 0
     invalid_count = 0
     touched_alert_ids = set()  # alertas creadas o actualizadas (una por indicador)
@@ -1645,8 +1670,8 @@ def import_health_measurements(
             unit=defn.unit,
             measured_at=meas_dt,
             received_at=utcnow(),
-            phase_code=str(ctx.get("phase_code") or mission.current_phase),
-            environment_code=str(ctx.get("environment_code") or "LUNAR_SURFACE"),
+            phase_code=meas_phase,
+            environment_code=meas_env,
             source_code="CSV_JSON_IMPORT",
             data_quality="INVALID" if state == "INVALID" else ("SYNTHETIC_DEMO" if payload.is_simulated else "VALIDATED"),
             calculated_state=state,
