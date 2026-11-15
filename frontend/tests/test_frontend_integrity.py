@@ -289,6 +289,41 @@ def test_isolation_module_seed_texts_have_english_translation():
     assert not missing_router, f"Missing English translations for isolation_router texts: {missing_router}"
 
 
+def test_analog_mission_seed_texts_have_english_translation():
+    """Los textos de la misión análoga (seed_analog.py) que la interfaz pinta con bt() —nombre de la misión,
+    descripción, hábitat, nombres de fase, especialidad y notas— tienen traducción al inglés."""
+    seed_js = (I18N_DIR / "backend-en-seed.js").read_text(encoding="utf-8")
+    seed_keys = _en_keys(I18N_DIR / "backend-en-seed.js")
+    patterns_src = seed_js[seed_js.index("export const PATTERNS = ["):]
+    tree = ast.parse((PROJECT_ROOT / "backend" / "app" / "database" / "seed_analog.py").read_text(encoding="utf-8"))
+
+    exact, templates = [], []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and getattr(node.func, "id", None) in {
+            "Mission", "MissionPhase", "AstronautProfile", "HealthMeasurement"
+        }:
+            for kw in node.keywords:
+                if kw.arg not in {"name", "description", "vehicle_or_habitat", "specialty", "notes"}:
+                    continue
+                if isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+                    exact.append(kw.value.value)
+                elif isinstance(kw.value, ast.JoinedStr):
+                    templates.append(kw.value)
+        # phases = [(código, nombre, orden, inicio, fin, entorno, vigente), ...]
+        if isinstance(node, ast.Assign) and any(getattr(t, "id", None) == "phases" for t in node.targets):
+            exact += [_const(row.elts[1]) for row in node.value.elts]
+
+    assert len(exact) >= 6, f"seed_analog.py texts not found (got {exact})"
+    missing = sorted({_norm(s) for s in exact} - seed_keys)
+    assert not missing, f"backend-en-seed.js is missing English translations for: {missing}"
+
+    # Textos con valores dentro (f-strings): cada uno necesita un patrón que empiece por su parte fija
+    assert len(templates) >= 2, "seed_analog.py f-string notes not found"
+    for tpl in templates:
+        head = next(v.value for v in tpl.values if isinstance(v, ast.Constant))
+        assert f"/^{head}" in patterns_src, f"backend-en-seed.js PATTERNS is missing a pattern for: {head!r}..."
+
+
 def test_wellbeing_limits_dedup_and_api_errors():
     views_dir = FRONTEND_ROOT / "src" / "console" / "views"
     wellbeing_js = (views_dir / "wellbeing.js").read_text(encoding="utf-8")
