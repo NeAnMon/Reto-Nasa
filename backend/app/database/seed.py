@@ -1,7 +1,6 @@
 import json
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict
 from sqlalchemy.orm import Session
 
 from backend.app.core.config import settings
@@ -47,7 +46,6 @@ from backend.app.models.models import (
     EnvironmentalMeasurement,
     EnvironmentProfile,
     FollowUpAction,
-    FamilyContact,
     GamificationEvent,
     GamificationProfile,
     HealthBaseline,
@@ -72,11 +70,23 @@ from backend.app.models.models import (
     SupportRequest,
     User,
     UserBadge,
+    UserSession,
     WellnessInstrument,
     WellnessRecommendation,
 )
 from backend.app.security.auth import hash_password
+from backend.app.database.seed_analog import seed_analog_bed_rest
 from backend.app.services.cognitive_engine import COGNITIVE_DOMAINS_CATALOG
+
+# Misión principal de la demo (issue #14; antes "ARTEMIS-IV-DEMO" / "Artemis IV — Lunar South Pole Outpost (DEMO)")
+TELECREATION_MISSION_CODE = "TELECREATION-UTS"
+TELECREATION_MISSION_NAME = "TeleCreation UTS"
+TELECREATION_BADGE_REASON = "Primer registro fisiológico validado en misión TeleCreation UTS."
+# Valores de versiones previas (antes del renombrado AstroVital -> SEMSA), solo para migrar BD existentes
+LEGACY_MISSION_CODE = "ARTEMIS-IV-DEMO"
+LEGACY_BADGE_REASON = "Primer registro fisiológico validado en misión Artemis IV."
+LEGACY_DEMO_EMAIL_DOMAIN = "@astrovital.demo"
+DEMO_EMAIL_DOMAIN = "@semsa.demo"
 
 
 def utcnow() -> datetime:
@@ -248,7 +258,7 @@ ENVIRONMENT_PROFILES_DATA = [
         "No confirmado",
         0.0,
         "UNCONFIRMED",
-        "No existe telemetría verificada ni confirmación manual autorizada. AstroVital no asume ubicación por GPS local.",
+        "No existe telemetría verificada ni confirmación manual autorizada. SEMSA no asume ubicación por GPS local.",
         "Incertidumbre contextual: interprete las mediciones con precaución y confirme el entorno manualmente.",
         "Solicitar confirmación de entorno por parte de la tripulación o control de misión.",
     ),
@@ -593,7 +603,7 @@ DAILY_MISSIONS_DATA = [
         "MIND_CHECK",
         "Mind Check",
         "WELLNESS",
-        "Completar un chequeo privado de bienestar psicológico en el Wellness Center.",
+        "Completar el cuestionario privado de bienestar psicológico en Bienestar → Cuestionarios.",
         30,
         "ALL",
         False,
@@ -911,13 +921,14 @@ def seed_database(db: Session, force_reseed_sim: bool = False) -> None:
     if not settings.SEED_DEMO_DATA:
         # BD ya inicializada: mantiene al día los catálogos del módulo de aislamiento, sin cuentas demo
         if db.query(Role).count() > 0:
-            seed_isolation_module(db, include_demo_accounts=False)
+            seed_isolation_module(db)
         return
 
     existing_roles = db.query(Role).count()
     existing_cog_domains = db.query(CognitiveDomain).count()
     if existing_roles > 0 and existing_cog_domains > 0 and not force_reseed_sim:
         seed_isolation_module(db)
+        seed_analog_bed_rest(db)
         return
 
     now = utcnow()
@@ -1095,7 +1106,7 @@ def seed_database(db: Session, force_reseed_sim: bool = False) -> None:
             version = ClinicalRuleVersion(
                 rule_id=rule.id,
                 version_number="1.0-DEMO",
-                protocol_source="AstroVital DEMO Reference Protocol (Ilustrativo / No Clínico)",
+                protocol_source="SEMSA DEMO Reference Protocol (Ilustrativo / No Clínico)",
                 approved_by="Comité de Demostración de Medicina Espacial (Ficticio)",
                 approval_date=now - timedelta(days=30),
                 review_due_date=now + timedelta(days=180),
@@ -1454,11 +1465,11 @@ def seed_database(db: Session, force_reseed_sim: bool = False) -> None:
     db.flush()
 
     # 7. Missions & Assignments
-    m1 = db.query(Mission).filter(Mission.code == "ARTEMIS-IV-DEMO").first()
+    m1 = db.query(Mission).filter(Mission.code == TELECREATION_MISSION_CODE).first()
     if not m1:
         m1 = Mission(
-            code="ARTEMIS-IV-DEMO",
-            name="Artemis IV — Lunar South Pole Outpost (DEMO)",
+            code=TELECREATION_MISSION_CODE,
+            name=TELECREATION_MISSION_NAME,
             description="Misión ficticia de 30 días combinando tránsito cislunar, órbita Gateway y operaciones en el Polo Sur Lunar.",
             vehicle_or_habitat="Hábitat Presurizado Lunar 'Selene-Base' & Módulo Gateway",
             start_date=now - timedelta(days=14),
@@ -1557,8 +1568,11 @@ def seed_database(db: Session, force_reseed_sim: bool = False) -> None:
         _populate_synthetic_demo_records(db, m1, m2, user_objs, now)
         db.commit()
 
-    # Módulo de aislamiento y confinamiento (catálogos, rol FAMILY_MEMBER, familiares demo)
+    # Módulo de aislamiento y confinamiento (catálogos)
     seed_isolation_module(db)
+
+    # Misión análoga con signos vitales reales de NASA (reposo en cama, UTMB)
+    seed_analog_bed_rest(db)
 
 
 def _populate_synthetic_demo_records(
@@ -1994,7 +2008,7 @@ def _populate_synthetic_demo_records(
         )
 
     for bcode, reason in [
-        ("FIRST_HEALTH_CHECK", "Primer registro fisiológico validado en misión Artemis IV."),
+        ("FIRST_HEALTH_CHECK", TELECREATION_BADGE_REASON),
         ("CONSISTENCY_STREAK", "Racha de 5 días de participación constante."),
         ("SLEEP_ROUTINE_COMPLETED", "Registro de rutina de descanso completado."),
         ("LEARNING_EXPLORER", "Exploración de cápsulas educativas en Body Explorer."),
@@ -2440,16 +2454,6 @@ def reset_simulated_demo_data(db: Session) -> Dict[str, int]:
         sim_msg_ids = [m.id for m in db.query(Message).filter(Message.conversation_id.in_(sim_conv_ids)).all()]
         if sim_msg_ids:
             db.query(MessageReadReceipt).filter(MessageReadReceipt.message_id.in_(sim_msg_ids)).delete(synchronize_session=False)
-            # Borra también del disco los archivos de adjuntos reales (nombre aleatorio bajo UPLOAD_DIR)
-            for (skey,) in (
-                db.query(MessageAttachment.storage_key)
-                .filter(MessageAttachment.message_id.in_(sim_msg_ids), MessageAttachment.storage_key.isnot(None))
-                .all()
-            ):
-                try:
-                    (Path(settings.UPLOAD_DIR) / Path(skey).name).unlink(missing_ok=True)
-                except OSError:
-                    pass
             db.query(MessageAttachment).filter(MessageAttachment.message_id.in_(sim_msg_ids)).delete(synchronize_session=False)
         db.query(Message).filter(Message.conversation_id.in_(sim_conv_ids)).delete(synchronize_session=False)
         db.query(ConversationParticipant).filter(ConversationParticipant.conversation_id.in_(sim_conv_ids)).delete(synchronize_session=False)
@@ -2489,7 +2493,7 @@ def reset_simulated_demo_data(db: Session) -> Dict[str, int]:
     db.query(DataQualityEvent).delete(synchronize_session=False)
     db.commit()
 
-    m1 = db.query(Mission).filter(Mission.code == "ARTEMIS-IV-DEMO").first()
+    m1 = db.query(Mission).filter(Mission.code == TELECREATION_MISSION_CODE).first()
     m2 = db.query(Mission).filter(Mission.code == "ARES-PATHFINDER-DEMO").first()
     user_objs = {u.crew_code: u for u in db.query(User).all()}
     if m1 and m2 and "AST-201" in user_objs:
@@ -2563,8 +2567,8 @@ LEISURE_ACTIVITIES_DATA = [
      ["Abre tu diario privado", "Escribe tres cosas concretas", "Relee la entrada de ayer"],
      "SOLO", NASA_HRP_SOURCE),
     ("LETTER_HOME", "Carta a casa", "WRITING", 20,
-     "Escribir una carta o mensaje largo a la familia, para enviarlo por el canal Conexión con Tierra.",
-     ["Piensa en una anécdota del día", "Escribe como si hablaras en persona", "Adjunta una foto si quieres"],
+     "Escribir una carta o mensaje largo a la familia para enviarlo en la próxima ventana de comunicaciones.",
+     ["Piensa en una anécdota del día", "Escribe como si hablaras en persona", "Guárdala para enviarla cuando haya enlace"],
      "SOLO", NASA_HRP_SOURCE),
     ("STRETCH_BREAK", "Estiramientos suaves", "MOVEMENT", 10,
      "Pausa de estiramientos suaves autorizados para soltar tensión (no sustituye al ejercicio prescrito).",
@@ -2587,6 +2591,11 @@ CREW_ACTIVITY_TEMPLATES_DATA = [
 ]
 
 # Misiones de XP del módulo (inactivas: no aparecen en la lista de misiones diarias)
+RETIRED_DAILY_MISSION_CODES = ("REVIEW_MISSION_MESSAGES", "RESPOND_SUPPORT_REQUEST")
+LEGACY_DAILY_MISSION_DESCRIPTIONS = {
+    "MIND_CHECK": "Completar un chequeo privado de bienestar psicológico en el Wellness Center.",
+}
+
 ISOLATION_XP_MISSIONS_DATA = [
     ("LEISURE_BREAK", "Tiempo libre registrado", "WELLNESS",
      "Registrar una actividad breve de tiempo libre.", 10,
@@ -2596,125 +2605,102 @@ ISOLATION_XP_MISSIONS_DATA = [
      "La cohesión de la tripulación es un factor protector frente al aislamiento (NASA HRP)."),
 ]
 
-FAMILY_ROLE_DESC = (
-    "Familiar autorizado (Conexión con Tierra)",
-    "Solo puede usar su conversación privada con el astronauta vinculado y sus adjuntos. Sin acceso a salud, alertas ni misiones.",
-)
+
+# Rol de una versión previa con canal familiar (retirado; ver docs/CONTRATO_AISLAMIENTO.md §4)
+LEGACY_RETIRED_ROLE_CODE = "FAMILY_MEMBER"
 
 
 def apply_lightweight_migrations(db: Session) -> None:
     """
-    Migración ligera e idempotente para BD existentes (create_all no altera tablas ya creadas):
-    - conversations.channel (MISSION por defecto).
-    - message_attachments: message_id pasa a admitir nulos (adjuntos huérfanos) y se añaden
-      uploader_id, storage_key, kind y duration_seconds. En SQLite se reconstruye la tabla
-      copiando los datos existentes (SQLite no permite cambiar NOT NULL con ALTER TABLE).
-    - message_attachments en SQLite: si el id no es AUTOINCREMENT, misma reconstrucción (conserva
-      filas e ids, FKs e índices) para que los ids borrados no se reutilicen.
+    Compatibilidad idempotente con BD creadas o migradas por una versión previa que incluía un canal
+    familiar (retirado). En una BD que nunca lo tuvo no hace nada. En una que sí lo tuvo:
+    - conversations.channel: el modelo ya no la usa. Esa versión la creaba con DEFAULT 'MISSION', así que
+      las inserciones siguen funcionando; si aun así fuera NOT NULL sin DEFAULT, se elimina la columna
+      (y su índice) para que las inserciones no fallen. Las conversaciones de ese canal se archivan
+      (status ARCHIVED) antes, sin borrar mensajes.
+    - Usuarios con el rol retirado: pasan a INACTIVE y se revocan sus sesiones (no se borran cuentas),
+      para que no queden cuentas activas con un rol sin permisos definidos.
+    - message_attachments (columnas extra anulables) y family_contacts se dejan como están: no afectan
+      a las inserciones del modelo actual.
     """
     from sqlalchemy import inspect, text
 
     bind = db.get_bind()
     insp = inspect(bind)
     tables = set(insp.get_table_names())
-    dialect = bind.dialect.name
 
     if "conversations" in tables:
-        cols = {c["name"] for c in insp.get_columns("conversations")}
-        if "channel" not in cols:
-            db.execute(text("ALTER TABLE conversations ADD COLUMN channel VARCHAR(20) NOT NULL DEFAULT 'MISSION'"))
-            db.execute(text("CREATE INDEX IF NOT EXISTS ix_conversations_channel ON conversations (channel)"))
+        channel_col = next((c for c in insp.get_columns("conversations") if c["name"] == "channel"), None)
+        if channel_col is not None:
+            db.execute(
+                text("UPDATE conversations SET status = 'ARCHIVED' WHERE channel = 'FAMILY' AND status != 'ARCHIVED'")
+            )
+            if not channel_col.get("nullable", True) and channel_col.get("default") is None:
+                db.execute(text("DROP INDEX IF EXISTS ix_conversations_channel"))
+                db.execute(text("ALTER TABLE conversations DROP COLUMN channel"))
             db.commit()
 
-    if "message_attachments" in tables:
-        cols = {c["name"]: c for c in insp.get_columns("message_attachments")}
-        new_cols = {"uploader_id", "storage_key", "kind", "duration_seconds"}
-        needs_nullable = not cols.get("message_id", {}).get("nullable", True)
-        missing = new_cols - set(cols)
-        needs_autoincrement = False
-        if dialect == "sqlite":
-            # Sin AUTOINCREMENT, SQLite reutiliza el id más alto borrado (p. ej. un huérfano purgado)
-            table_sql = db.execute(
-                text("SELECT sql FROM sqlite_master WHERE type='table' AND name='message_attachments'")
-            ).scalar() or ""
-            needs_autoincrement = "AUTOINCREMENT" not in table_sql.upper()
-        if needs_nullable or missing or needs_autoincrement:
-            if dialect == "sqlite":
-                old_cols = [c for c in cols if c in MessageAttachment.__table__.columns]
-                col_list = ", ".join(old_cols)
-                # Índices explícitos actuales (los del modelo se recrean con la tabla; el resto se restaura)
-                idx_rows = db.execute(
-                    text(
-                        "SELECT name, sql FROM sqlite_master WHERE type='index' "
-                        "AND tbl_name='message_attachments' AND sql IS NOT NULL"
-                    )
-                ).fetchall()
-                db.execute(text("ALTER TABLE message_attachments RENAME TO _message_attachments_old"))
-                for idx_name, _ in idx_rows:
-                    db.execute(text('DROP INDEX IF EXISTS "%s"' % idx_name.replace('"', "")))
-                db.commit()
-                # Tabla nueva según el modelo: id AUTOINCREMENT, FKs a messages/users e índices del modelo
-                MessageAttachment.__table__.create(bind=db.get_bind())
-                # Ids explícitos: se conservan y sqlite_sequence arranca en el máximo existente
-                db.execute(
-                    text(
-                        "INSERT INTO message_attachments (%s) SELECT %s FROM _message_attachments_old"
-                        % (col_list, col_list)
-                    )
-                )
-                db.execute(text("DROP TABLE _message_attachments_old"))
-                existing_idx = {
-                    name
-                    for (name,) in db.execute(
-                        text("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='message_attachments'")
-                    ).fetchall()
-                }
-                for idx_name, idx_sql in idx_rows:
-                    if idx_name not in existing_idx:
-                        db.execute(text(idx_sql))
-                db.commit()
-            else:
-                if needs_nullable:
-                    db.execute(text("ALTER TABLE message_attachments ALTER COLUMN message_id DROP NOT NULL"))
-                for col_name, ddl in (
-                    ("uploader_id", "INTEGER"),
-                    ("storage_key", "VARCHAR(64)"),
-                    ("kind", "VARCHAR(10)"),
-                    ("duration_seconds", "FLOAT"),
-                ):
-                    if col_name in missing:
-                        db.execute(text("ALTER TABLE message_attachments ADD COLUMN %s %s" % (col_name, ddl)))
-                db.commit()
+    _migrate_branding(db)
+
+    legacy_role = db.query(Role).filter(Role.code == LEGACY_RETIRED_ROLE_CODE).first()
+    if legacy_role:
+        legacy_users = db.query(User).filter(User.role_id == legacy_role.id, User.status == "ACTIVE").all()
+        for u in legacy_users:
+            u.status = "INACTIVE"
+            db.query(UserSession).filter(UserSession.user_id == u.id, UserSession.is_revoked.is_(False)).update(
+                {UserSession.is_revoked: True}, synchronize_session=False
+            )
+        if legacy_users:
+            db.commit()
 
 
-def seed_isolation_module(db: Session, include_demo_accounts: Optional[bool] = None) -> None:
+def _migrate_branding(db: Session) -> None:
     """
-    Catálogos, rol FAMILY_MEMBER y familiares demo. Idempotente: se ejecuta en cada arranque.
-    Las cuentas demo de familiares solo se crean si SEED_DEMO_DATA=true (o include_demo_accounts=True).
+    Renombrado AstroVital -> SEMSA (issue #14), idempotente, para BD sembradas por versiones previas:
+    - Misión demo ARTEMIS-IV-DEMO -> TELECREATION-UTS / "TeleCreation UTS" (mismo id: se conservan fases,
+      asignaciones y registros). Si la nueva ya existiera, la antigua no se toca.
+    - Cuentas demo @astrovital.demo -> @semsa.demo (mismas contraseñas), salvo que el correo nuevo ya exista.
+    - Motivo de la insignia FIRST_HEALTH_CHECK sembrado con el nombre antiguo de la misión.
+    - Textos sembrados/simulados que citaban la marca anterior (entornos, protocolo DEMO, notas del simulador).
     """
-    if include_demo_accounts is None:
-        include_demo_accounts = settings.SEED_DEMO_DATA
-    # Rol y permiso del canal familiar
-    perm = db.query(Permission).filter(Permission.code == "USE_FAMILY_CHANNEL").first()
-    if not perm:
-        perm = Permission(
-            code="USE_FAMILY_CHANNEL",
-            description="Usar el canal privado Conexión con Tierra con el astronauta vinculado",
-        )
-        db.add(perm)
-        db.flush()
-    fam_role = db.query(Role).filter(Role.code == "FAMILY_MEMBER").first()
-    if not fam_role:
-        fam_role = Role(code="FAMILY_MEMBER", name=FAMILY_ROLE_DESC[0], description=FAMILY_ROLE_DESC[1])
-        db.add(fam_role)
-        db.flush()
-    if not (
-        db.query(RolePermission)
-        .filter(RolePermission.role_id == fam_role.id, RolePermission.permission_id == perm.id)
-        .first()
+    changed = False
+    legacy_mission = db.query(Mission).filter(Mission.code == LEGACY_MISSION_CODE).first()
+    if legacy_mission and not db.query(Mission).filter(Mission.code == TELECREATION_MISSION_CODE).first():
+        legacy_mission.code = TELECREATION_MISSION_CODE
+        legacy_mission.name = TELECREATION_MISSION_NAME
+        changed = True
+
+    for u in db.query(User).filter(User.email.like(f"%{LEGACY_DEMO_EMAIL_DOMAIN}")).all():
+        new_email = u.email[: -len(LEGACY_DEMO_EMAIL_DOMAIN)] + DEMO_EMAIL_DOMAIN
+        if not db.query(User).filter(User.email == new_email).first():
+            u.email = new_email
+            changed = True
+
+    badges = (
+        db.query(UserBadge)
+        .filter(UserBadge.awarded_reason == LEGACY_BADGE_REASON)
+        .update({UserBadge.awarded_reason: TELECREATION_BADGE_REASON}, synchronize_session=False)
+    )
+
+    # Textos sembrados con el nombre anterior (los usa también la traducción al inglés del frontend)
+    from sqlalchemy import text
+
+    replaced = 0
+    for table, column in (
+        ("environment_profiles", "description"),
+        ("clinical_rule_versions", "protocol_source"),
+        ("health_measurements", "notes"),
     ):
-        db.add(RolePermission(role_id=fam_role.id, permission_id=perm.id))
+        replaced += db.execute(
+            text(f"UPDATE {table} SET {column} = REPLACE({column}, 'AstroVital', 'SEMSA') WHERE {column} LIKE '%AstroVital%'")
+        ).rowcount or 0
 
+    if changed or badges or replaced:
+        db.commit()
+
+
+def seed_isolation_module(db: Session) -> None:
+    """Catálogos del módulo de aislamiento (tiempo libre, plantillas de tripulación, XP). Idempotente."""
     # Catálogo de tiempo libre
     for code, title, cat, minutes, desc, how_to, mode, (src_title, src_url) in LEISURE_ACTIVITIES_DATA:
         if not db.query(LeisureActivity).filter(LeisureActivity.code == code).first():
@@ -2757,47 +2743,18 @@ def seed_isolation_module(db: Session, include_demo_accounts: Optional[bool] = N
                     is_active=False,
                 )
             )
-    db.flush()
 
-    # Familiares demo del astronauta 1 (Elena): solo con SEED_DEMO_DATA (contraseñas públicas)
-    elena = (
-        db.query(User).filter(User.email == settings.DEMO_ASTRONAUT1_EMAIL).first()
-        if include_demo_accounts
-        else None
-    )
-    if elena:
-        for crew_code, email, name, pwd, relation in (
-            ("FAM-201A", settings.DEMO_FAMILY1_EMAIL, "Ana Rostova", settings.DEMO_FAMILY1_PASSWORD, "Pareja"),
-            ("FAM-201B", settings.DEMO_FAMILY2_EMAIL, "Sofía Rostova", settings.DEMO_FAMILY2_PASSWORD, "Hija"),
-        ):
-            fam_user = db.query(User).filter(User.email == email).first()
-            if not fam_user:
-                if db.query(User).filter(User.crew_code == crew_code).first():
-                    continue
-                fam_user = User(
-                    crew_code=crew_code,
-                    email=email,
-                    full_name=name,
-                    password_hash=hash_password(pwd),
-                    role_id=fam_role.id,
-                    status="ACTIVE",
-                    preferred_theme="space-dark",
-                    share_wellness_signals_with_leader=False,
-                    share_detailed_wellness_with_medical=False,
-                )
-                db.add(fam_user)
-                db.flush()
-            if fam_user.role_id != fam_role.id:
-                continue  # nunca convertir en familiar una cuenta existente con otro rol
-            exists_link = (
-                db.query(FamilyContact)
-                .filter(FamilyContact.astronaut_id == elena.id, FamilyContact.user_id == fam_user.id)
-                .first()
-            )
-            if not exists_link:
-                db.add(
-                    FamilyContact(
-                        astronaut_id=elena.id, user_id=fam_user.id, relationship_label=relation, is_active=True
-                    )
-                )
+    # Misiones que solo se completaban desde el módulo Mensajes, retirado de la interfaz (issue #15):
+    # se desactivan también en BD ya inicializadas para que no queden tareas imposibles de cumplir
+    db.flush()
+    for code in RETIRED_DAILY_MISSION_CODES:
+        dm = db.query(DailyMission).filter(DailyMission.code == code).first()
+        if dm and dm.is_active:
+            dm.is_active = False
+    # Textos que nombraban el antiguo "Wellness Center" (issue #14): se actualizan en BD ya sembradas
+    for code, old_desc in LEGACY_DAILY_MISSION_DESCRIPTIONS.items():
+        new_desc = next((d[3] for d in DAILY_MISSIONS_DATA if d[0] == code), None)
+        dm = db.query(DailyMission).filter(DailyMission.code == code).first()
+        if dm and new_desc and dm.description == old_desc:
+            dm.description = new_desc
     db.commit()

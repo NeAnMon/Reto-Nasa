@@ -1,4 +1,4 @@
-/* AstroVital · Consola de salud de tripulación
+/* SEMSA · Consola de salud de tripulación
  * Convenciones (NASA-STD-3001 Vol. 2, SSP 50313):
  * - nominal sin color ("dark cockpit"); amarillo = precaución (C), rojo = aviso (W)
  * - el color nunca va solo: siempre letra o texto
@@ -102,6 +102,7 @@ body[data-theme="daylight-clean"] .av-console {
 .av-alarm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 8px 16px; }
 .av-alarm-C { background: var(--av-y); color: #0e1116; }
 .av-alarm-W { background: var(--av-r); color: #fff; }
+.av-alarm-W.av-alarm-shelter { background: #e8541c; color: #fff; }
 .av-alarm-quiet { background: var(--av-bar); color: var(--av-text2); border-bottom: 1px solid var(--av-border); }
 .av-alarm .av-btn { border-color: currentColor; background: transparent; color: inherit; }
 
@@ -113,10 +114,26 @@ body[data-theme="daylight-clean"] .av-console {
 
 /* Layout */
 .av-grid { display: flex; flex-wrap: wrap; gap: 12px; padding: 12px; align-items: flex-start; }
+/* Resumen: las tres columnas llegan al mismo borde inferior; "Signos y registros" ocupa lo que sobra (issue #3) */
+.av-grid-sum { align-items: stretch; }
+.av-grid-sum > .av-col-b > .av-table-panel { flex: 1 1 auto; }
 .av-col-a { flex: 1 1 290px; max-width: 330px; min-width: 0; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
 .av-col-b { flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.av-grid-sum > .av-col-b { container-type: inline-size; container-name: av-col-b; }
 .av-col-c { flex: 1 1 320px; max-width: 400px; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
 .av-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; }
+/* Prioridad 1 del Resumen: grilla 3×2 (5 tarjetas + alertas C&W). Las celdas de una fila se
+ * estiran a la misma altura (align-items: stretch) y el pie se empuja al fondo de cada tarjeta. */
+.av-cards.av-cards-3x2 { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: stretch; }
+.av-cards-3x2 > .av-card > .av-foot { margin-top: auto; }
+@container av-col-b (max-width: 640px) { .av-cards.av-cards-3x2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container av-col-b (max-width: 400px) { .av-cards.av-cards-3x2 { grid-template-columns: minmax(0, 1fr); } }
+/* Lista de alertas C&W dentro de su tarjeta: scroll propio para no crecer más que las demás. */
+.av-alert-list { list-style: none; margin: 0; padding: 0; max-height: 190px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--av-strong) var(--av-bg); }
+.av-alert-list::-webkit-scrollbar { width: 6px; }
+.av-alert-list::-webkit-scrollbar-track { background: var(--av-bg); }
+.av-alert-list::-webkit-scrollbar-thumb { background: var(--av-strong); }
+.av-alert-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: start; padding: 6px 0; border-top: 1px solid var(--av-row); font-size: 13px; }
 .av-card { padding: 12px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .av-card-C { border-color: var(--av-y); }
 .av-card-W { border-color: var(--av-r); }
@@ -127,12 +144,92 @@ body[data-theme="daylight-clean"] .av-console {
 .av-bar > span { display: block; height: 100%; background: var(--av-text); }
 .av-panel-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--av-border); }
 
+/* Vista Radiación, rejilla de 2 filas:
+   Fila 1 = gráfica HERA/GOES (50 %) | Riesgos y Dosímetro personal en 2 columnas internas (50 %)
+   Fila 2 = Límites de referencia a todo el ancho.
+   El Refugio (solo en alerta) ocupa las 2 columnas internas arriba de Riesgos/Dosímetro. */
+.av-rad { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 12px; align-items: stretch; box-sizing: border-box; width: 100%; max-width: 100%; }
+.av-rad > * { min-width: 0; }
+.av-rad > #av-rad-live { margin: 0; display: flex; flex-direction: column; }
+.av-rad > #av-rad-live > .av-panel { flex: 1 1 auto; }
+.av-rad > #av-rad-live svg { display: block; width: 100%; height: auto; max-height: 300px; }
+.av-rad-folds { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: stretch; align-content: stretch; min-width: 0; }
+/* fila 1 del mismo alto: la gráfica y el Dosímetro se estiran al alto de Riesgos (una sección plegada no se estira) */
+.av-rad-folds .av-fold:not([open]) { align-self: start; }
+.av-rad-folds .av-fold[data-fold="shelter"] { grid-column: 1 / -1; }
+/* el alto sobrante va a la fila de Riesgos/Dosímetro, no a la del Refugio */
+.av-rad-folds { grid-template-rows: 1fr; }
+.av-rad-folds:has(> #av-rad-live-folds > [data-fold="shelter"]) { grid-template-rows: auto 1fr; }
+/* columnas internas angostas: el título largo ("Riesgos — dosis frente a límites…") salta de línea */
+.av-rad-folds .av-fold > .av-fold-head { height: auto; min-height: 48px; flex-wrap: wrap; padding-top: 8px; padding-bottom: 8px; }
+.av-rad-folds .av-fold > .av-fold-head > * { white-space: normal; overflow: visible; }
+/* dentro de cada media columna las tarjetas y el formulario van en una sola columna */
+.av-rad-folds .av-fold > .av-cards { grid-template-columns: minmax(0, 1fr); }
+.av-rad-folds .av-form-grid { grid-template-columns: minmax(0, 1fr); }
+.av-rad-folds .av-input { width: 100%; box-sizing: border-box; min-width: 0; }
+.av-rad-limits { grid-column: 1 / -1; min-width: 0; }
+.av-rad-limits .av-table { table-layout: fixed; }
+@media (max-width: 1100px) {
+  /* pantallas angostas: gráfica arriba, Riesgos y Dosímetro lado a lado, Límites al final */
+  .av-rad { grid-template-columns: minmax(0, 1fr); }
+  .av-rad > #av-rad-live svg { max-height: none; }
+  .av-rad-folds .av-form-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+}
+@media (max-width: 700px) {
+  .av-rad-folds { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Secciones plegables (vista Radiación): misma cabecera y mismo ancho */
+.av-fold { width: 100%; box-sizing: border-box; padding: 0; min-width: 0; }
+.av-fold > .av-fold-head { cursor: pointer; list-style: none; min-height: 48px; box-sizing: border-box; padding-right: 36px; position: relative; }
+.av-fold > .av-fold-head::-webkit-details-marker { display: none; }
+.av-fold > .av-fold-head::after { content: ""; position: absolute; right: 14px; top: 50%; width: 8px; height: 8px; border-right: 2px solid var(--av-text2); border-bottom: 2px solid var(--av-text2); transform: translateY(-70%) rotate(45deg); transition: transform .15s; }
+.av-fold > .av-fold-head { flex-wrap: nowrap; height: 48px; overflow: hidden; }
+.av-fold > .av-fold-head > * { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.av-fold > .av-fold-head > .av-h2 { flex: 1 1 auto; }
+.av-fold > .av-fold-head > .av-sub { flex: 0 1 auto; }
+.av-fold:not([open]) > .av-fold-head { border-bottom: 0; }
+.av-fold:not([open]) > .av-fold-head::after { transform: translateY(-30%) rotate(-45deg); }
+.av-fold > .av-fold-head:hover { background: var(--av-hover); }
+.av-fold > .av-fold-head:focus-visible { outline: 2px solid var(--av-text); outline-offset: -2px; }
+
 /* Tablas */
 .av-hscroll { overflow-x: auto; scrollbar-width: thin; scrollbar-color: var(--av-strong) var(--av-bg); }
 .av-hscroll::-webkit-scrollbar { height: 10px; }
 .av-hscroll::-webkit-scrollbar-track { background: var(--av-bg); border-top: 1px solid var(--av-border); }
 .av-hscroll::-webkit-scrollbar-thumb { background: var(--av-strong); border: 2px solid var(--av-bg); }
 .av-hscroll::-webkit-scrollbar-thumb:hover { background: var(--av-text2); }
+
+/* Resumen, cuadro "Recomendaciones": recomendaciones activas que traen las alertas tempranas
+   (encima de las mejoras previstas). Compacto, sin colores de alarma. Prefijo av-ew-* para no
+   chocar con .av-rec-* de views/recommendations.css. */
+.av-ew-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.av-ew { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; min-width: 0; border: 1px solid var(--av-text2); background: var(--av-raised); }
+.av-ew-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 12px; min-width: 0; }
+.av-ew-head .av-h3 { min-width: 0; overflow-wrap: anywhere; }
+.av-ew-p { margin: 0; font-size: 13px; color: var(--av-text); overflow-wrap: anywhere; }
+.av-ew-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Resumen, columna derecha: 2 cuadros del mismo alto (tareas de hoy y recomendaciones, issue #15).
+   Solo .av-col-sum: .av-col-c se usa también en otras vistas. */
+.av-col-sum { display: grid; grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 12px; align-self: stretch; }
+.av-sum-box { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.av-sum-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--av-strong) var(--av-bg); }
+.av-sum-scroll::-webkit-scrollbar { width: 10px; }
+.av-sum-scroll::-webkit-scrollbar-track { background: var(--av-bg); border-left: 1px solid var(--av-border); }
+.av-sum-scroll::-webkit-scrollbar-thumb { background: var(--av-strong); border: 2px solid var(--av-bg); }
+.av-sum-scroll::-webkit-scrollbar-thumb:hover { background: var(--av-text2); }
+/* insignia con texto ("3 sin leer"): conserva alto y fuente de .av-badge, solo se ensancha */
+.av-badge.av-pill { width: auto; padding: 0 8px; white-space: nowrap; }
+/* contramedidas pendientes hoy: borde y cabecera en amarillo (recordatorio, no alerta médica) */
+.av-sum-remind .av-panel-head { border-bottom-color: var(--av-y); box-shadow: inset 0 3px 0 var(--av-y); background: rgba(242, 201, 76, .08); }
+body[data-theme="high-contrast"] .av-sum-remind .av-panel-head { background: transparent; }
+body[data-theme="daylight-clean"] .av-sum-remind .av-panel-head { background: #fdf3d2; }
+.av-cm-remind { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--av-row); }
+.av-cm-remind-head { margin: 0; font-weight: 600; }
+.av-cm-remind-list { margin: 0; padding-left: 18px; font-size: 13px; }
+.av-cm-remind-list li { margin: 2px 0; overflow-wrap: anywhere; }
+.av-cm-remind-list li.av-sub { list-style: none; margin-left: -18px; }
 .av-table { width: 100%; border-collapse: collapse; }
 .av-table th { text-align: left; color: var(--av-muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; font-weight: 600; padding: 8px; }
 .av-table td { padding: 0 8px; border-top: 1px solid var(--av-row); height: 44px; }
@@ -156,10 +253,6 @@ body[data-theme="daylight-clean"] .av-console {
 @media (prefers-reduced-motion: reduce) { .av-nom-caret { transition: none; } }
 
 /* Sistemas y figura */
-.av-sys-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--av-border); }
-.av-sys-list li { border-bottom: 1px solid var(--av-row); }
-.av-sys-btn { width: 100%; min-height: 40px; display: flex; align-items: center; gap: 10px; padding: 6px 8px; border: 0; background: transparent; color: var(--av-text); cursor: pointer; text-align: left; font: inherit; }
-.av-sys-btn:hover, .av-sys-btn[aria-pressed="true"] { background: var(--av-hover); }
 .av-figure { position: relative; width: 100%; max-width: 272px; aspect-ratio: 660 / 1440; align-self: center; }
 .av-figure svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; overflow: visible; }
 .av-credits { margin: 0; font-size: 11px; line-height: 1.4; color: var(--av-muted); }
@@ -372,6 +465,9 @@ button.av-pop-row:hover { background: var(--av-hover); }
 .av-st > .av-v, .av-st-line { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .av-status > .av-st-row { flex-direction: row; align-items: center; gap: 14px; }
 .av-status > .av-st-fixed { flex-shrink: 0; }
+/* "TeleCreation UTS" es más largo que el valor de debajo: la celda no se encoge bajo su rótulo (issue #5) */
+.av-status > .av-st-brand { flex-shrink: 0; }
+.av-status > .av-st-brand > .av-lbl { white-space: nowrap; }
 .av-st-clock { font-size: 15px; line-height: 1.25; white-space: nowrap; }
 .av-status > .av-st-counts { gap: 12px; border-left: 1px solid var(--av-border); }
 .av-st-count { display: flex; align-items: center; gap: 6px; }
@@ -384,6 +480,21 @@ button.av-pop-row:hover { background: var(--av-hover); }
 .av-env-sync-ok { border-color: var(--av-border); color: var(--av-muted); }
 .av-env-sync-local { border-color: var(--av-s); color: var(--av-s); }
 .av-env-sync-pending { border-style: dashed; }
+/* Banner del entorno (tras "Enlace con Tierra"): imagen de la escena con fundido al cambiar */
+/* Ocupa todo el hueco hasta las alertas: toma el sitio del separador .av-grow */
+.av-status > .av-st-banner { flex: 1 1 0; min-width: 180px; justify-content: center; border-right: 0; }
+.av-status > .av-st-banner:not(:empty) + .av-grow { display: none; }
+.av-st-banner:empty { display: none; }
+.av-env-banner { display: flex; align-items: center; gap: 10px; height: 42px; width: 100%; }
+.av-env-banner-logo { flex: 0 0 auto; height: 100%; width: auto; }
+body[data-theme="daylight-clean"] .av-env-banner-logo { content: url("../assets/env/semsa-logo.webp?v=2"); }
+.av-env-banner-scene { position: relative; flex: 1 1 auto; align-self: stretch; min-width: 0; border-radius: 4px; overflow: hidden; border: 1px solid var(--av-border); background: var(--av-raised); }
+.av-env-banner-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: var(--av-env-focus, 50% 50%); opacity: 0; transition: opacity .35s ease; }
+.av-env-banner-img.is-on { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .av-env-banner-img { transition: none; } }
+@media (max-width: 1440px) { .av-env-banner { height: 36px; } }
+/* sin sitio en la barra (y en móvil, donde la barra pasa a filas): se oculta */
+@media (max-width: 1279px) { .av-status > .av-st-banner { display: none; } .av-status > .av-st-banner + .av-grow { display: block; } }
 .av-input.av-env-select {
   width: auto; min-width: 150px; max-width: 220px; min-height: 28px; padding: 1px 26px 1px 6px;
   font: 600 13px/1.2 "IBM Plex Mono", monospace; color: var(--av-text); background-color: var(--av-bg); cursor: pointer;
@@ -415,6 +526,8 @@ button.av-pop-row:hover { background: var(--av-hover); }
   display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 20px; padding: 0 6px;
   font: 600 12px/1 "IBM Plex Mono", monospace; background: var(--av-text); color: var(--av-bg); border: 1px solid var(--av-text);
 }
+/* texto solo para lectores de pantalla dentro de una insignia de pestaña (p. ej. "3 contramedidas pendientes") */
+.av-tab-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .av-navtools { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; margin-left: auto; padding: 0; }
 .av-navtools > .av-btn { min-height: 44px; padding: 0 12px; font-size: 13px; }
 .av-crew { display: flex; align-items: center; gap: 6px; min-width: 0; }
@@ -455,6 +568,9 @@ button.av-pop-row:hover { background: var(--av-hover); }
 @media (max-width: 980px) {
   .av-console { margin: -1rem -1rem 0; }
   .av-col-a, .av-col-c, .av-col-a.av-col-body { max-width: none; }
+  /* Resumen en móvil: cuadros de alto automático, sin filas iguales ni scroll interno */
+  .av-col-sum { grid-template-rows: none; grid-auto-rows: auto; align-self: auto; }
+  .av-sum-scroll { overflow-y: visible; }
   /* en móvil el encabezado no es fijo para no tapar la pantalla; la barra de estado se reparte en filas */
   .av-console.av-chrome { position: static; }
   .av-chrome .av-status { flex-wrap: wrap; }
@@ -467,4 +583,16 @@ button.av-pop-row:hover { background: var(--av-hover); }
   .av-navtools { width: 100%; justify-content: flex-end; flex-wrap: wrap; padding: 0 8px; border-top: 1px solid var(--av-border); }
   .av-crew { flex: 1 1 200px; }
   .av-crew .av-input { max-width: none; flex: 1 1 auto; }
+}
+
+/* Resumen · "Otros sistemas": solo los sistemas sin zona en la figura (issue #3) */
+.av-sys-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-top: 8px; border-top: 1px solid var(--av-border); }
+.av-sys-chips .av-lbl { flex: 1 1 100%; }
+.av-sys-chip { min-height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 6px; border: 1px solid var(--av-border); background: transparent; color: var(--av-text); cursor: pointer; font: inherit; font-size: 13px; }
+.av-sys-chip:hover, .av-sys-chip[aria-pressed="true"] { background: var(--av-hover); border-color: var(--av-strong); }
+.av-sys-chip:focus-visible { outline: 2px solid var(--av-text); outline-offset: 1px; }
+/* Ancho intermedio: la columna derecha baja sola a otra fila; tareas y recomendaciones se ponen lado a lado
+   a todo el ancho para no dejar un hueco a la derecha (issue #3) */
+@media (min-width: 981px) and (max-width: 1380px) {
+  .av-col-c.av-col-sum { flex: 1 1 100%; max-width: none; grid-template-rows: none; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

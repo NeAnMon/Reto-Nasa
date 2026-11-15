@@ -1,4 +1,4 @@
-/* AstroVital · Consola · Vista "Alertas" (resumen C&W)
+/* SEMSA · Consola · Vista "Alertas" (resumen C&W)
  * Solo clases av-al-*; usa los tokens de .av-console definidos en console.css.
  * El color nunca va solo: cada estado lleva letra o texto.
  */
@@ -77,6 +77,40 @@
 .av-al-timeline { list-style: none; margin: 0; padding: 0 0 0 12px; border-left: 2px solid var(--av-border); display: flex; flex-direction: column; gap: 10px; }
 .av-al-timeline li { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
 .av-al-tl-head { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+
+/* Alertas tempranas: desplegables <details> con el patrón .av-fold de console.css (Radiación).
+   La cabecera admite dos líneas para que el título no se corte en móvil. */
+.av-al-early-intro { padding-bottom: 0; }
+.av-al-early-list { list-style: none; margin: 0; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.av-al-early-item { border: 1px solid var(--av-border); background: var(--av-panel); }
+.av-al-early-item[open] { border-color: var(--av-text2); }
+.av-fold > .av-al-early-head { height: auto; justify-content: flex-start; gap: 10px; padding-top: 8px; padding-bottom: 8px; }
+.av-fold > .av-al-early-head > .av-al-early-t { flex: 1 1 auto; font-weight: 600; white-space: normal; overflow-wrap: anywhere; line-height: 1.3; }
+.av-fold > .av-al-early-head > .av-al-early-time { flex: 0 0 auto; }
+.av-al-early-body { padding: 12px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.av-al-early-body .av-h3 { margin: 4px 0 0; }
+
+/* Recomendaciones y contramedidas (issue #26): tarjetas siempre desplegadas para que salten a la vista.
+   El borde izquierdo repite el color de la clase, pero la letra (W/C/A) y el texto siempre lo acompañan. */
+.av-al-reco { border-top: 3px solid var(--av-text); }
+.av-al-reco-intro { padding-bottom: 0; }
+.av-al-reco-groups { padding: 12px; display: flex; flex-direction: column; gap: 14px; }
+.av-al-reco-group { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.av-al-reco-mod { margin: 0; display: flex; align-items: baseline; gap: 8px; }
+.av-al-reco-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); }
+.av-al-reco-card {
+  border: 1px solid var(--av-border); border-left: 4px solid var(--av-text2); background: var(--av-raised);
+  padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0;
+}
+.av-al-reco-card[data-cls="W"] { border-left-color: var(--av-r); }
+.av-al-reco-card[data-cls="C"] { border-left-color: var(--av-y); }
+.av-al-reco-head { display: flex; align-items: flex-start; gap: 8px; }
+.av-al-reco-t { font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.av-al-reco-now { border: 1px solid var(--av-border); background: var(--av-panel); padding: 6px 8px; }
+.av-al-reco-now .av-al-p { font-weight: 600; }
+.av-al-reco-cm { color: var(--av-text); }
+.av-al-reco-more { align-self: flex-start; }
 
 @media (max-width: 980px) {
   .av-al-detail { max-width: none; flex-basis: 100%; }

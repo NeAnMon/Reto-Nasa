@@ -1,4 +1,4 @@
-"""Initialize AstroVital database schema and seed reproducible DEMO dataset."""
+"""Initialize SEMSA database schema and seed reproducible DEMO dataset."""
 import sys
 from pathlib import Path
 
@@ -11,13 +11,13 @@ from backend.app.database.seed import seed_database
 
 
 def main():
-    print("[AstroVital] Creando tablas relacionales e índices...")
+    print("[SEMSA] Creando tablas relacionales e índices...")
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
-        print("[AstroVital] Sembrando datos sintéticos reproducibles (MODO DEMO)...")
+        print("[SEMSA] Sembrando datos sintéticos reproducibles (MODO DEMO)...")
         seed_database(db, force_reseed_sim=False)
-        print("[AstroVital] Base de datos inicializada correctamente.")
+        print("[SEMSA] Base de datos inicializada correctamente.")
     finally:
         db.close()
 

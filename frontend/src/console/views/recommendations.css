@@ -1,0 +1,21 @@
+/* Consola · vista "Recomendaciones" (issue #15)
+   Cuadros desplegables (.av-fold de console.css) en una cuadrícula de columnas iguales. */
+.av-rec-wrap { display: flex; flex-direction: column; gap: 12px; padding: 12px; }
+.av-rec-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.av-rec-intro { margin: 0; padding: 12px; color: var(--av-text2); max-width: 90ch; }
+
+.av-rec-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr)); gap: 12px; align-items: start; }
+.av-rec-card { min-width: 0; }
+.av-rec-card > .av-rec-head > .av-h3 { margin: 0; flex: 1 1 auto; }
+
+.av-rec-body { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
+.av-rec-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.av-rec-sum { margin: 0; font-weight: 600; }
+.av-rec-body h4 { margin: 4px 0 0; }
+.av-rec-list { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+.av-rec-list li { line-height: 1.45; }
+
+/* Plazo: el texto dice el plazo; el borde solo lo refuerza */
+.av-rec-hz-short { border-color: var(--av-g, var(--av-strong)); }
+.av-rec-hz-mid { border-color: var(--av-y, var(--av-strong)); }
+.av-rec-hz-long { border-color: var(--av-strong); }

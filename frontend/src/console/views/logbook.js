@@ -1,5 +1,5 @@
 /*
- * AstroVital · Bitácora de misión (sustituye a la antigua sección "Reports")
+ * SEMSA · Bitácora de misión (sustituye a la antigua sección "Reports")
  *
  * - Columna principal: bitácora cronológica de solo lectura que une
  *   mediciones (GET /health/measurements), alertas con sus reconocimientos y
@@ -165,7 +165,7 @@ const DICT = {
     provLoaded: "Mediciones cargadas",
     provSim: "Simuladas",
     provNotSim: "No simuladas",
-    disclaimer: "AstroVital ayuda a observar, registrar y comunicar información de salud; no diagnostica ni sustituye al personal médico.",
+    disclaimer: "SEMSA ayuda a observar, registrar y comunicar información de salud; no diagnostica ni sustituye al personal médico.",
     logTitle: "Bitácora de misión",
     logSub: "solo lectura · horas en GMT",
     refresh: "Actualizar",
@@ -336,7 +336,7 @@ const DICT = {
     provLoaded: "Loaded measurements",
     provSim: "Simulated",
     provNotSim: "Not simulated",
-    disclaimer: "AstroVital helps observe, log and communicate health information; it does not diagnose or replace medical staff.",
+    disclaimer: "SEMSA helps observe, log and communicate health information; it does not diagnose or replace medical staff.",
     logTitle: "Mission logbook",
     logSub: "read-only · times in GMT",
     refresh: "Refresh",
@@ -1000,7 +1000,7 @@ async function doExport(root, ctx, fmtCode) {
       typeof Blob !== "undefined" && res instanceof Blob
         ? res
         : new Blob([JSON.stringify(res, null, 2)], { type: "application/json" });
-    triggerDownload(blob, `astrovital_report_${ctx.aid}.${fmtCode.toLowerCase()}`);
+    triggerDownload(blob, `semsa_report_${ctx.aid}.${fmtCode.toLowerCase()}`);
     const at = new Date();
     const T2 = tr(DICT);
     if (root.isConnected) setExportStatus(root, fmt(T2.exportOk, { f: fmtCode, t: gmt(at) }), "ok");

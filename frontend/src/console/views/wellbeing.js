@@ -1,14 +1,20 @@
-/* AstroVital · Consola · pestaña principal "Bienestar"
+/* SEMSA · Consola · pestaña principal "Bienestar"
  * Riesgo NASA HRP de aislamiento y confinamiento: fatiga mental, sueño y ritmo circadiano,
  * ánimo y dinámica de equipo. Contrato: docs/CONTRATO_AISLAMIENTO.md (§1–3; §4 solo resumen/enlace).
  *
  * Subsecciones (pestañas internas WAI-ARIA, la elegida se recuerda en la sesión):
- *   - Hoy: check-in rápido (sueño, ánimo, energía, aislamiento, nota privada) + tarjeta de sueño
- *     y accesos al cuestionario completo, check-in emocional, evaluación cognitiva y respiración.
- *   - Conexión con Tierra: explica el canal familiar y abre Mensajes en modo familiar
- *     (señal sessionStorage "av_messages_channel" = "FAMILY"; la UI de mensajes vive en messages.js).
+ *   - Hoy: check-in rápido (sueño, ánimo, energía, aislamiento, nota privada) + tarjeta de sueño.
+ *   - Cuestionarios: cuestionario de bienestar psicológico (antes en "Registrar medición") y chequeo
+ *     del turno: estrés, FC en reposo, carga NASA-TLX y test de reacción tipo PVT (questionnaires.js,
+ *     shift-check.js). Sueño y ánimo no se repiten: se toman del check-in de Hoy.
+ *   - Check-in emocional: cuestionarios del equipo de apoyo (emotional.js), con contador de pendientes.
+ *   - Evaluación cognitiva: atención, memoria y tiempo de reacción (cognitive.js).
+ *     Antes eran secciones aparte enlazadas desde Hoy; ahora son pestañas como las demás (issue #26).
+ *   - Respiración: respiración guiada en cuadrado 4-4-4-4 con rondas y contador local (breathing.js).
  *   - Tiempo libre: hobbies breves con filtros, pasos, fuente NASA y registro "Lo hice".
  *   - Tripulación: actividades de integración (proponer, unirse, asistencia, quórum, meta semanal).
+ *   ("Contacto con Tierra" ya no es una pestaña: es una recomendación que solo aparece como alerta
+ *    temprana, ver backend/app/rules/early_warnings.py; se muestra en Alertas y en el Resumen.)
  *
  * Privacidad: líder/administración reciben ánimo, energía, aislamiento y notas como null → "privado".
  * Estados emocionales siempre como etiqueta de texto, sin colores de alarma.
@@ -17,6 +23,10 @@
 import { apiService } from "../../services/api.js";
 import { tr, fmt as fmtT, fmtNum, locale } from "../../i18n/i18n.js";
 import { bt, btLines } from "/src/i18n/backend.js";
+import { renderBreathing } from "./breathing.js";
+import { renderChecks } from "./questionnaires.js";
+import { renderEmotionalView } from "./emotional.js";
+import { renderCognitiveView } from "./cognitive.js";
 import {
   esc, tag, errMsg, ensureCss, makeStale, roleOf, isOwnAstronaut, astronautName,
   snapshotFields, restoreFields, langChanged,
@@ -51,7 +61,7 @@ const DICT = {
     intro: "Un espacio para cuidar el descanso, el ánimo y la conexión con los demás durante la misión. Todo lo que escribas aquí es privado por defecto.",
     introLeader: "Resumen de bienestar de {name}. Por privacidad, ánimo, energía, sensación de aislamiento y notas solo los ve la propia persona.",
     tabsAria: "Secciones de bienestar",
-    tabs: { today: "Hoy", earth: "Conexión con Tierra", leisure: "Tiempo libre", crew: "Tripulación" },
+    tabs: { today: "Hoy", checks: "Cuestionarios", emotional: "Check-in emocional", cognitive: "Evaluación cognitiva", breath: "Respiración", leisure: "Tiempo libre", crew: "Tripulación" },
     loading: "Cargando…",
     retry: "Reintentar",
     noData: "—",
@@ -92,7 +102,6 @@ const DICT = {
     careTitle: "¿Hablamos?",
     careText: "Tus últimos registros sugieren que vendría bien un momento de apoyo. No es una alarma: el check-in emocional o una conversación con tu equipo pueden ayudar.",
     careEmotional: "Hacer el check-in emocional",
-    careMessages: "Escribir a mi equipo de apoyo",
     // Hoy · sueño
     sleepTitle: "Sueño y ritmo circadiano",
     avg7: "Media de sueño (7 días)",
@@ -108,30 +117,8 @@ const DICT = {
     quality: "Calidad",
     isolatedShort: "Aislamiento",
     noteShort: "Nota",
-    // Hoy · herramientas
-    toolsTitle: "Más herramientas de bienestar",
-    toolWellness: "Cuestionario completo de bienestar",
-    toolWellnessSub: "Unos 5 minutos · con historial y recomendaciones",
-    toolEmotional: "Check-in emocional",
-    toolEmotionalSub: "Cuestionarios que te envía el equipo de apoyo",
+    // Pestaña Check-in emocional · pendientes
     toolPending: "{n} pendientes",
-    toolCognitive: "Evaluación cognitiva",
-    toolCognitiveSub: "Atención, memoria y tiempo de reacción",
-    toolBreath: "Respiración guiada 4-4-4-4",
-    toolBreathSub: "Dentro del cuestionario completo · 2 minutos para bajar el ritmo",
-    // Conexión con Tierra
-    earthTitle: "Conexión con Tierra",
-    earthIntro: "Un canal privado con tu familia para compartir fotos, notas de voz y mensajes. Funciona como «guardar y enviar»: por el retardo de la comunicación no hay videollamadas ni llamadas en directo.",
-    earthFeatures: ["Fotos del día a día", "Notas de voz grabadas", "Mensajes de chat"],
-    earthDelay: "Retardo estimado ahora mismo: {d} por trayecto.",
-    earthDelayNone: "menos de 1 s",
-    earthPrivacy: "Solo tú y tu familiar veis esta conversación y sus adjuntos. El equipo de misión no tiene acceso al contenido.",
-    earthPrivacyLeader: "Este canal es privado entre cada tripulante y su familia. El equipo de misión no ve su contenido ni aparece en tus listados.",
-    earthOpen: "Abrir mensajes con mi familia",
-    earthWrite: "Escribir",
-    contactsTitle: "Tus contactos autorizados",
-    contactsEmpty: "Aún no hay familiares autorizados. El equipo de misión puede darlos de alta.",
-    contactsError: "No se pudieron cargar tus contactos ({msg}). Puedes abrir Mensajes igualmente.",
     // Tiempo libre
     leisureTitle: "Tiempo libre",
     leisureSub: "Pausas breves que ayudan a desconectar",
@@ -212,7 +199,7 @@ const DICT = {
     intro: "A space to look after your rest, your mood and your connection with others during the mission. Everything you write here is private by default.",
     introLeader: "Well-being summary for {name}. For privacy, mood, energy, feeling isolated and notes are only visible to that person.",
     tabsAria: "Well-being sections",
-    tabs: { today: "Today", earth: "Connection with Earth", leisure: "Free time", crew: "Crew" },
+    tabs: { today: "Today", checks: "Questionnaires", emotional: "Emotional check-in", cognitive: "Cognitive assessment", breath: "Breathing", leisure: "Free time", crew: "Crew" },
     loading: "Loading…",
     retry: "Retry",
     noData: "—",
@@ -252,7 +239,6 @@ const DICT = {
     careTitle: "Shall we talk?",
     careText: "Your latest entries suggest a moment of support could help. This isn't an alarm: the emotional check-in or a chat with your team may help.",
     careEmotional: "Do the emotional check-in",
-    careMessages: "Write to my support team",
     sleepTitle: "Sleep and circadian rhythm",
     avg7: "Average sleep (7 days)",
     under6: "Nights under 6 h",
@@ -267,28 +253,7 @@ const DICT = {
     quality: "Quality",
     isolatedShort: "Isolation",
     noteShort: "Note",
-    toolsTitle: "More well-being tools",
-    toolWellness: "Full well-being questionnaire",
-    toolWellnessSub: "About 5 minutes · with history and recommendations",
-    toolEmotional: "Emotional check-in",
-    toolEmotionalSub: "Questionnaires sent by the support team",
     toolPending: "{n} pending",
-    toolCognitive: "Cognitive assessment",
-    toolCognitiveSub: "Attention, memory and reaction time",
-    toolBreath: "4-4-4-4 guided breathing",
-    toolBreathSub: "Inside the full questionnaire · 2 minutes to slow down",
-    earthTitle: "Connection with Earth",
-    earthIntro: "A private channel with your family to share photos, voice notes and messages. It works as \"store and forward\": because of the communication delay there are no video or live calls.",
-    earthFeatures: ["Everyday photos", "Recorded voice notes", "Chat messages"],
-    earthDelay: "Estimated delay right now: {d} each way.",
-    earthDelayNone: "under 1 s",
-    earthPrivacy: "Only you and your family member can see this conversation and its attachments. The mission team has no access to the content.",
-    earthPrivacyLeader: "This channel is private between each crew member and their family. The mission team can't see its content and it doesn't appear in your lists.",
-    earthOpen: "Open messages with my family",
-    earthWrite: "Write",
-    contactsTitle: "Your authorized contacts",
-    contactsEmpty: "No authorized family members yet. The mission team can add them.",
-    contactsError: "Couldn't load your contacts ({msg}). You can still open Messages.",
     leisureTitle: "Free time",
     leisureSub: "Short breaks that help you switch off",
     leisureIntro: "On long missions, small personal routines —tending plants, reading, listening to music— help cope with isolation. Pick whatever you feel like: it's not one more task.",
@@ -364,7 +329,7 @@ const DICT = {
   },
 };
 
-const SUBS = ["today", "earth", "leisure", "crew"];
+const SUBS = ["today", "checks", "emotional", "cognitive", "breath", "leisure", "crew"];
 const SUB_KEY = "av_wb_sub";
 const CATEGORIES = ["PLANTS", "READING", "GAMES", "MUSIC", "ART", "PHOTOGRAPHY", "WRITING", "MOVEMENT"];
 const DURATIONS = [10, 20, 30];
@@ -384,6 +349,13 @@ function saveSub(v) {
   } catch {
     /* almacenamiento no disponible */
   }
+}
+
+/* Abre Bienestar en una pestaña concreta (app.js: la ruta antigua del cuestionario psicológico → Cuestionarios) */
+export function openWellbeingSub(sub) {
+  if (!SUBS.includes(sub)) return;
+  ui.sub = sub;
+  saveSub(sub);
 }
 
 /* result: funciones que devuelven el último mensaje en el idioma vigente (sobreviven a un cambio de idioma) */
@@ -443,15 +415,6 @@ function privText(v, own, fn = (x) => String(x)) {
   const T = tr(DICT);
   if (isNil(v)) return own ? T.noData : T.private;
   return fn(v);
-}
-
-function delayText(seconds) {
-  const T = tr(DICT);
-  const s = Number(seconds);
-  if (!Number.isFinite(s)) return null;
-  if (s < 1) return T.earthDelayNone;
-  if (s < 90) return `~${fmtNum(s, s < 10 ? 1 : 0)} s`;
-  return `~${fmtNum(s / 60, 0)} ${T.minutes}`;
 }
 
 function pendingEmotional(appState) {
@@ -525,7 +488,7 @@ export async function renderWellbeingView(container, appState, helpers) {
 
 function tabHTML(s, T, pending) {
   const on = s === ui.sub;
-  const badge = s === "today" && pending > 0
+  const badge = s === "emotional" && pending > 0
     ? ` <span class="av-wb-count">${esc(fmtT(T.toolPending, { n: pending }))}</span>`
     : "";
   return `<button type="button" role="tab" class="av-wb-tab" id="av-wb-tab-${s}" data-wb-tab="${s}"
@@ -536,7 +499,7 @@ function bindTabs(container) {
   const list = container.querySelector(".av-wb-tabs");
   if (!list) return;
   const tabs = () => Array.from(list.querySelectorAll("[data-wb-tab]"));
-  const select = (sub, focus) => {
+  const select = (ui.selectTab = (sub, focus) => {
     if (!SUBS.includes(sub)) return;
     const changed = sub !== ui.sub;
     ui.sub = sub;
@@ -549,7 +512,7 @@ function bindTabs(container) {
     });
     container.querySelector("#av-wb-panel")?.setAttribute("aria-labelledby", `av-wb-tab-${sub}`);
     if (changed) renderPanel();
-  };
+  });
   list.addEventListener("click", (e) => {
     const b = e.target.closest("[data-wb-tab]");
     if (b) select(b.getAttribute("data-wb-tab"), false);
@@ -581,24 +544,17 @@ async function renderPanel() {
   if (!panel.querySelector(`[data-wb-sub="${sub}"]`)) {
     panel.innerHTML = `<div class="av-sub av-wb-loading" role="status">${esc(tr(DICT).loading)}</div>`;
   }
-  const renderers = { today: renderToday, earth: renderEarth, leisure: renderLeisure, crew: renderCrew };
+  const renderers = { today: renderToday, checks: (p, st) => renderChecks(p, { appState, helpers: ctx.helpers, isStale: st, goTab: (s) => ui.selectTab?.(s, true) }), breath: (p) => renderBreathing(p, appState), leisure: renderLeisure, crew: renderCrew,
+    emotional: (p) => renderEmbedded(p, "emotional", renderEmotionalView),
+    cognitive: (p) => renderEmbedded(p, "cognitive", renderCognitiveView) };
   await renderers[sub](panel, isStale);
   if (isStale()) return;
   panel.querySelector("[data-wb-retry]")?.addEventListener("click", () => renderPanel());
   panel.querySelectorAll("[data-wb-go]").forEach((b) =>
-    b.addEventListener("click", () => {
-      // señal para messages.js: canal con el que abrir Mensajes ("MISSION" = equipo de apoyo,
-      // "FAMILY" = Conexión con Tierra); sin ella podría abrirse el último canal usado
-      const channel = b.getAttribute("data-wb-channel");
-      if (channel) {
-        try {
-          sessionStorage.setItem("av_messages_channel", channel);
-        } catch {
-          /* almacenamiento no disponible */
-        }
-      }
-      ctx.helpers.navigateToSection?.(b.getAttribute("data-wb-go"));
-    })
+    b.addEventListener("click", () => ctx.helpers.navigateToSection?.(b.getAttribute("data-wb-go")))
+  );
+  panel.querySelectorAll("[data-wb-tabgo]").forEach((b) =>
+    b.addEventListener("click", () => ui.selectTab?.(b.getAttribute("data-wb-tabgo"), true))
   );
   if (ui.focusSel) {
     panel.querySelector(ui.focusSel)?.focus();
@@ -625,24 +581,16 @@ function scaleFieldset(key, legend, T) {
     </fieldset>`;
 }
 
-function toolsHTML(T, appState, own) {
-  const pending = own ? pendingEmotional(appState) : 0;
-  const tool = (sec, title, sub, extra = "") => `<li>
-      <button type="button" class="av-btn av-wb-tool" data-wb-go="${sec}">
-        <span class="av-wb-tool-t">${esc(title)}${extra}</span>
-        <span class="av-sub">${esc(sub)}</span>
-      </button>
-    </li>`;
-  return `<section class="av-panel" aria-labelledby="av-wb-tools-h">
-      <div class="av-panel-head"><h3 class="av-h3" id="av-wb-tools-h">${esc(T.toolsTitle)}</h3></div>
-      <ul class="av-wb-tools">
-        ${tool("wellness-center", T.toolWellness, T.toolWellnessSub)}
-        ${tool("emotional-center", T.toolEmotional, T.toolEmotionalSub,
-          pending > 0 ? ` <span class="av-wb-count">${esc(fmtT(T.toolPending, { n: pending }))}</span>` : "")}
-        ${tool("cognitive-center", T.toolCognitive, T.toolCognitiveSub)}
-        ${tool("wellness-center", T.toolBreath, T.toolBreathSub)}
-      </ul>
-    </section>`;
+/* Check-in emocional y Evaluación cognitiva dentro de su pestaña: cada vista pinta su propia raíz
+ * (av-em-root / av-cg-root) en un contenedor propio, así sus repintados internos (enviar, reintentar,
+ * cambio de idioma) no tocan las pestañas de Bienestar. */
+async function renderEmbedded(panel, sub, render) {
+  let host = panel.querySelector(`[data-wb-sub="${sub}"]`);
+  if (!host) {
+    panel.innerHTML = `<div class="av-wb-embed" data-wb-sub="${sub}"></div>`;
+    host = panel.firstElementChild;
+  }
+  await render(host, ctx.appState, ctx.helpers);
 }
 
 function careHTML(T) {
@@ -650,8 +598,7 @@ function careHTML(T) {
       <strong>${esc(T.careTitle)}</strong>
       <span>${esc(T.careText)}</span>
       <span class="av-mx-btns">
-        <button type="button" class="av-btn av-btn-sm" data-wb-go="emotional-center">${esc(T.careEmotional)}</button>
-        <button type="button" class="av-btn av-btn-sm" data-wb-go="communication-center" data-wb-channel="MISSION">${esc(T.careMessages)}</button>
+        <button type="button" class="av-btn av-btn-sm" data-wb-tabgo="emotional">${esc(T.careEmotional)}</button>
       </span>
     </div>`;
 }
@@ -761,7 +708,7 @@ async function renderToday(panel, isStale) {
 
   panel.innerHTML = `<div class="av-wb-cols" data-wb-sub="today">
       <div class="av-wb-col">${formHTML}${sleepHTML}</div>
-      <div class="av-wb-col">${recentHTML}${toolsHTML(T2, appState, own)}</div>
+      <div class="av-wb-col">${recentHTML}</div>
     </div>`;
 
   if (own) bindCheckin(panel);
@@ -832,76 +779,6 @@ function bindCheckin(panel) {
     ui.focusSel = "#av-wb-ci-status";
     await renderPanel();
   });
-}
-
-/* ───────────────────────── Conexión con Tierra ───────────────────────── */
-
-async function renderEarth(panel, isStale) {
-  const { appState } = ctx;
-  const role = roleOf(appState);
-  const isAstronaut = role === "ASTRONAUT";
-
-  let contacts = null;
-  let contactsErr = null;
-  if (isAstronaut) {
-    try {
-      const res = await apiService.getFamilyContacts();
-      contacts = Array.isArray(res?.items) ? res.items : [];
-    } catch (err) {
-      contactsErr = err;
-    }
-  }
-  if (isStale()) return;
-  const T = tr(DICT);
-  const delay = delayText(appState.healthSummary?.context?.comms_delay_seconds);
-
-  const contactsHTML = !isAstronaut
-    ? ""
-    : `<section class="av-panel" aria-labelledby="av-wb-contacts-h">
-        <div class="av-panel-head"><h3 class="av-h3" id="av-wb-contacts-h">${esc(T.contactsTitle)}</h3></div>
-        ${
-          contactsErr
-            ? `<p class="av-mx-empty" role="alert">${esc(fmtT(T.contactsError, { msg: errMsg(contactsErr) }))}</p>`
-            : contacts.length
-              ? `<ul class="av-mx-list">${contacts
-                  .map(
-                    (c) => `<li><div class="av-mx-row">
-                        <span><strong>${esc(c.name)}</strong>${c.relationship ? ` <span class="av-sub">· ${esc(bt(c.relationship))}</span>` : ""}</span>
-                        <button type="button" class="av-btn av-btn-sm" data-wb-family aria-label="${esc(`${T.earthWrite}: ${c.name || ""}`)}">${esc(T.earthWrite)}</button>
-                      </div></li>`
-                  )
-                  .join("")}</ul>`
-              : `<p class="av-mx-empty">${esc(T.contactsEmpty)}</p>`
-        }
-      </section>`;
-
-  panel.innerHTML = `<div class="av-wb-cols" data-wb-sub="earth">
-      <div class="av-wb-col">
-        <section class="av-panel" aria-labelledby="av-wb-earth-h">
-          <div class="av-panel-head"><h3 class="av-h3" id="av-wb-earth-h">${esc(T.earthTitle)}</h3></div>
-          <div class="av-mx-pad">
-            <p class="av-mx-p">${esc(T.earthIntro)}</p>
-            <ul class="av-wb-feat">${T.earthFeatures.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>
-            ${delay ? `<p class="av-mx-p av-sub">${esc(fmtT(T.earthDelay, { d: delay }))}</p>` : ""}
-            <p class="av-mx-note">${esc(isAstronaut ? T.earthPrivacy : T.earthPrivacyLeader)}</p>
-            ${isAstronaut ? `<div><button type="button" class="av-btn av-btn-primary" data-wb-family>${esc(T.earthOpen)}</button></div>` : ""}
-          </div>
-        </section>
-      </div>
-      ${contactsHTML ? `<div class="av-wb-col">${contactsHTML}</div>` : ""}
-    </div>`;
-
-  panel.querySelectorAll("[data-wb-family]").forEach((b) =>
-    b.addEventListener("click", () => {
-      // señal para messages.js: abrir Mensajes en el canal familiar
-      try {
-        sessionStorage.setItem("av_messages_channel", "FAMILY");
-      } catch {
-        /* almacenamiento no disponible */
-      }
-      ctx.helpers.navigateToSection?.("communication-center");
-    })
-  );
 }
 
 /* ───────────────────────── Tiempo libre ───────────────────────── */

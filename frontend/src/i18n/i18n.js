@@ -1,5 +1,5 @@
 /* =========================================================================
-   AstroVital — núcleo de idiomas (es / en)
+   SEMSA — núcleo de idiomas (es / en)
    -------------------------------------------------------------------------
    Contrato para todos los módulos:
    - Cada módulo define sus textos como diccionario por idioma:
@@ -93,7 +93,7 @@ export function fmtNum(v, dec = 0) {
 export const STATIC = {
   es: {
     "lang.label": "Idioma",
-    "doc.title": "AstroVital — Plataforma de Monitoreo Integral de Salud Espacial",
+    "doc.title": "SEMSA — Plataforma de Monitoreo Integral de Salud Espacial",
     // Encabezado global y pestañas
     "chrome.aria": "Encabezado de la consola de salud",
     "nav.aria": "Navegación principal",
@@ -104,10 +104,9 @@ export const STATIC = {
     "tab.countermeasures": "Contramedidas",
     "tab.wellbeing": "Bienestar",
     "tab.alerts": "Alertas",
-    "tab.messages": "Mensajes",
+    "tab.recommendations": "Recomendaciones",
     "tab.logbook": "Bitácora",
     "badge.alerts": "Alertas activas",
-    "badge.messages": "Mensajes sin leer",
     "badge.emo": "Cuestionarios pendientes",
     "more.btn": "Más",
     "more.aria": "Más secciones",
@@ -124,7 +123,7 @@ export const STATIC = {
   },
   en: {
     "lang.label": "Language",
-    "doc.title": "AstroVital — Integrated Space Health Monitoring Platform",
+    "doc.title": "SEMSA — Integrated Space Health Monitoring Platform",
     "chrome.aria": "Health console header",
     "nav.aria": "Main navigation",
     "tab.summary": "Overview",
@@ -134,10 +133,9 @@ export const STATIC = {
     "tab.countermeasures": "Countermeasures",
     "tab.wellbeing": "Well-being",
     "tab.alerts": "Alerts",
-    "tab.messages": "Messages",
+    "tab.recommendations": "Recommendations",
     "tab.logbook": "Logbook",
     "badge.alerts": "Active alerts",
-    "badge.messages": "Unread messages",
     "badge.emo": "Pending questionnaires",
     "more.btn": "More",
     "more.aria": "More sections",

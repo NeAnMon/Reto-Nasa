@@ -33,7 +33,6 @@ from backend.app.models.models import (
     EmotionalQuestionnaire,
     EmotionalQuestionnaireVersion,
     EmotionalSupportRequest,
-    FamilyContact,
     Message,
     MessageAttachment,
     MessageNotification,
@@ -131,54 +130,6 @@ def _get_assigned_leader_for_mission(db: Session, mission_id: int) -> Optional[U
     )
 
 
-def _get_family_contact(db: Session, conv: Conversation) -> Optional[FamilyContact]:
-    """Vínculo familiar activo de una conversación FAMILY (leader_id = usuario familiar)."""
-    return (
-        db.query(FamilyContact)
-        .filter(
-            FamilyContact.astronaut_id == conv.astronaut_id,
-            FamilyContact.user_id == conv.leader_id,
-            FamilyContact.is_active.is_(True),
-        )
-        .first()
-    )
-
-
-def _verify_family_participant(db: Session, actor: User, conv: Conversation, action_name: str) -> None:
-    """
-    Canal FAMILY: solo los dos participantes (astronauta y familiar con vínculo activo).
-    Ni el líder ni la administración pueden leer contenido ni adjuntos, con o sin justificación.
-    La auditoría solo guarda metadatos, nunca contenido.
-    """
-    if actor.id in (conv.astronaut_id, conv.leader_id) and _get_family_contact(db, conv):
-        return
-    role_code = actor.role.code if actor.role else ""
-    db.add(
-        ConversationAuditEvent(
-            conversation_id=conv.id,
-            actor_user_id=actor.id,
-            actor_role=role_code,
-            action="FAMILY_CONVERSATION_ACCESS_DENIED",
-            justification=None,
-            details=f"Acceso denegado a conversación FAMILY #{conv.id} (solo metadatos registrados).",
-        )
-    )
-    log_audit_event(
-        db,
-        action=f"{action_name}_DENIED",
-        resource_type="FAMILY_CONVERSATION",
-        actor=actor,
-        resource_id=str(conv.id),
-        target_user_id=conv.astronaut_id,
-        status_code="DENIED",
-        details=f"Rol {role_code} sin acceso al contenido del canal familiar #{conv.id}.",
-    )
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="Privacidad del canal familiar: solo el astronauta y su familiar autorizado pueden acceder a esta conversación.",
-    )
-
-
 def _verify_conversation_access(
     db: Session,
     actor: User,
@@ -186,9 +137,6 @@ def _verify_conversation_access(
     audit_justification: Optional[str] = None,
 ) -> None:
     role_code = actor.role.code if actor.role else "ASTRONAUT"
-    if (conv.channel or "MISSION") == "FAMILY":
-        _verify_family_participant(db, actor, conv, "READ_FAMILY_CONVERSATION")
-        return
     if actor.id in (conv.astronaut_id, conv.leader_id):
         return
 
@@ -263,9 +211,6 @@ def _verify_conversation_access(
 def _require_participant(db: Session, actor: User, conv: Conversation, action_name: str) -> None:
     """Escribir o cambiar el estado de mensajes: solo el astronauta y el líder de la conversación.
     El acceso auditado de administración es de solo lectura; nunca se usa una justificación fija."""
-    if (conv.channel or "MISSION") == "FAMILY":
-        _verify_family_participant(db, actor, conv, action_name)
-        return
     if actor.id in (conv.astronaut_id, conv.leader_id):
         return
     role_code = actor.role.code if actor.role else "ASTRONAUT"
@@ -300,27 +245,22 @@ def _serialize_conversation(db: Session, conv: Conversation, viewer_id: int) -> 
         .all()
     )
     last_msg = messages[0] if messages else None
-    channel = conv.channel or "MISSION"
-    fam_contact = _get_family_contact(db, conv) if channel == "FAMILY" else None
     unread_count = sum(
         1
         for m in messages
         if m.recipient_id == viewer_id
         and (m.delivery_status != "READ" or m.marked_unread_by_recipient)
     )
-    viewer = db.query(User).filter(User.id == viewer_id).first()
-    # Un familiar no necesita datos operativos de la misión ni identificadores de tripulación
-    hide_operational = bool(viewer and viewer.role and viewer.role.code == "FAMILY_MEMBER")
 
     return {
         "id": conv.id,
         "mission_id": conv.mission_id,
-        "mission_code": None if hide_operational else (mission.code if mission else ""),
-        "mission_name": None if hide_operational else (mission.name if mission else ""),
+        "mission_code": mission.code if mission else "",
+        "mission_name": mission.name if mission else "",
         "astronaut_id": conv.astronaut_id,
         "astronaut_name": astro.full_name if astro else f"Astronaut #{conv.astronaut_id}",
-        "astronaut_crew_code": None if hide_operational else (astro.crew_code if astro else ""),
-        "astronaut_callsign": None if hide_operational else (
+        "astronaut_crew_code": astro.crew_code if astro else "",
+        "astronaut_callsign": (
             astro.astronaut_profile.callsign
             if (astro and astro.astronaut_profile)
             else "Crew"
@@ -334,7 +274,6 @@ def _serialize_conversation(db: Session, conv: Conversation, viewer_id: int) -> 
         "linked_alert_id": conv.linked_alert_id,
         "unread_count": unread_count,
         "total_messages": len(messages),
-        "message_count": len(messages),
         "last_message_at": ensure_aware(conv.last_message_at).isoformat() if conv.last_message_at else None,
         "last_message_preview": (
             {
@@ -350,17 +289,6 @@ def _serialize_conversation(db: Session, conv: Conversation, viewer_id: int) -> 
         ),
         "connection_status": "ONLINE",
         "is_simulated": conv.is_simulated,
-        "channel": channel,
-        **(
-            {
-                "family_contact": {
-                    "name": leader.full_name if leader else "",
-                    "relationship": fam_contact.relationship_label if fam_contact else "",
-                }
-            }
-            if channel == "FAMILY"
-            else {}
-        ),
     }
 
 
@@ -378,9 +306,6 @@ def _serialize_message(db: Session, m: Message) -> Dict[str, Any]:
             "mime_type": att.mime_type,
             "file_size_bytes": att.file_size_bytes,
             "safe_summary_note": att.safe_summary_note,
-            "kind": att.kind,
-            "duration_seconds": att.duration_seconds,
-            "url": f"/api/v1/attachments/{att.id}" if att.storage_key else None,
         }
         for att in m.attachments
     ]
@@ -459,32 +384,15 @@ def list_conversations(
     status_filter: Optional[str] = None,
     search: Optional[str] = None,
     audit_justification: Optional[str] = Query(default=None),
-    channel: Optional[str] = Query(default=None, pattern="^(MISSION|FAMILY)$"),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     role_code = user.role.code if user.role else "ASTRONAUT"
-    # Sin channel → solo MISSION (compatibilidad). Un familiar solo tiene canal FAMILY.
-    channel = "FAMILY" if role_code == "FAMILY_MEMBER" else (channel or "MISSION")
-    query = db.query(Conversation).filter(Conversation.channel == channel)
+    query = db.query(Conversation)
 
     if role_code == "ASTRONAUT":
         query = query.filter(Conversation.astronaut_id == user.id)
-    elif role_code == "FAMILY_MEMBER":
-        active_astro_ids = [
-            r[0]
-            for r in db.query(FamilyContact.astronaut_id)
-            .filter(FamilyContact.user_id == user.id, FamilyContact.is_active.is_(True))
-            .all()
-        ]
-        query = query.filter(
-            Conversation.leader_id == user.id,
-            Conversation.astronaut_id.in_(active_astro_ids or [-1]),
-        )
     elif role_code == "MISSION_LEADER":
-        if channel == "FAMILY":
-            # El líder nunca ve conversaciones familiares en ningún listado
-            return {"conversations": [], "categories": sorted(list(VALID_MESSAGE_CATEGORIES))}
         # Conversaciones 1-a-1: un líder solo ve las suyas, no las de otros líderes con el mismo tripulante
         query = query.filter(Conversation.leader_id == user.id)
     elif role_code != "ADMINISTRATOR":
@@ -509,10 +417,7 @@ def list_conversations(
     # (detalle/mensajes), con justificación validada y registrada en auditoría.
     if role_code == "ADMINISTRATOR":
         for item in serialized:
-            if channel == "FAMILY":
-                # FAMILY: administración solo ve metadatos (fecha, número de mensajes)
-                item["last_message_preview"] = None
-            elif item.get("last_message_preview"):
+            if item.get("last_message_preview"):
                 item["last_message_preview"]["content"] = PROTECTED_TEXT
 
     if search:
@@ -523,7 +428,7 @@ def list_conversations(
             if q_low in c["astronaut_name"].lower()
             or q_low in c["leader_name"].lower()
             or q_low in c["subject"].lower()
-            or q_low in (c["mission_code"] or "").lower()
+            or q_low in c["mission_code"].lower()
         ]
 
     return {
@@ -540,7 +445,6 @@ def create_or_get_conversation(
 ):
     role_code = user.role.code if user.role else "ASTRONAUT"
     if role_code not in ("ASTRONAUT", "MISSION_LEADER", "ADMINISTRATOR"):
-        # Las conversaciones FAMILY se crean bajo demanda en GET /family/contacts
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acceso denegado.")
     mission = db.query(Mission).filter(Mission.id == payload.mission_id).first()
     if not mission:
@@ -582,7 +486,6 @@ def create_or_get_conversation(
     existing = (
         db.query(Conversation)
         .filter(
-            Conversation.channel == "MISSION",
             Conversation.mission_id == mission.id,
             Conversation.astronaut_id == astro_id,
             Conversation.leader_id == leader_id,
@@ -688,7 +591,7 @@ def list_conversation_messages(
         db.commit()
 
     # Credit REVIEW_MISSION_MESSAGES daily mission if astronaut reviews messages
-    if user.role and user.role.code == "ASTRONAUT" and (conv.channel or "MISSION") == "MISSION":
+    if user.role and user.role.code == "ASTRONAUT":
         try:
             record_gamification_mission(
                 db,
@@ -719,8 +622,6 @@ def send_conversation_message(
         raise HTTPException(status_code=404, detail="Conversación no encontrada.")
     _require_participant(db, user, conv, "SEND_MESSAGE")
 
-    is_family = (conv.channel or "MISSION") == "FAMILY"
-
     if payload.dedup_key:
         existing_msg = db.query(Message).filter(Message.dedup_key == payload.dedup_key).first()
         if existing_msg:
@@ -740,27 +641,9 @@ def send_conversation_message(
         if not replied or replied.conversation_id != conv.id:
             raise HTTPException(status_code=400, detail="El mensaje citado no pertenece a esta conversación.")
 
-    # Adjuntos reales subidos con POST /attachments: deben ser del remitente y estar huérfanos
-    new_attachments: List[MessageAttachment] = []
-    for att_id in payload.attachment_ids:
-        att = db.query(MessageAttachment).filter(MessageAttachment.id == att_id).first()
-        if not att or not att.storage_key:
-            raise HTTPException(status_code=404, detail=f"Adjunto #{att_id} no encontrado.")
-        if att.uploader_id != user.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Solo quien subió un adjunto puede adjuntarlo a un mensaje.",
-            )
-        if att.message_id is not None:
-            raise HTTPException(status_code=409, detail=f"El adjunto #{att_id} ya pertenece a otro mensaje.")
-        new_attachments.append(att)
-
     cat = payload.category.strip().upper()
-    if cat not in VALID_MESSAGE_CATEGORIES or is_family:
-        # En el canal familiar la categoría se fuerza a GENERAL
+    if cat not in VALID_MESSAGE_CATEGORIES:
         cat = "GENERAL"
-
-    legacy_attachment = payload.attachment_file_name if not is_family else None
 
     recipient_id = conv.leader_id if user.id == conv.astronaut_id else conv.astronaut_id
     now = utcnow()
@@ -776,8 +659,8 @@ def send_conversation_message(
         is_important=payload.is_important or (cat == "URGENT_COMMUNICATION"),
         marked_unread_by_recipient=False,
         reply_to_message_id=payload.reply_to_message_id,
-        linked_alert_id=None if is_family else payload.linked_alert_id,
-        has_attachment=bool(legacy_attachment) or bool(new_attachments),
+        linked_alert_id=payload.linked_alert_id,
+        has_attachment=bool(payload.attachment_file_name),
         is_simulated=payload.is_simulated,
         created_at=now,
         sent_at=now,
@@ -785,14 +668,11 @@ def send_conversation_message(
     db.add(msg)
     db.flush()
 
-    for att in new_attachments:
-        att.message_id = msg.id
-
-    if legacy_attachment:
+    if payload.attachment_file_name:
         db.add(
             MessageAttachment(
                 message_id=msg.id,
-                file_name=legacy_attachment.strip()[:180],
+                file_name=payload.attachment_file_name.strip()[:180],
                 mime_type=payload.attachment_mime_type or "text/plain",
                 file_size_bytes=len(payload.content),
                 safe_summary_note=payload.attachment_safe_note or "Adjunto operativo verificado",
@@ -929,7 +809,6 @@ def create_support_request(
     conv = (
         db.query(Conversation)
         .filter(
-            Conversation.channel == "MISSION",
             Conversation.mission_id == mission_id,
             Conversation.astronaut_id == user.id,
             Conversation.leader_id == leader_u.id,
@@ -1205,7 +1084,7 @@ def list_cognitive_domains(
     tests_by_dom = {t.domain_code: t for t in tests}
     return {
         "scientific_integrity_notice": (
-            "Las actividades cognitivas de AstroVital registran métricas específicas por dominio "
+            "Las actividades cognitivas de SEMSA registran métricas específicas por dominio "
             "(aciertos, errores, omisiones y tiempo de respuesta) comparadas únicamente con la línea base "
             "personal del mismo dominio, dificultad y versión. No calculan un puntaje global único de "
             "capacidad mental ni diagnostican deterioro cognitivo."
@@ -1737,7 +1616,7 @@ def get_cognitive_analytics(
         "astronaut_id": target_id,
         "single_global_score_prohibited": True,
         "methodology_disclaimer": (
-            "AstroVital presenta métricas longitudinales separadas por dominio cognitivo. "
+            "SEMSA presenta métricas longitudinales separadas por dominio cognitivo. "
             "No combina dominios distintos en un 'puntaje de inteligencia' o 'capacidad mental total' "
             "y advierte explícitamente el efecto de práctica por repetición."
         ),
@@ -2624,7 +2503,6 @@ def build_expansion_cards_for_summary(db: Session, target_user: User, mission: M
     convs = (
         db.query(Conversation)
         .filter(
-            Conversation.channel == "MISSION",
             Conversation.mission_id == mission.id,
             Conversation.astronaut_id == target_user.id,
         )
@@ -2791,11 +2669,7 @@ def get_expansion_analytics_overview(
     verify_astronaut_access(db, user, target_id, action_name="GET_EXPANSION_ANALYTICS")
 
     # 1. Communication frequency by category & support requests
-    convs = (
-        db.query(Conversation)
-        .filter(Conversation.astronaut_id == target_id, Conversation.channel == "MISSION")
-        .all()
-    )
+    convs = db.query(Conversation).filter(Conversation.astronaut_id == target_id).all()
     conv_ids = [c.id for c in convs]
     msgs = (
         db.query(Message)

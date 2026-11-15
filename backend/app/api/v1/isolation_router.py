@@ -5,36 +5,21 @@ Contrato: docs/CONTRATO_AISLAMIENTO.md
 - Check-in rápido de sueño y ánimo (privado por defecto).
 - Tiempo libre: catálogo de hobbies breves y registro.
 - Actividades de integración de la tripulación con quórum y XP.
-- Canal familiar "Conexión con Tierra": contactos autorizados y adjuntos (foto / nota de voz).
 """
 import json
-import os
-import re
-import secrets
-import unicodedata
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Any, Dict, List, Optional
-from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
-from fastapi.responses import FileResponse, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from backend.app.api.v1.expansion_router import _verify_conversation_access
-from backend.app.core.config import settings
 from backend.app.database.session import get_db
 from backend.app.models.models import (
-    Conversation,
-    ConversationParticipant,
     CrewActivity,
     CrewActivityParticipant,
     CrewActivityTemplate,
-    FamilyContact,
     LeisureActivity,
     LeisureLog,
-    Message,
-    MessageAttachment,
     Mission,
     MissionAssignment,
     QuickCheckin,
@@ -55,6 +40,7 @@ from backend.app.security.auth import (
     utcnow,
     verify_astronaut_access,
 )
+from backend.app.rules.early_warnings import SOURCE_CHECKIN, checkin_needs_earth_contact, create_earth_contact_alert
 from backend.app.services.gamification import award_activity_xp, record_gamification_mission
 
 isolation_router = APIRouter()
@@ -160,6 +146,13 @@ def create_quick_checkin(
         .all()
     )
     record.operational_flag = _compute_operational_flag(recent, now)
+    # Alerta temprana "Contacto con Tierra" (recomendación; ver backend/app/rules/early_warnings.py)
+    early_alert = None
+    if checkin_needs_earth_contact(recent, now):
+        assignment = _active_assignment(db, user.id)
+        early_alert = create_earth_contact_alert(
+            db, astronaut_id=user.id, mission_id=assignment.mission_id if assignment else None, source=SOURCE_CHECKIN
+        )
     db.commit()
     db.refresh(record)
 
@@ -179,6 +172,7 @@ def create_quick_checkin(
 
     out = _serialize_checkin(record, full=True)
     out["xp_awarded"] = xp_awarded
+    out["early_warning_alert_id"] = early_alert.id if early_alert else None
     return out
 
 
@@ -751,388 +745,3 @@ def cancel_crew_activity(
     db.commit()
     db.refresh(act)
     return _serialize_activity(db, act, user.id)
-
-
-# ============================================================================
-# 4. CANAL FAMILIAR ("CONEXIÓN CON TIERRA")
-# ============================================================================
-
-def _ensure_family_conversation(db: Session, contact: FamilyContact) -> Optional[Conversation]:
-    conv = (
-        db.query(Conversation)
-        .filter(
-            Conversation.channel == "FAMILY",
-            Conversation.astronaut_id == contact.astronaut_id,
-            Conversation.leader_id == contact.user_id,
-        )
-        .first()
-    )
-    if conv:
-        return conv
-    assign = _active_assignment(db, contact.astronaut_id)
-    mission_id = assign.mission_id if assign else None
-    if mission_id is None:
-        first_mission = db.query(Mission).order_by(Mission.id.asc()).first()
-        if not first_mission:
-            return None
-        mission_id = first_mission.id
-    astro = db.query(User).filter(User.id == contact.astronaut_id).first()
-    fam = db.query(User).filter(User.id == contact.user_id).first()
-    now = utcnow()
-    conv = Conversation(
-        mission_id=mission_id,
-        astronaut_id=contact.astronaut_id,
-        leader_id=contact.user_id,
-        channel="FAMILY",
-        subject=f"Conexión con Tierra: {astro.full_name if astro else ''} ↔ {fam.full_name if fam else ''}"[:200],
-        status="OPEN",
-        is_highlighted=False,
-        last_message_at=now,
-        is_simulated=False,
-    )
-    db.add(conv)
-    db.flush()
-    db.add(ConversationParticipant(conversation_id=conv.id, user_id=contact.astronaut_id, role_in_conversation="ASTRONAUT", last_seen_at=now))
-    db.add(ConversationParticipant(conversation_id=conv.id, user_id=contact.user_id, role_in_conversation="FAMILY_MEMBER", last_seen_at=now))
-    db.commit()
-    db.refresh(conv)
-    return conv
-
-
-@isolation_router.get("/family/contacts")
-def list_family_contacts(
-    user: User = Depends(require_roles(["ASTRONAUT", "FAMILY_MEMBER"])),
-    db: Session = Depends(get_db),
-):
-    role_code = _role(user)
-    q = db.query(FamilyContact).filter(FamilyContact.is_active.is_(True))
-    if role_code == "ASTRONAUT":
-        q = q.filter(FamilyContact.astronaut_id == user.id)
-    else:
-        q = q.filter(FamilyContact.user_id == user.id)
-    items = []
-    for contact in q.order_by(FamilyContact.id.asc()).all():
-        other_id = contact.user_id if role_code == "ASTRONAUT" else contact.astronaut_id
-        other = db.query(User).filter(User.id == other_id).first()
-        if not other or other.status != "ACTIVE":
-            continue
-        conv = _ensure_family_conversation(db, contact)
-        items.append(
-            {
-                "id": contact.id,
-                "user_id": other.id,
-                "name": other.full_name,
-                "relationship": contact.relationship_label,
-                "conversation_id": conv.id if conv else None,
-            }
-        )
-    return {"items": items}
-
-
-# ============================================================================
-# 5. ADJUNTOS (FOTO Y NOTA DE VOZ — "GUARDAR Y ENVIAR")
-# ============================================================================
-
-# mime → (kind, extensión en disco)
-ALLOWED_ATTACHMENT_TYPES = {
-    "image/jpeg": ("IMAGE", ".jpg"),
-    "image/png": ("IMAGE", ".png"),
-    "image/webp": ("IMAGE", ".webp"),
-    "audio/webm": ("AUDIO", ".webm"),
-    "audio/ogg": ("AUDIO", ".ogg"),
-    "audio/mp4": ("AUDIO", ".m4a"),
-    "audio/mpeg": ("AUDIO", ".mp3"),
-}
-_STORAGE_KEY_RE = re.compile(r"^[0-9a-f]{32}\.(jpg|png|webp|webm|ogg|m4a|mp3)$")
-_CHUNK = 64 * 1024
-
-
-def detect_mime_from_magic(head: bytes) -> Optional[str]:
-    """Tipo real por magic bytes (nunca por nombre ni por el Content-Type del cliente)."""
-    if head.startswith(b"\xff\xd8\xff"):
-        return "image/jpeg"
-    if head.startswith(b"\x89PNG\r\n\x1a\n"):
-        return "image/png"
-    if len(head) >= 12 and head[0:4] == b"RIFF" and head[8:12] == b"WEBP":
-        return "image/webp"
-    if head.startswith(b"\x1a\x45\xdf\xa3") and b"webm" in head[:64]:
-        return "audio/webm"
-    if head.startswith(b"OggS"):
-        return "audio/ogg"
-    if len(head) >= 12 and head[4:8] == b"ftyp":
-        brand = head[8:12]
-        if brand in MP4_AUDIO_BRANDS or brand in MP4_GENERIC_BRANDS:
-            return "audio/mp4"
-        return None
-    if head.startswith(b"ID3"):
-        return "audio/mpeg"  # candidato: tras subirlo se exige un frame MPEG después de la etiqueta (_id3_followed_by_mpeg_frame)
-    if _is_mpeg_audio_frame_header(head):
-        return "audio/mpeg"
-    return None
-
-
-# Marcas "major brand" de ftyp. Las de audio son inequívocas; las genéricas (las que escriben Safari
-# —iso5/mp42/isom— y Chrome con MediaRecorder audio/mp4) también se usan para vídeo, así que con ellas
-# se exige además que el archivo tenga una pista de sonido y ninguna de vídeo (ver _mp4_is_audio_only).
-MP4_AUDIO_BRANDS = {b"M4A ", b"M4B ", b"M4P ", b"F4A ", b"F4B "}
-MP4_GENERIC_BRANDS = {b"isom", b"iso2", b"iso4", b"iso5", b"iso6", b"mp41", b"mp42", b"dash"}
-
-
-def _is_mpeg_audio_frame_header(head: bytes) -> bool:
-    """Cabecera de frame MPEG audio válida: sync de 11 bits y versión/capa/bitrate/frecuencia no reservados."""
-    if len(head) < 4 or head[0] != 0xFF or (head[1] & 0xE0) != 0xE0:
-        return False
-    version = (head[1] >> 3) & 0x03  # 01 = reservado
-    layer = (head[1] >> 1) & 0x03  # 00 = reservado
-    bitrate = (head[2] >> 4) & 0x0F  # 1111 = no válido (0000 = "free", rarísimo: también se rechaza)
-    sample_rate = (head[2] >> 2) & 0x03  # 11 = reservado
-    emphasis = head[3] & 0x03  # 10 = reservado
-    return version != 1 and layer != 0 and bitrate not in (0, 15) and sample_rate != 3 and emphasis != 2
-
-
-def _id3_followed_by_mpeg_frame(path: Path) -> bool:
-    """
-    MP3 con etiqueta ID3v2: cabecera de 10 bytes ('ID3', versión, flags, tamaño sincsafe en los bytes 6-9;
-    +10 si el flag de footer está activo). Justo después de la etiqueta debe empezar un frame MPEG válido;
-    si el archivo es demasiado corto para comprobarlo, no se acepta.
-    """
-    with open(path, "rb") as fh:
-        header = fh.read(10)
-        if len(header) < 10 or header[:3] != b"ID3" or header[3] == 0xFF or header[4] == 0xFF:
-            return False
-        size_bytes = header[6:10]
-        if any(b & 0x80 for b in size_bytes):
-            return False  # tamaño no sincsafe: cabecera corrupta
-        tag_size = (size_bytes[0] << 21) | (size_bytes[1] << 14) | (size_bytes[2] << 7) | size_bytes[3]
-        offset = 10 + tag_size + (10 if header[5] & 0x10 else 0)
-        fh.seek(offset)
-        return _is_mpeg_audio_frame_header(fh.read(4))
-
-
-def _mp4_is_audio_only(path: Path, head: bytes) -> bool:
-    """
-    MP4/M4A: rechaza vídeo. Busca las cajas 'hdlr' (tipo de pista) en todo el archivo (≤ 5 MB):
-    ninguna puede ser 'vide'; con marcas genéricas debe existir al menos una 'soun'.
-    """
-    data = path.read_bytes()
-    handlers = set()
-    idx = data.find(b"hdlr")
-    while idx != -1:
-        handlers.add(data[idx + 12: idx + 16])  # 'hdlr' + versión/flags (4) + pre_defined (4) → handler_type
-        idx = data.find(b"hdlr", idx + 4)
-    if b"vide" in handlers:
-        return False
-    if head[8:12] in MP4_AUDIO_BRANDS:
-        return True
-    return b"soun" in handlers
-
-
-def _safe_display_name(raw: Optional[str], ext: str) -> str:
-    """Nombre solo para mostrar: sin rutas, sin caracteres de control ni comillas; nunca se usa en disco."""
-    name = (raw or "").replace("\\", "/").split("/")[-1]
-    name = "".join(ch for ch in name if unicodedata.category(ch)[0] != "C" and ch not in '"<>;')
-    name = name.strip().strip(".")[:120]
-    return name or f"adjunto{ext}"
-
-
-def _upload_dir() -> Path:
-    path = Path(settings.UPLOAD_DIR)
-    path.mkdir(parents=True, exist_ok=True)
-    return path
-
-
-def _remove_stored_file(storage_key: Optional[str]) -> None:
-    if not storage_key or not _STORAGE_KEY_RE.match(storage_key):
-        return  # nunca se borra una ruta que no tenga el formato de clave aleatoria
-    try:
-        (Path(settings.UPLOAD_DIR) / storage_key).unlink(missing_ok=True)
-    except OSError:
-        pass
-
-
-def purge_expired_orphan_attachments(db: Session, uploader_id: Optional[int] = None) -> int:
-    """
-    Borra (fila + archivo) los adjuntos huérfanos —subidos y nunca enviados— con más de
-    ORPHAN_ATTACHMENT_TTL_HOURS (168 h = 7 días por defecto). Se llama al arrancar y, de forma oportunista,
-    al subir; nunca toca huérfanos recientes (p. ej. los de un mensaje que espera en la cola sin conexión).
-    Los ids borrados no se reutilizan (AUTOINCREMENT), así que un mensaje en cola con un id purgado falla
-    en vez de adjuntar otro archivo. Devuelve cuántos borró.
-    """
-    cutoff = utcnow() - timedelta(hours=settings.ORPHAN_ATTACHMENT_TTL_HOURS)
-    q = db.query(MessageAttachment).filter(
-        MessageAttachment.message_id.is_(None),
-        MessageAttachment.storage_key.isnot(None),
-        MessageAttachment.uploaded_at < cutoff,
-    )
-    if uploader_id is not None:
-        q = q.filter(MessageAttachment.uploader_id == uploader_id)
-    expired = q.limit(500).all()
-    if not expired:
-        return 0
-    keys = [a.storage_key for a in expired]
-    for att in expired:
-        db.delete(att)
-    db.commit()
-    for key in keys:
-        _remove_stored_file(key)
-    return len(keys)
-
-
-@isolation_router.post("/attachments", status_code=status.HTTP_201_CREATED)
-async def upload_attachment(
-    request: Request,
-    file: UploadFile = File(...),
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    # Solo quien participa en alguna conversación (astronauta, líder o familiar)
-    participates = (
-        db.query(Conversation.id)
-        .filter((Conversation.astronaut_id == user.id) | (Conversation.leader_id == user.id))
-        .first()
-    )
-    if not participates:
-        raise HTTPException(status_code=403, detail="Solo los participantes de una conversación pueden subir adjuntos.")
-
-    # Los huérfanos caducados (> ORPHAN_ATTACHMENT_TTL_HOURS) no cuentan para el límite (ni ocupan disco);
-    # los recientes sí: para liberar hueco se descartan con DELETE /attachments/{id}
-    purge_expired_orphan_attachments(db, uploader_id=user.id)
-    pending = (
-        db.query(MessageAttachment)
-        .filter(
-            MessageAttachment.uploader_id == user.id,
-            MessageAttachment.message_id.is_(None),
-        )
-        .count()
-    )
-    if pending >= settings.MAX_PENDING_ATTACHMENTS_PER_USER:
-        raise HTTPException(status_code=429, detail="Demasiados adjuntos pendientes de enviar. Envía o descarta los actuales.")
-
-    max_bytes = settings.MAX_ATTACHMENT_BYTES
-    # Rechazo temprano por Content-Length (margen para las cabeceras multipart); el límite real se aplica leyendo por bloques
-    try:
-        declared_len = int(request.headers.get("content-length") or 0)
-    except ValueError:
-        declared_len = 0
-    if declared_len > max_bytes + 64 * 1024:
-        raise HTTPException(status_code=413, detail="El adjunto supera el tamaño máximo de 5 MB.")
-    upload_dir = _upload_dir()
-    tmp_path = upload_dir / f".tmp-{secrets.token_hex(16)}"
-    size = 0
-    head = b""
-    try:
-        with open(tmp_path, "wb") as out:
-            while True:
-                chunk = await file.read(_CHUNK)
-                if not chunk:
-                    break
-                size += len(chunk)
-                if size > max_bytes:
-                    raise HTTPException(status_code=413, detail="El adjunto supera el tamaño máximo de 5 MB.")
-                if len(head) < 64:
-                    head += chunk[: 64 - len(head)]
-                out.write(chunk)
-        if size == 0:
-            raise HTTPException(status_code=422, detail="El archivo está vacío.")
-        mime = detect_mime_from_magic(head)
-        if mime == "audio/mp4" and not _mp4_is_audio_only(tmp_path, head):
-            mime = None  # MP4 con vídeo (o sin pista de sonido): no es una nota de voz
-        if mime == "audio/mpeg" and head.startswith(b"ID3") and not _id3_followed_by_mpeg_frame(tmp_path):
-            mime = None  # 'ID3' seguido de cualquier cosa que no sea audio MPEG
-        if mime not in ALLOWED_ATTACHMENT_TYPES:
-            raise HTTPException(
-                status_code=415,
-                detail="Tipo de archivo no permitido. Solo fotos (JPEG, PNG, WebP) o notas de voz (WebM, OGG, MP4, MP3).",
-            )
-        kind, ext = ALLOWED_ATTACHMENT_TYPES[mime]
-        storage_key = f"{secrets.token_hex(16)}{ext}"
-        os.replace(tmp_path, upload_dir / storage_key)
-    except BaseException:
-        try:
-            tmp_path.unlink(missing_ok=True)
-        except OSError:
-            pass
-        raise
-    finally:
-        await file.close()
-
-    att = MessageAttachment(
-        message_id=None,
-        file_name=_safe_display_name(file.filename, ext),
-        mime_type=mime,
-        file_size_bytes=size,
-        safe_summary_note=None,
-        uploader_id=user.id,
-        storage_key=storage_key,
-        kind=kind,
-        duration_seconds=None,
-        uploaded_at=utcnow(),
-    )
-    db.add(att)
-    db.commit()
-    db.refresh(att)
-    return {
-        "id": att.id,
-        "file_name": att.file_name,
-        "mime_type": att.mime_type,
-        "kind": att.kind,
-        "file_size_bytes": att.file_size_bytes,
-        "duration_seconds": att.duration_seconds,
-    }
-
-
-@isolation_router.delete("/attachments/{attachment_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_orphan_attachment(
-    attachment_id: int,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Descarta un adjunto subido que aún no se ha enviado. Solo quien lo subió; borra fila y archivo."""
-    att = db.query(MessageAttachment).filter(MessageAttachment.id == attachment_id).first()
-    if not att or att.uploader_id != user.id:
-        # Igual que en la descarga: no se revela la existencia de adjuntos ajenos
-        raise HTTPException(status_code=404, detail="Adjunto no encontrado.")
-    if att.message_id is not None:
-        raise HTTPException(status_code=409, detail="Solo se pueden descartar adjuntos que aún no se han enviado.")
-    key = att.storage_key
-    db.delete(att)
-    db.commit()
-    _remove_stored_file(key)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-@isolation_router.get("/attachments/{attachment_id}")
-def download_attachment(
-    attachment_id: int,
-    audit_justification: Optional[str] = Query(default=None, max_length=500),
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    att = db.query(MessageAttachment).filter(MessageAttachment.id == attachment_id).first()
-    if not att or not att.storage_key or not _STORAGE_KEY_RE.match(att.storage_key):
-        raise HTTPException(status_code=404, detail="Adjunto no encontrado.")
-
-    if att.message_id is None:
-        # Huérfano: solo quien lo subió
-        if att.uploader_id != user.id:
-            raise HTTPException(status_code=404, detail="Adjunto no encontrado.")
-    else:
-        msg = db.query(Message).filter(Message.id == att.message_id).first()
-        conv = db.query(Conversation).filter(Conversation.id == msg.conversation_id).first() if msg else None
-        if not conv:
-            raise HTTPException(status_code=404, detail="Adjunto no encontrado.")
-        # MISSION: participantes (o administración con justificación auditada).
-        # FAMILY: solo los dos participantes; nunca administración ni líder.
-        _verify_conversation_access(db, user, conv, audit_justification=audit_justification)
-
-    path = Path(settings.UPLOAD_DIR) / att.storage_key
-    if not path.is_file():
-        raise HTTPException(status_code=404, detail="Archivo del adjunto no disponible.")
-    ascii_name = att.file_name.encode("ascii", "ignore").decode("ascii").replace("\\", "") or "adjunto"
-    headers = {
-        "Content-Disposition": f"inline; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(att.file_name)}",
-        "X-Content-Type-Options": "nosniff",
-        "Cache-Control": "private",
-        "Content-Security-Policy": "default-src 'none'; sandbox",
-    }
-    return FileResponse(str(path), media_type=att.mime_type, headers=headers)

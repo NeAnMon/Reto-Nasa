@@ -4,8 +4,16 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 
 
+def _default_sqlite_path() -> Path:
+    """BD SQLite por defecto: semsa.db. Si solo existe la de versiones previas (astrovital.db, antes del
+    renombrado AstroVital -> SEMSA, issue #14), se sigue usando para no perder los datos ya registrados."""
+    current = BASE_DIR / "semsa.db"
+    legacy = BASE_DIR / "astrovital.db"
+    return legacy if legacy.exists() and not current.exists() else current
+
+
 class Settings:
-    APP_NAME: str = os.getenv("APP_NAME", "AstroVital")
+    APP_NAME: str = os.getenv("APP_NAME", "SEMSA")
     APP_SLOGAN: str = "Your health. Your mission. Your future."
     APP_ENV: str = os.getenv("APP_ENV", "development")
     APP_VERSION: str = os.getenv("APP_VERSION", "1.0.0")
@@ -17,7 +25,7 @@ class Settings:
     LOCKOUT_MINUTES: int = int(os.getenv("LOCKOUT_MINUTES", "15"))
 
     DATABASE_URL: str = os.getenv(
-        "DATABASE_URL", f"sqlite:///{BASE_DIR / 'astrovital.db'}"
+        "DATABASE_URL", f"sqlite:///{_default_sqlite_path()}"
     )
 
     ENABLE_DEMO_SIMULATOR: bool = (
@@ -25,41 +33,30 @@ class Settings:
     )
     SEED_DEMO_DATA: bool = os.getenv("SEED_DEMO_DATA", "true").lower() == "true"
 
-    DEMO_ADMIN_EMAIL: str = os.getenv("DEMO_ADMIN_EMAIL", "admin@astrovital.demo")
+    DEMO_ADMIN_EMAIL: str = os.getenv("DEMO_ADMIN_EMAIL", "admin@semsa.demo")
     DEMO_ADMIN_PASSWORD: str = os.getenv("DEMO_ADMIN_PASSWORD", "AstroAdmin!2026")
-    DEMO_LEADER_EMAIL: str = os.getenv("DEMO_LEADER_EMAIL", "leader@astrovital.demo")
+    DEMO_LEADER_EMAIL: str = os.getenv("DEMO_LEADER_EMAIL", "leader@semsa.demo")
     DEMO_LEADER_PASSWORD: str = os.getenv("DEMO_LEADER_PASSWORD", "AstroLeader!2026")
     DEMO_ASTRONAUT1_EMAIL: str = os.getenv(
-        "DEMO_ASTRONAUT1_EMAIL", "elena.rostova@astrovital.demo"
+        "DEMO_ASTRONAUT1_EMAIL", "elena.rostova@semsa.demo"
     )
     DEMO_ASTRONAUT1_PASSWORD: str = os.getenv(
         "DEMO_ASTRONAUT1_PASSWORD", "AstroCrew!2026"
     )
     DEMO_ASTRONAUT2_EMAIL: str = os.getenv(
-        "DEMO_ASTRONAUT2_EMAIL", "marcus.vance@astrovital.demo"
+        "DEMO_ASTRONAUT2_EMAIL", "marcus.vance@semsa.demo"
     )
     DEMO_ASTRONAUT2_PASSWORD: str = os.getenv(
         "DEMO_ASTRONAUT2_PASSWORD", "AstroCrew!2026"
     )
     DEMO_ASTRONAUT3_EMAIL: str = os.getenv(
-        "DEMO_ASTRONAUT3_EMAIL", "kenji.takahashi@astrovital.demo"
+        "DEMO_ASTRONAUT3_EMAIL", "kenji.takahashi@semsa.demo"
     )
     DEMO_ASTRONAUT3_PASSWORD: str = os.getenv(
         "DEMO_ASTRONAUT3_PASSWORD", "AstroCrew!2026"
     )
-
-    DEMO_FAMILY1_EMAIL: str = os.getenv("DEMO_FAMILY1_EMAIL", "ana.rostova@astrovital.demo")
-    DEMO_FAMILY1_PASSWORD: str = os.getenv("DEMO_FAMILY1_PASSWORD", "AstroFamily!2026")
-    DEMO_FAMILY2_EMAIL: str = os.getenv("DEMO_FAMILY2_EMAIL", "sofia.rostova@astrovital.demo")
-    DEMO_FAMILY2_PASSWORD: str = os.getenv("DEMO_FAMILY2_PASSWORD", "AstroFamily!2026")
-
-    # Adjuntos (fotos y notas de voz del canal familiar). Se guardan con nombre aleatorio; ignorado por git.
-    UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", str(BASE_DIR / "uploads"))
-    MAX_ATTACHMENT_BYTES: int = int(os.getenv("MAX_ATTACHMENT_BYTES", str(5 * 1024 * 1024)))
-    MAX_PENDING_ATTACHMENTS_PER_USER: int = int(os.getenv("MAX_PENDING_ATTACHMENTS_PER_USER", "20"))
-    # Adjuntos subidos y nunca enviados ("huérfanos"): se purgan (fila + archivo) pasado este plazo.
-    # 7 días por defecto, para no invalidar mensajes que esperan en la cola sin conexión.
-    ORPHAN_ATTACHMENT_TTL_HOURS: int = int(os.getenv("ORPHAN_ATTACHMENT_TTL_HOURS", "168"))
+    # Cuentas de la misión análoga con datos reales de reposo en cama (HDBR-01..03)
+    DEMO_ANALOG_PASSWORD: str = os.getenv("DEMO_ANALOG_PASSWORD", "AstroCrew!2026")
 
     # SOLO DEMO LOCAL: devuelve el token de recuperación de contraseña en la respuesta HTTP.
     # Permite tomar cualquier cuenta sin autenticar: nunca activarlo en un despliegue accesible.
@@ -91,7 +88,7 @@ def insecure_config_warnings(cfg: "Settings") -> list:
         )
     if cfg.SEED_DEMO_DATA:
         warnings.append(
-            "SEED_DEMO_DATA=true: existen cuentas demo con contraseñas públicas (incluidos familiares). "
+            "SEED_DEMO_DATA=true: existen cuentas demo con contraseñas públicas. "
             "Desactívelo y cambie las contraseñas DEMO_* antes de producción."
         )
     return warnings

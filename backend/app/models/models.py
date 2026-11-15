@@ -609,9 +609,6 @@ class Conversation(Base):
     leader_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     subject = Column(String(200), nullable=False)
     status = Column(String(40), default="OPEN", nullable=False)  # OPEN,PENDING_FOLLOWUP,ARCHIVED
-    # Canal: MISSION (astronauta ↔ líder, por defecto) o FAMILY (astronauta ↔ familiar autorizado).
-    # En FAMILY, leader_id guarda el id del usuario familiar (la columna no se renombra).
-    channel = Column(String(20), default="MISSION", server_default="MISSION", nullable=False, index=True)
     is_highlighted = Column(Boolean, default=False, nullable=False)
     linked_alert_id = Column(Integer, ForeignKey("alerts.id", ondelete="SET NULL"), nullable=True)
     last_message_at = Column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
@@ -666,23 +663,14 @@ class Message(Base):
 
 class MessageAttachment(Base):
     __tablename__ = "message_attachments"
-    # SQLite: AUTOINCREMENT para que un id borrado (huérfano purgado o descartado) nunca se reutilice;
-    # si no, un mensaje en cola que referencia ese id podría adjuntar un archivo nuevo distinto.
-    __table_args__ = {"sqlite_autoincrement": True}
 
     id = Column(Integer, primary_key=True, index=True)
-    # Nulo mientras el adjunto está "huérfano" (subido pero aún no referenciado por un mensaje)
-    message_id = Column(Integer, ForeignKey("messages.id", ondelete="CASCADE"), nullable=True, index=True)
+    message_id = Column(Integer, ForeignKey("messages.id", ondelete="CASCADE"), nullable=False, index=True)
     file_name = Column(String(180), nullable=False)
     mime_type = Column(String(80), default="text/plain", nullable=False)
     file_size_bytes = Column(Integer, default=0, nullable=False)
     safe_summary_note = Column(String(255), nullable=True)
     uploaded_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
-    # Adjuntos con archivo real (foto / nota de voz). Los adjuntos históricos solo guardan el nombre.
-    uploader_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
-    storage_key = Column(String(64), nullable=True, unique=True)  # nombre aleatorio en disco, nunca el del cliente
-    kind = Column(String(10), nullable=True)  # IMAGE, AUDIO
-    duration_seconds = Column(Float, nullable=True)
 
     message = relationship("Message", back_populates="attachments")
 
@@ -1227,16 +1215,3 @@ class CrewActivityParticipant(Base):
     attended_at = Column(DateTime(timezone=True), nullable=True)
 
     activity = relationship("CrewActivity", back_populates="participants")
-
-
-class FamilyContact(Base):
-    """Vínculo autorizado entre un astronauta y un usuario FAMILY_MEMBER (canal "Conexión con Tierra")."""
-    __tablename__ = "family_contacts"
-    __table_args__ = (UniqueConstraint("astronaut_id", "user_id", name="uq_family_contact"),)
-
-    id = Column(Integer, primary_key=True, index=True)
-    astronaut_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    relationship_label = Column("relationship", String(60), nullable=False)  # "Pareja", "Hija", ...
-    is_active = Column(Boolean, default=True, nullable=False)
-    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)

@@ -1,4 +1,4 @@
-/* AstroVital · Consola · vista "Check-in emocional" (sustituye al antiguo Emotional Assessment Center)
+/* SEMSA · Consola · vista "Check-in emocional" (sustituye al antiguo Emotional Assessment Center)
  *
  * - Persona astronauta: sus solicitudes de cuestionario, formulario (escala + abiertas opcionales,
  *   "Prefiero no responder", borrador privado) y resultado operativo propio.

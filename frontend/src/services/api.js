@@ -1,9 +1,32 @@
 /**
- * AstroVital Frontend API Service & Offline Queue Manager
+ * SEMSA Frontend API Service & Offline Queue Manager
  */
-const STORAGE_TOKEN_KEY = "astrovital_session_token";
-const STORAGE_CSRF_KEY = "astrovital_csrf_token";
-const STORAGE_OFFLINE_QUEUE_KEY = "astrovital_offline_queue";
+const STORAGE_TOKEN_KEY = "semsa_session_token";
+const STORAGE_CSRF_KEY = "semsa_csrf_token";
+const STORAGE_OFFLINE_QUEUE_KEY = "semsa_offline_queue";
+
+/* Cambio de nombre de la app a SEMSA (issue #14): se trasladan una sola vez las claves antiguas
+ * de la marca anterior para no cerrar la sesión ni perder la cola sin enlace de quien ya usaba la app. */
+(function migrateLegacyStorageKeys() {
+  const pairs = [
+    [STORAGE_TOKEN_KEY, "astrovital_session_token"],
+    [STORAGE_CSRF_KEY, "astrovital_csrf_token"],
+    [STORAGE_OFFLINE_QUEUE_KEY, "astrovital_offline_queue"],
+  ];
+  for (const name of ["localStorage", "sessionStorage"]) {
+    for (const [key, legacy] of pairs) {
+      try {
+        const store = globalThis[name];
+        if (!store) break;
+        const old = store.getItem(legacy);
+        if (old !== null && store.getItem(key) === null) store.setItem(key, old);
+        if (old !== null) store.removeItem(legacy);
+      } catch {
+        /* almacenamiento no disponible (modo privado, cuota): se ignora */
+      }
+    }
+  }
+})();
 
 /**
  * Convierte el cuerpo de error de la API en un texto legible.
@@ -118,8 +141,6 @@ export const apiService = {
       return String(endpoint || "UNKNOWN");
     };
     for (const item of queue) {
-      // Mensajes con adjuntos aún en IndexedDB: solo los transmite la vista Mensajes (sube antes los archivos)
-      if (Array.isArray(item.pending_blob_keys) && item.pending_blob_keys.length) continue;
       try {
         await this.request(item.endpoint, {
           method: "POST",
@@ -132,23 +153,12 @@ export const apiService = {
         const st = err && err.status;
         if (st >= 400 && st < 500 && st !== 408 && st !== 429) {
           const payload = (item && item.payload) || {};
-          const type = typeOf(item.endpoint);
           rejected.push({
-            type,
+            type: typeOf(item.endpoint),
             preview: typeof payload.content === "string" ? payload.content.trim().slice(0, 60) : "",
             reason: (err && err.message) || `Error HTTP ${st}`,
           });
           done.add(item.dedup_key);
-          // Mensaje descartado con adjuntos ya subidos: liberarlos (best-effort, errores ignorados)
-          if (type === "MESSAGE" && Array.isArray(payload.attachment_ids)) {
-            for (const attId of payload.attachment_ids) {
-              try {
-                await this.request(`/attachments/${encodeURIComponent(attId)}`, { method: "DELETE" });
-              } catch {
-                /* best-effort: el backend limpia los adjuntos huérfanos */
-              }
-            }
-          }
         }
       }
     }
@@ -163,10 +173,6 @@ export const apiService = {
       "Content-Type": "application/json",
       ...(options.headers || {}),
     };
-    // FormData (subida de archivos): el navegador fija multipart/form-data con su boundary
-    if (typeof FormData !== "undefined" && options.body instanceof FormData) {
-      delete headers["Content-Type"];
-    }
     const token = this.getToken();
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
@@ -183,7 +189,7 @@ export const apiService = {
 
     if (response.status === 401 && path !== "/auth/login") {
       this.clearSession();
-      window.dispatchEvent(new CustomEvent("astrovital:unauthorized"));
+      window.dispatchEvent(new CustomEvent("semsa:unauthorized"));
       throw new Error("Sesión expirada o no autorizada.");
     }
 
@@ -426,7 +432,7 @@ export const apiService = {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `astrovital_report_${astronautId}.${format.toLowerCase()}`;
+    a.download = `semsa_report_${astronautId}.${format.toLowerCase()}`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -613,37 +619,6 @@ export const apiService = {
     });
   },
 
-  /* ── Canal familiar y adjuntos ── */
-  /* "Conexión con Tierra" (docs/CONTRATO_AISLAMIENTO.md §4). Los mensajes FAMILY usan las mismas rutas
-   * /conversations/{id}/messages: sendMessage() reenvía tal cual `attachment_ids` (máx. 4) en el payload. */
-  getConversationsByChannel(channel = "MISSION", paramsObj = {}) {
-    return this.getConversations({ ...paramsObj, channel });
-  },
-
-  getFamilyContacts() {
-    return this.request("/family/contacts");
-  },
-
-  /** Sube un archivo (foto o nota de voz) como multipart, campo `file`. Devuelve { id, file_name, mime_type, kind, … }. */
-  uploadAttachment(file, fileName = null) {
-    const fd = new FormData();
-    if (fileName) fd.append("file", file, fileName);
-    else fd.append("file", file);
-    return this.request("/attachments", { method: "POST", body: fd });
-  },
-
-  /** Ruta del binario. Solo para referencia: la autenticación va por cabecera, así que se descarga con getAttachmentBlob(). */
-  attachmentUrl(attachmentId) {
-    return `/api/v1/attachments/${encodeURIComponent(attachmentId)}`;
-  },
-
-  /** Descarga autenticada del adjunto como Blob (para URL.createObjectURL). */
-  async getAttachmentBlob(attachmentId) {
-    const res = await this.request(`/attachments/${encodeURIComponent(attachmentId)}`);
-    if (!(res instanceof Blob)) throw new Error("Respuesta inesperada al descargar el adjunto.");
-    return res;
-  },
-
   // =========================================================================
   // MODULE 2: COGNITIVE ASSESSMENT CENTER API METHODS
   // =========================================================================
@@ -825,7 +800,7 @@ export const apiService = {
   },
 
   /* ── Bienestar: check-in rápido, tiempo libre, tripulación ── */
-  // Contrato: docs/CONTRATO_AISLAMIENTO.md §1–3 (+ GET /family/contacts de §4)
+  // Contrato: docs/CONTRATO_AISLAMIENTO.md §1–3
   getQuickCheckins(astronautId = null, limit = 14) {
     const params = new URLSearchParams();
     if (astronautId) params.set("astronaut_id", astronautId);
@@ -908,6 +883,5 @@ export const apiService = {
   cancelCrewActivity(activityId) {
     return this.request(`/crew-activities/${encodeURIComponent(activityId)}/cancel`, { method: "POST" });
   },
-  // getFamilyContacts() lo define el bloque "Canal familiar y adjuntos" (mismo endpoint); se reutiliza.
 };
 

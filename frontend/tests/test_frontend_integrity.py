@@ -29,7 +29,7 @@ def test_frontend_files_exist_and_have_required_sections():
         "mission-control",
         "my-health-check",
         "wellbeing-hub",
-        "communication-center",
+        "recommendations",
         "daily-missions",
         "alerts-center",
         "crew-monitoring",
@@ -62,7 +62,6 @@ def test_frontend_files_exist_and_have_required_sections():
     # Vistas del menú "Más" rediseñadas como módulos de la consola (antes vivían en app.js y
     # expansion_views.js): cada una con su export, su ruta, su entrada en el importmap y la hoja común
     for module, export_name in [
-        ("wellness", "renderWellnessView"),
         ("cognitive", "renderCognitiveView"),
         ("emotional", "renderEmotionalView"),
         ("crew", "renderCrewView"),
@@ -105,27 +104,87 @@ def test_frontend_files_exist_and_have_required_sections():
             f"wellbeing.js DICT es/en keys differ at indent {indent}: "
             f"{sorted(_keys(wb_es, indent) ^ _keys(wb_en, indent))}"
         )
-    # Señal para que Mensajes abra el canal familiar (la UI vive en messages.js) y enlaces externos seguros
-    assert 'sessionStorage.setItem("av_messages_channel", "FAMILY")' in wellbeing_js
+    # "Contacto con Tierra" ya no es una pestaña de Bienestar: es una recomendación que solo aparece como
+    # alerta temprana (backend/app/rules/early_warnings.py), en Alertas (desplegables) y en el Resumen
+    assert "renderEarth" not in wellbeing_js and '"earth"' not in wellbeing_js and "earthTitle" not in wellbeing_js
+    assert "getFamilyContacts" not in wellbeing_js
+    # Enlaces externos seguros
     assert 'rel="noopener noreferrer"' in wellbeing_js
     assert 'u.protocol === "https:"' in wellbeing_js
     # La vista no usa atributos que escuchan console.js (data-act) o app.js (data-nav-section)
     assert "data-nav-section" not in wellbeing_js.split("*/", 1)[1]
     assert "data-act=" not in wellbeing_js
 
-    # Bienestar psicológico, Evaluación cognitiva y Check-in emocional salieron del menú "Más":
-    # se abren desde Bienestar → Hoy, y sus rutas siguen funcionando
-    for sub_id in ["wellness-center", "cognitive-center", "emotional-center"]:
+    # Evaluación cognitiva y Check-in emocional salieron del menú "Más" y son pestañas de Bienestar
+    # (issue #26), como Cuestionarios o Respiración; sus rutas antiguas abren Bienestar en esa pestaña
+    for sub_id, tab in [("cognitive-center", "cognitive"), ("emotional-center", "emotional")]:
         assert f'data-nav-section="{sub_id}"' not in index_html, f"{sub_id} should not be a menu item"
-        assert f'sectionId === "{sub_id}"' in app_js, f"Missing handler for {sub_id}"
-        assert f'tool("{sub_id}"' in wellbeing_js, f"Bienestar → Hoy must link to {sub_id}"
-    assert 'data-wb-go="${sec}"' in wellbeing_js
+        assert f'"{sub_id}": "wellbeing-hub"' in app_js, f"{sub_id} must redirect to Bienestar"
+        assert f'"{sub_id}": "{tab}"' in app_js, f"{sub_id} must open the {tab} tab"
+        assert f'"{tab}"' in wellbeing_js.split("const SUBS = ", 1)[1].split(";", 1)[0], f"Missing tab {tab}"
+    assert "renderEmotionalView" in wellbeing_js and "renderCognitiveView" in wellbeing_js
+    assert "toolsHTML" not in wellbeing_js
+
+    # El cuestionario de bienestar psicológico volvió a Bienestar, en la pestaña interna
+    # "Cuestionarios" (questionnaires.js) junto al chequeo del turno (shift-check.js: estrés, FC,
+    # NASA-TLX y test de reacción tipo PVT). "Registrar medición" ya no lo incluye, la vista antigua
+    # no existe y la ruta "wellness-center" abre Bienestar en esa pestaña.
+    assert not (views_dir / "wellness.js").exists()
+    assert not (views_dir / "measure-questionnaire.js").exists()
+    assert "/src/console/views/wellness.js" not in index_html
+    assert "measure-questionnaire" not in index_html
+    assert "renderWellnessView" not in app_js
+    assert "wellness-center" not in wellbeing_js
+    assert 'data-nav-section="wellness-center"' not in index_html
+    assert '"wellness-center": "wellbeing-hub"' in app_js
+    assert '"wellness-center": "checks"' in app_js and "openWellbeingSub(WELLBEING_TAB_OF[" in app_js
+    assert "export function openWellbeingSub" in wellbeing_js
+    measure_js = (views_dir / "measure.js").read_text(encoding="utf-8")
+    assert "questionnaire" not in measure_js.lower() and "WELLNESS_QUESTIONNAIRE" not in app_js
+    assert ".av-ms-qtile" not in (views_dir / "measure.css").read_text(encoding="utf-8")
+    assert '"checks"' in wellbeing_js and 'import { renderChecks } from "./questionnaires.js"' in wellbeing_js
+    assert 'checks: "Cuestionarios"' in wellbeing_js and 'checks: "Questionnaires"' in wellbeing_js
+    qz_js = (views_dir / "questionnaires.js").read_text(encoding="utf-8")
+    sc_js = (views_dir / "shift-check.js").read_text(encoding="utf-8")
+    assert (views_dir / "questionnaires.css").is_file()
+    for module in ["questionnaires", "shift-check"]:
+        assert f'"/src/console/views/{module}.js": "/src/console/views/{module}.js?v=__BUILD__"' in index_html
+    assert "/src/console/views/questionnaires.css?v=__BUILD__" in index_html
+    assert "export async function renderChecks" in qz_js
+    assert 'data-wb-sub="checks"' in qz_js
+    for call in ["getWellnessInstruments", "getWellnessAssessments", "createWellnessAssessment",
+                 "getWellnessRecommendations", "getQuickCheckins"]:
+        assert f"apiService.{call}(" in qz_js, f"questionnaires.js must use {call}"
+    # Sueño y ánimo no se duplican: el chequeo del turno los toma del check-in de Hoy y enlaza a esa pestaña
+    assert 'data-qz-tab="today"' in sc_js
+    assert 'name="av-sc-sleep' not in sc_js and 'name="av-sc-mood' not in sc_js
+    # NASA-TLX: seis escalas 0–100 y test de reacción con duración elegible, lapsos y falsos inicios
+    assert 'const TLX_KEYS = ["md", "pd", "td", "pf", "ef", "fr"]' in sc_js
+    assert 'type="range"' in sc_js and 'min="0" max="100"' in sc_js
+    assert "durations: [60, 180, 300]" in sc_js and "lapseMs: 500" in sc_js
+    assert "falseStarts" in sc_js and "mean_ms" in sc_js
+    assert "localStorage" in sc_js and "catch" in sc_js
+    # Mismas reglas que el resto de Bienestar: sin data-act / data-nav / data-wb-go en estos módulos
+    for src in (qz_js, sc_js):
+        body = src.split("*/", 1)[1]
+        assert "data-act=" not in body and "data-nav" not in body and "data-wb-go" not in body
+    for name, src in (("questionnaires.js", qz_js), ("shift-check.js", sc_js)):
+        assert src.count("const DICT = {") == 1 and "tr(DICT)" in src
+        es_block, en_block = _dict_blocks(src)
+        for indent in (4, 6, 8):
+            assert _keys(es_block, indent) == _keys(en_block, indent), (
+                f"{name} DICT es/en keys differ at indent {indent}: "
+                f"{sorted(_keys(es_block, indent) ^ _keys(en_block, indent))}"
+            )
+    # Escala 1–10 sin desbordes: rejilla de 10 columnas que pasa a 5 en pantallas estrechas
+    qz_css = (views_dir / "questionnaires.css").read_text(encoding="utf-8")
+    assert "repeat(10, minmax(0, 1fr))" in qz_css and "repeat(5, minmax(0, 1fr))" in qz_css
     # El contador de pendientes del check-in emocional pasa a la pestaña "Bienestar"
     tab_start = index_html.index('data-nav-section="wellbeing-hub"')
     assert "js-emo-badge" in index_html[tab_start:index_html.index("</button>", tab_start)]
     assert index_html.count("js-emo-badge") == 1
 
-    # El antiguo expansion_views.js (sustituido por messages.js y las vistas del menú "Más") ya no existe
+    # El antiguo expansion_views.js (sustituido por las vistas del menú "Más") ya no existe
     assert not (FRONTEND_ROOT / "src" / "app" / "expansion_views.js").exists()
     assert "expansion_views" not in index_html
 
@@ -137,7 +196,7 @@ def test_frontend_files_exist_and_have_required_sections():
     for export_name in ["export function tr", "export function fmt", "export function initI18n", "export const STATIC"]:
         assert export_name in i18n_src, f"i18n.js missing {export_name}"
     assert '"/src/i18n/i18n.js": "/src/i18n/i18n.js?v=__BUILD__"' in index_html
-    assert index_html.count("data-av-lang") == 1, "Language selector missing in header"
+    assert index_html.count("data-av-lang") >= 1, "Language selector missing in header"
     assert 'id="av-lang-select"' in index_html
     # interruptor segmentado ES | EN (radiogroup), ya no un <select>
     assert '<select id="av-lang-select"' not in index_html
@@ -255,9 +314,6 @@ def test_wellbeing_limits_dedup_and_api_errors():
     assert "opensAt: start - ATTEND_OPENS_BEFORE_MS, closesAt: start + durMs + ATTEND_CLOSES_AFTER_END_MS" in wellbeing_js
     assert "Number(err.status) === 409" in wellbeing_js  # 409 por relojes desfasados → mensaje y repintado
 
-    # "Escribir a mi equipo de apoyo" fija el canal MISSION antes de abrir Mensajes
-    assert 'data-wb-go="communication-center" data-wb-channel="MISSION"' in wellbeing_js
-    assert 'sessionStorage.setItem("av_messages_channel", channel)' in wellbeing_js
 
     # Check-in: una dedup_key por envío, reutilizada al encolar
     assert "payload.dedup_key = newDedupKey()" in wellbeing_js
@@ -269,3 +325,139 @@ def test_wellbeing_limits_dedup_and_api_errors():
     assert "errMsg = errorDetailText(errData, errMsg)" in api_js
     assert "errData.detail || errData.message" not in api_js
     assert "err.status = response.status" in api_js
+
+
+def test_family_channel_not_in_frontend():
+    """El canal familiar ("Conexión con Tierra") no se construye: solo queda como recomendación en Bienestar."""
+    forbidden = ["FAMILY_MEMBER", "uploadAttachment", "MediaRecorder", "astrovital_msg_outbox", "semsa_msg_outbox", "av_messages_channel"]
+    hits = []
+    for path in (FRONTEND_ROOT / "src").rglob("*"):
+        if path.suffix not in {".js", ".css", ".html"} or not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8")
+        hits += [f"{path.relative_to(FRONTEND_ROOT)}: {word}" for word in forbidden if word in text]
+    assert not hits, f"Family channel leftovers in frontend/src: {hits}"
+
+
+def test_messages_module_replaced_by_recommendations():
+    """Issue #15: el módulo Mensajes se elimina y la última pestaña es "Recomendaciones" (cuadros desplegables)."""
+    index_html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+    app_js = (FRONTEND_ROOT / "src" / "app" / "app.js").read_text(encoding="utf-8")
+    i18n_src = (FRONTEND_ROOT / "src" / "i18n" / "i18n.js").read_text(encoding="utf-8")
+    views_dir = FRONTEND_ROOT / "src" / "console" / "views"
+
+    # Mensajes ya no existe: ni archivos, ni pestaña, ni ruta, ni insignia de no leídos
+    assert not (views_dir / "messages.js").exists()
+    assert not (views_dir / "messages.css").exists()
+    assert "messages.js" not in index_html and "messages.css" not in index_html
+    assert 'data-nav-section="communication-center"' not in index_html
+    assert "js-comm-badge" not in index_html and "js-comm-badge" not in app_js
+    assert 'sectionId === "communication-center"' not in app_js
+    assert "renderMessagesView" not in app_js
+    assert '"tab.messages"' not in i18n_src
+    # El id antiguo sigue funcionando: se redirige a Recomendaciones
+    assert '"communication-center": "recommendations"' in app_js
+    # Nada en la interfaz enlaza ya a Mensajes
+    for path in (FRONTEND_ROOT / "src").rglob("*.js"):
+        text = path.read_text(encoding="utf-8")
+        for needle in ('data-nav="communication-center"', 'data-wb-go="communication-center"', 'navigateToSection("communication-center")'):
+            assert needle not in text, f"{path.name} still links to Mensajes ({needle})"
+
+    # Recomendaciones: última pestaña de la barra global, con vista, hoja e importmap versionados
+    tabs = re.findall(r'class="av-tab"[^>]*data-nav-section="([\w-]+)"', index_html)
+    assert tabs[-1] == "recommendations", f"Recomendaciones must be the last tab, got {tabs}"
+    assert 'data-i18n="tab.recommendations"' in index_html
+    assert i18n_src.count('"tab.recommendations":') == 2, "tab.recommendations must exist in es and en"
+    assert '"/src/console/views/recommendations.js": "/src/console/views/recommendations.js?v=__BUILD__"' in index_html
+    assert "/src/console/views/recommendations.css?v=__BUILD__" in index_html
+    assert 'sectionId === "recommendations"' in app_js
+    assert "renderRecommendationsView" in app_js
+
+    rec_js = (views_dir / "recommendations.js").read_text(encoding="utf-8")
+    assert (views_dir / "recommendations.css").is_file()
+    assert "export async function renderRecommendationsView" in rec_js
+    assert rec_js.count("const DICT = {") == 1 and "tr(DICT)" in rec_js
+    es_block, en_block = _dict_blocks(rec_js)
+    for indent in (4, 6, 8):
+        assert _keys(es_block, indent) == _keys(en_block, indent), (
+            f"recommendations.js DICT es/en keys differ at indent {indent}: "
+            f"{sorted(_keys(es_block, indent) ^ _keys(en_block, indent))}"
+        )
+    # Mismas recomendaciones (mismos ids y en el mismo orden) en los dos idiomas
+    ids_es = re.findall(r'id: "([\w-]+)"', es_block)
+    ids_en = re.findall(r'id: "([\w-]+)"', en_block)
+    assert ids_es and ids_es == ids_en
+    assert "wearables" in ids_es, "Biometric integration must be one of the recommendations"
+    # Cuadros desplegables con el patrón plegable de la consola
+    assert '<details class="av-panel av-fold av-rec-card"' in rec_js
+    assert 'class="av-panel-head av-fold-head av-rec-head"' in rec_js
+    # La vista no usa atributos que escuchan console.js (data-act / data-nav) ni llama a la API
+    assert "data-act=" not in rec_js and "data-nav=" not in rec_js
+    assert "apiService" not in rec_js
+
+    # Resumen: el cuadro "Mensajes sin leer" pasa a ser un acceso a Recomendaciones
+    console_js = (FRONTEND_ROOT / "src" / "console" / "console.js").read_text(encoding="utf-8")
+    assert 'data-nav="recommendations"' in console_js
+    assert "unread_messages_count" not in console_js
+
+
+def test_early_warnings_dropdowns_and_summary_recommendations():
+    """Issue #14: las alertas tempranas (p. ej. "Contacto con Tierra") van en desplegables en Alertas
+    y su recomendación en el cuadro "Recomendaciones" del Resumen; la acción lleva a la pestaña
+    Recomendaciones con el cuadro earth-channel desplegado (sin Mensajes, issue #15); los textos del
+    backend tienen traducción al inglés y no mencionan Mensajes."""
+    console_dir = FRONTEND_ROOT / "src" / "console"
+    alerts_js = (console_dir / "views" / "alerts.js").read_text(encoding="utf-8")
+    console_js = (console_dir / "console.js").read_text(encoding="utf-8")
+    classes_js = (console_dir / "alert-classes.js").read_text(encoding="utf-8")
+    assert 'export const isEarlyAlert = (a) => String(a?.rule_code || "").startsWith("RULE_EARLY_");' in classes_js
+    assert '<details class="av-fold av-al-early-item"' in alerts_js
+    assert 'data-al-zone="early"' in alerts_js
+    assert 'root.addEventListener("toggle"' in alerts_js
+    # Un solo cuadro "Recomendaciones" en el Resumen (columna de 2 cuadros, issues #3 y #15)
+    assert "${p1}${table}" in console_js
+    assert "${activeRecsHTML(appState, alerts, T)}" in console_js
+    assert "recsHTML(" not in console_js and "av-recs" not in console_js
+    # Ir al cuadro earth-channel de Recomendaciones
+    rec_js = (console_dir / "views" / "recommendations.js").read_text(encoding="utf-8")
+    assert 'data-nav="recommendations" data-rec-open="earth-channel"' in console_js
+    assert 'data-al-act="go-rec" data-al-rec="earth-channel"' in alerts_js
+    for src in (console_js, alerts_js, rec_js):
+        assert 'sessionStorage.setItem("av_rec_open"' in src or 'sessionStorage.getItem("av_rec_open")' in src
+    assert 'id: "earth-channel"' in rec_js
+    assert 'data-al-act="contact"' not in alerts_js
+    al_es, al_en = _dict_blocks(alerts_js)
+    early_keys = {k for k in _keys(al_es, 4) if k.startswith("early")}
+    assert len(early_keys) >= 8 and early_keys == {k for k in _keys(al_en, 4) if k.startswith("early")}
+    for key in ("recsActive", "recsActiveN", "recsAria", "recsPlanned", "recsFor", "recsSeeAlert", "recsSeeEarth"):
+        assert console_js.count(f"    {key}: ") == 2, f"console.js DICT needs {key} in es and en"
+
+    tree = ast.parse((PROJECT_ROOT / "backend" / "app" / "rules" / "early_warnings.py").read_text(encoding="utf-8"))
+    texts = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name) and node.targets[0].id.startswith("EARTH_CONTACT_"):
+            values = node.value.values if isinstance(node.value, ast.Dict) else [node.value]
+            for v in values:
+                if isinstance(v, ast.Constant) and isinstance(v.value, str) and " " in v.value:
+                    texts.add(_norm(v.value))
+    assert len(texts) >= 5, texts
+    assert not [t for t in texts if re.search(r"mensaje|communication", t, re.I)], "early warnings must not point to Mensajes"
+    missing = sorted(texts - _en_keys(I18N_DIR / "backend-en-runtime.js"))
+    assert not missing, f"Missing English translations for early_warnings texts: {missing}"
+
+
+def test_branding_is_semsa_and_status_bar_shows_telecreation_mission():
+    """Issue #14: la app se llama SEMSA y la barra superior muestra SEMSA + misión TeleCreation UTS."""
+    console_js = (FRONTEND_ROOT / "src" / "console" / "console.js").read_text(encoding="utf-8")
+    assert 'const BRAND_LABEL = "TeleCreation UTS";' in console_js
+    assert 'const APP_NAME = "SEMSA";' in console_js
+    assert "${esc(APP_NAME)}</span></div>" in console_js
+    hits = []
+    for path in [FRONTEND_ROOT / "index.html", *(FRONTEND_ROOT / "src").rglob("*")]:
+        if path.suffix not in {".js", ".css", ".html"} or not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8")
+        if path.name == "api.js":  # migra una vez las claves antiguas "astrovital_*" del almacenamiento
+            text = re.sub(r'"astrovital_(session_token|csrf_token|offline_queue)"', "", text)
+        hits += [f"{path.relative_to(FRONTEND_ROOT)}: {word}" for word in ("AstroVital", "astrovital", "ARTEMIS-IV") if word in text]
+    assert not hits, f"Restos de la marca anterior: {hits}"

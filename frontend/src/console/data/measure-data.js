@@ -1,5 +1,5 @@
 /*
- * AstroVital · Datos de la vista "Registrar medición"
+ * SEMSA · Datos de la vista "Registrar medición"
  *
  * Único punto de acceso a datos de la vista. Hoy trabaja con el JSON de ejemplo
  * (measure-demo.json) y guarda lo registrado en el navegador (localStorage).

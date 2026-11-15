@@ -127,8 +127,8 @@ export const EXACT = {
   "Entorno no confirmado": "Unconfirmed environment",
   "Sin datos verificados": "No verified data",
   "No confirmado": "Not confirmed",
-  "No existe telemetría verificada ni confirmación manual autorizada. AstroVital no asume ubicación por GPS local.":
-    "No verified telemetry or authorized manual confirmation is available. AstroVital does not infer location from local GPS.",
+  "No existe telemetría verificada ni confirmación manual autorizada. SEMSA no asume ubicación por GPS local.":
+    "No verified telemetry or authorized manual confirmation is available. SEMSA does not infer location from local GPS.",
   "Incertidumbre contextual: interprete las mediciones con precaución y confirme el entorno manualmente.":
     "Contextual uncertainty: interpret measurements with caution and confirm the environment manually.",
   "Solicitar confirmación de entorno por parte de la tripulación o control de misión.":
@@ -271,8 +271,8 @@ export const EXACT = {
      Reglas clínicas DEMO (ClinicalRule / ClinicalRuleVersion)
      (nombre e instrucciones con el indicador dentro → ver PATTERNS)
      --------------------------------------------------------------------- */
-  "AstroVital DEMO Reference Protocol (Ilustrativo / No Clínico)":
-    "AstroVital DEMO Reference Protocol (Illustrative / Non-Clinical)",
+  "SEMSA DEMO Reference Protocol (Ilustrativo / No Clínico)":
+    "SEMSA DEMO Reference Protocol (Illustrative / Non-Clinical)",
   "Comité de Demostración de Medicina Espacial (Ficticio)": "Space Medicine Demonstration Committee (Fictional)",
   "Escalamiento inmediato a Dirección de Medicina de Vuelo si persiste en rango WARNING por >2 mediciones o ante cualquier lectura en rango CRITICAL.":
     "Immediate escalation to the Flight Medicine Directorate if the value stays in the WARNING range for >2 measurements, or upon any reading in the CRITICAL range.",
@@ -306,6 +306,8 @@ export const EXACT = {
     "Perform the movement and resistive exercise session authorized by the current protocol.",
   "El ejercicio resistivo protege huesos y músculos antigravitatorios. Se suspende automáticamente si existe una alerta médica incompatible.":
     "Resistive exercise protects bones and antigravity muscles. It is automatically suspended if there is an incompatible medical alert.",
+  "Completar el cuestionario privado de bienestar psicológico en Bienestar → Cuestionarios.":
+    "Complete the private psychological well-being questionnaire in Wellbeing → Questionnaires.",
   "Completar un chequeo privado de bienestar psicológico en el Wellness Center.":
     "Complete a private psychological well-being check in the Wellness Center.",
   "El bienestar psicológico se evalúa con privacidad reforzada; reconocer el estrés a tiempo es una fortaleza operativa.":
@@ -920,7 +922,7 @@ export const EXACT = {
   "Medición de pulso verificada.": "Pulse measurement verified.",
   "Revisión ambiental completada.": "Environmental review completed.",
   "Omitida durante EVA programada sin penalización.": "Skipped during scheduled EVA, no penalty.",
-  "Primer registro fisiológico validado en misión Artemis IV.": "First validated physiological record on the Artemis IV mission.",
+  "Primer registro fisiológico validado en misión TeleCreation UTS.": "First validated physiological record on the TeleCreation UTS mission.",
   "Racha de 5 días de participación constante.": "5-day streak of consistent participation.",
   "Registro de rutina de descanso completado.": "Rest routine log completed.",
   "Exploración de cápsulas educativas en Body Explorer.": "Explored educational capsules in the Body Explorer.",
@@ -1057,7 +1059,7 @@ export const EXACT = {
   /* ---------------------------------------------------------------------
      Módulo de aislamiento y confinamiento (docs/CONTRATO_AISLAMIENTO.md).
      Claves = textos LITERALES de backend/app/database/seed.py (LEISURE_ACTIVITIES_DATA,
-     CREW_ACTIVITY_TEMPLATES_DATA, ISOLATION_XP_MISSIONS_DATA, FAMILY_ROLE_DESC, familiares demo)
+     CREW_ACTIVITY_TEMPLATES_DATA, ISOLATION_XP_MISSIONS_DATA)
      y de backend/app/api/v1/isolation_router.py (consejos circadianos y detail= de HTTPException).
      tests/test_frontend_integrity.py comprueba que el catálogo y las plantillas estén cubiertos.
      Los source_title (NASA_GARDEN_SOURCE / NASA_HRP_SOURCE) ya están en inglés: no requieren entrada.
@@ -1135,11 +1137,11 @@ export const EXACT = {
   "Relee la entrada de ayer": "Reread yesterday's entry",
   // LETTER_HOME
   "Carta a casa": "Letter home",
-  "Escribir una carta o mensaje largo a la familia, para enviarlo por el canal Conexión con Tierra.":
-    "Write a letter or a long message to your family, to send through the Connection with Earth channel.",
+  "Escribir una carta o mensaje largo a la familia para enviarlo en la próxima ventana de comunicaciones.":
+    "Write a letter or a long message to your family to send in the next communications window.",
   "Piensa en una anécdota del día": "Think of something that happened today",
   "Escribe como si hablaras en persona": "Write as if you were talking in person",
-  "Adjunta una foto si quieres": "Attach a photo if you like",
+  "Guárdala para enviarla cuando haya enlace": "Save it to send when there is a link",
   // STRETCH_BREAK
   "Estiramientos suaves": "Gentle stretching",
   "Pausa de estiramientos suaves autorizados para soltar tensión (no sustituye al ejercicio prescrito).":
@@ -1183,16 +1185,6 @@ export const EXACT = {
   "La cohesión de la tripulación es un factor protector frente al aislamiento (NASA HRP).":
     "Crew cohesion is a protective factor against isolation (NASA HRP).",
 
-  // Rol y permiso del canal familiar (§4) — FAMILY_ROLE_DESC / USE_FAMILY_CHANNEL
-  "Familiar autorizado (Conexión con Tierra)": "Authorized family member (Connection with Earth)",
-  "Solo puede usar su conversación privada con el astronauta vinculado y sus adjuntos. Sin acceso a salud, alertas ni misiones.":
-    "Can only use their private conversation with the linked astronaut and its attachments. No access to health data, alerts or missions.",
-  "Usar el canal privado Conexión con Tierra con el astronauta vinculado":
-    "Use the private Connection with Earth channel with the linked astronaut",
-  // Parentesco de los familiares demo (FamilyContact.relationship_label)
-  "Pareja": "Partner",
-  "Hija": "Daughter",
-
   // Consejos circadianos — isolation_router.py → _circadian_tip()
   "Registra tu sueño unos días para recibir una recomendación circadiana.":
     "Log your sleep for a few days to get a circadian recommendation.",
@@ -1227,23 +1219,9 @@ export const EXACT = {
   "Solo quien creó la actividad, el líder asignado o administración pueden cancelarla.":
     "Only the activity's creator, the assigned leader or administration can cancel it.",
   "Solo se pueden cancelar actividades programadas.": "Only scheduled activities can be cancelled.",
-  "Solo los participantes de una conversación pueden subir adjuntos.": "Only a conversation's participants can upload attachments.",
-  "Demasiados adjuntos pendientes de enviar. Envía o descarta los actuales.":
-    "Too many attachments waiting to be sent. Send or discard the current ones.",
-  "El adjunto supera el tamaño máximo de 5 MB.": "The attachment exceeds the maximum size of 5 MB.",
-  "El archivo está vacío.": "The file is empty.",
-  "Tipo de archivo no permitido. Solo fotos (JPEG, PNG, WebP) o notas de voz (WebM, OGG, MP4, MP3).":
-    "File type not allowed. Only photos (JPEG, PNG, WebP) or voice notes (WebM, OGG, MP4, MP3).",
-  "Solo se pueden descartar adjuntos que aún no se han enviado.": "Only attachments that haven't been sent yet can be discarded.",
-  "Adjunto no encontrado.": "Attachment not found.",
-  "Archivo del adjunto no disponible.": "Attachment file not available.",
 
-  // Errores del canal FAMILY y adjuntos en mensajes — expansion_router.py
-  "Privacidad del canal familiar: solo el astronauta y su familiar autorizado pueden acceder a esta conversación.":
-    "Family channel privacy: only the astronaut and their authorized family member can access this conversation.",
+  // Errores de mensajes — expansion_router.py
   "El mensaje citado no pertenece a esta conversación.": "The quoted message does not belong to this conversation.",
-  "Solo quien subió un adjunto puede adjuntarlo a un mensaje.":
-    "Only the person who uploaded an attachment can attach it to a message.",
 };
 
 /* -------------------------------------------------------------------------
@@ -1336,11 +1314,4 @@ export const PATTERNS = [
 
   // MessageNotification.title = "Nuevo mensaje de {remitente}"
   [/^Nuevo mensaje de (.+)$/, (m) => `New message from ${m[1]}`],
-
-  // Conversation.subject del canal FAMILY (isolation_router.py → _ensure_family_conversation)
-  [/^Conexión con Tierra: (.*) ↔ (.*)$/, (m) => `Connection with Earth: ${m[1]} ↔ ${m[2]}`],
-
-  // expansion_router.py → adjuntos de un mensaje (detail con el id)
-  [/^Adjunto #(\d+) no encontrado\.$/, (m) => `Attachment #${m[1]} not found.`],
-  [/^El adjunto #(\d+) ya pertenece a otro mensaje\.$/, (m) => `Attachment #${m[1]} already belongs to another message.`],
 ];

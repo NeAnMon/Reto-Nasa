@@ -1,2 +1,2 @@
-"""Services package for AstroVital."""
+"""Services package for SEMSA."""
 

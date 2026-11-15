@@ -1,4 +1,4 @@
-/* AstroVital · Consola · pestaña "Bienestar" (wellbeing.js)
+/* SEMSA · Consola · pestaña "Bienestar" (wellbeing.js)
  * Prefijo av-wb-. Usa los tokens de .av-console (console.css) y las clases av-mx-* de more.css.
  * Estados emocionales solo con texto y borde neutro: nunca amarillo/rojo (reservados a alertas C&W).
  */
@@ -51,16 +51,13 @@
 .av-wb-chips { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--av-text2); }
 .av-wb-care { display: flex; flex-direction: column; gap: 6px; }
 
-/* Accesos a otras herramientas */
-.av-wb-tools { list-style: none; margin: 0; padding: 12px; display: grid; gap: 8px; }
-.av-wb-tool {
-  width: 100%; min-height: 56px; padding: 8px 12px; flex-direction: column; align-items: flex-start; gap: 2px;
-  text-align: left; line-height: 1.3;
-}
-.av-wb-tool-t { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.av-wb-tool .av-sub { font-weight: 400; }
-
-.av-wb-feat { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 2px; }
+/* Pestañas Check-in emocional y Evaluación cognitiva: sus vistas traen su propia raíz .av-console
+   (emotional.js / cognitive.js). Dentro de Bienestar se anulan el margen negativo y el relleno de la
+   rejilla para que encajen como el resto de pestañas. */
+.av-wb-embed { min-width: 0; }
+.av-wb-embed > .av-console { margin: 0; }
+.av-wb-embed > .av-console > .av-grid { padding: 0; }
+.av-wb-embed > .av-console > .av-sub[role="status"] { padding: 16px 12px !important; }
 
 /* Tarjetas (tiempo libre y actividades) */
 .av-wb-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 12px; }

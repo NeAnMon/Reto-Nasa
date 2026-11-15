@@ -69,33 +69,11 @@ Estados: `SCHEDULED` → `COMPLETED` | `CANCELLED`. Respuestas: `PENDING`, `JOIN
 - **Autocuración:** una actividad `SCHEDULED` que ya cumple quórum (datos antiguos) se completa y reparte XP de forma idempotente en cualquier `POST /attend` o `GET /crew-activities`.
 `POST /crew-activities/{id}/cancel` (creador, líder asignado o administración) → actividad.
 
-## 4. Canal familiar ("Conexión con Tierra")
+## 4. Recomendación (no implementada): canal con seres queridos
 
-- Nuevo rol `FAMILY_MEMBER`: solo puede iniciar sesión, ver `/auth/me` y usar sus conversaciones `FAMILY` y adjuntos. Sin acceso a salud, alertas, misiones ni otros módulos (403).
-- Nueva tabla de contactos autorizados: `FamilyContact { id, astronaut_id, user_id (FAMILY_MEMBER), relationship ("Pareja", "Hija", …), is_active }`. Sembrar 2 familiares para el astronauta demo, con usuarios y contraseña demo documentados en el README igual que los demás.
-- `Conversation.channel`: `"MISSION"` (por defecto, todo lo existente) o `"FAMILY"`. En `FAMILY`, `leader_id` = id del usuario familiar (no se renombra la columna).
+Decisión de producto: este canal **no se construye** en esta versión; queda como recomendación para una fase futura.
 
-`GET /conversations?channel=FAMILY|MISSION` → mismo formato actual + campo `channel` en cada conversación (y `family_contact: { name, relationship }` si es FAMILY). Sin `channel` → solo `MISSION` (compatibilidad). Si quien consulta es `FAMILY_MEMBER`, `mission_code`, `mission_name`, `astronaut_crew_code` y `astronaut_callsign` llegan como `null` (no necesita datos operativos de la misión).
-`GET /family/contacts` (ASTRONAUT: los suyos; FAMILY_MEMBER: el/los astronautas con los que tiene vínculo) → `{ "items": [ { "id", "user_id", "name", "relationship", "conversation_id" } ] }`. Se crea la conversación FAMILY bajo demanda si no existe.
-
-Mensajes FAMILY: mismas rutas `/conversations/{id}/messages` (GET/POST). La categoría se fuerza a `GENERAL`.
-
-**Privacidad (obligatoria):**
-- Solo los dos participantes ven el contenido y los adjuntos de una conversación FAMILY.
-- MISSION_LEADER: no las ve en ningún listado. ADMINISTRATOR: la lectura auditada de contenido devuelve 403 para FAMILY; como mucho ve metadatos (fecha, número de mensajes).
-- Los eventos de auditoría de FAMILY guardan solo metadatos, nunca contenido.
-
-**Adjuntos (foto y nota de voz, "guardar y enviar"; no hay streaming):**
-`POST /attachments` (multipart, campo `file`; participante de alguna conversación) → 201 `{ "id", "file_name", "mime_type", "kind": "IMAGE"|"AUDIO", "file_size_bytes", "duration_seconds": null }`.
-- Tipos permitidos: `image/jpeg`, `image/png`, `image/webp` (≤ 5 MB); `audio/webm`, `audio/ogg`, `audio/mp4`, `audio/mpeg` (≤ 5 MB). Se valida por *magic bytes*, no por el nombre. Se guarda en disco con nombre aleatorio bajo `settings.UPLOAD_DIR` (configurable por entorno, por defecto `./uploads`, ignorado por git). Nunca se usa el nombre del cliente como ruta.
-- El adjunto queda "huérfano" hasta que un mensaje lo referencia; solo quien lo subió puede adjuntarlo.
-- **Límite de tamaño antes de parsear:** el servidor rechaza la petición antes de leer el cuerpo si falta `Content-Length` (411 `"Falta la cabecera Content-Length: no se aceptan subidas sin tamaño declarado."`) o si supera 5 MB + 64 KB de margen multipart (413 `"El adjunto supera el tamaño máximo de 5 MB."`). `Content-Length` no numérico → 400 `"Cabecera Content-Length no válida."`.
-- **Validación de audio:** MP3 = `ID3` o cabecera de frame MPEG válida (sync de 11 bits, versión/capa/bitrate/frecuencia no reservados). MP4/M4A = caja `ftyp` con marca de audio (`M4A `, `M4B `, `M4P `, `F4A `, `F4B `) o genérica (`isom`, `iso2`, `iso4`, `iso5`, `iso6`, `mp41`, `mp42`, `dash`, las que escriben Safari y Chrome con MediaRecorder); en cualquier caso se rechaza si contiene una pista de vídeo (`hdlr` = `vide`) y, con marca genérica, se exige una pista de sonido (`hdlr` = `soun`). WebM (`1A45DFA3` + `webm`) y Ogg (`OggS`) sin cambios.
-- **Pendientes y caducidad:** cada usuario puede tener como máximo `MAX_PENDING_ATTACHMENTS_PER_USER` (20) huérfanos (429 si se supera). Los huérfanos con más de `ORPHAN_ATTACHMENT_TTL_HOURS` (24 h) se purgan (fila + archivo) al arrancar y, de forma oportunista, cada vez que esa persona sube un adjunto.
-
-`DELETE /attachments/{id}` (solo quien lo subió) → 204 sin cuerpo; borra la fila y el archivo. Solo para huérfanos: si ya está en un mensaje → 409 `"Solo se pueden descartar adjuntos que aún no se han enviado."`; si no existe o es de otra persona → 404 `"Adjunto no encontrado."`.
-
-`POST /conversations/{id}/messages` acepta además `"attachment_ids": [12, 13]` (máx. 4). El contenido de texto puede ir vacío si hay al menos un adjunto. La respuesta incluye `attachments: [ { id, file_name, mime_type, kind, file_size_bytes, url: "/api/v1/attachments/12" } ]`.
-`GET /attachments/{id}` → el binario con su `Content-Type`, `Content-Disposition: inline`, `X-Content-Type-Options: nosniff`, `Cache-Control: private`. Solo participantes de la conversación del mensaje (o quien lo subió mientras sea huérfano). FAMILY: nunca administración ni líder.
-
-**Retardo de comunicación:** lo calcula el frontend según el entorno de la misión (LEO ≈ 0 s, órbita/superficie lunar ≈ 1,3 s por trayecto, tránsito/superficie de Marte 4–24 min). Se muestra junto al envío: "Llegará en ~X". Nada de videollamadas ni streaming.
+- **Por qué:** el NASA HRP (*Isolation and Confinement*, *Behavioral Health*) señala la separación de familia y amigos como un factor de riesgo psicosocial en misiones largas; el contacto regular con los seres queridos es un factor protector.
+- **Forma recomendada:** mensajes asíncronos de texto, foto y nota de voz ("grabar, guardar y enviar"), sin videollamadas ni streaming: el retardo de comunicación (≈ 1,3 s por trayecto en la Luna, 4–24 min en Marte) los haría inviables.
+- **Privacidad estricta:** solo el astronauta y el familiar autorizado verían el contenido; ni el líder de misión ni la administración, ni siquiera con acceso auditado. Las cuentas de familiares tendrían acceso mínimo (solo ese canal) y la auditoría guardaría solo metadatos.
+- **Antes de implementarlo:** definir almacenamiento persistente de adjuntos (volumen, permisos, límites de tamaño en el proxy y validación del tipo real de archivo) y la gestión de vínculos autorizados.

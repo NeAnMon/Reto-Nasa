@@ -1,8 +1,7 @@
--- AstroVital Initial Relational Schema Migration (v1.0)
+-- SEMSA Initial Relational Schema Migration (v1.0)
 -- Compatible with SQLite 3.x and PostgreSQL 15+
 
--- Core Identity & RBAC: roles (ASTRONAUT, MISSION_LEADER, ADMINISTRATOR, FAMILY_MEMBER), permissions,
---   role_permissions, users, user_sessions, astronaut_profiles
+-- Core Identity & RBAC: roles, permissions, role_permissions, users, user_sessions, astronaut_profiles
 -- Mission & Context Engine: environment_profiles, missions, mission_assignments, mission_phases, mission_contexts
 -- Health & Rules Engine: data_sources, sensor_registry, health_indicator_definitions, health_baselines,
 --   clinical_rules, clinical_rule_versions, health_measurements, environmental_measurements, data_quality_events
@@ -10,10 +9,6 @@
 -- Psychological Wellness: wellness_instruments, psychological_wellness_assessments, wellness_recommendations, wellness_action_feedbacks
 -- Gamification: daily_missions, gamification_profiles, gamification_events, badges, user_badges
 -- Governance & Exports: reports, audit_events
--- Communication Center: conversations (channel VARCHAR(20) NOT NULL DEFAULT 'MISSION' — MISSION | FAMILY;
---   en FAMILY leader_id = usuario familiar), conversation_participants, messages,
---   message_attachments (message_id NULL = adjunto huérfano; uploader_id, storage_key UNIQUE, kind IMAGE|AUDIO,
---   duration_seconds), message_read_receipts, message_notifications, support_requests, conversation_audit_events
 -- Isolation & Confinement (docs/CONTRATO_AISLAMIENTO.md):
 --   quick_checkins (astronaut_id, dedup_key UNIQUE, sleep_hours, sleep_quality, mood, energy, feels_isolated, note,
 --     operational_flag, created_at)
@@ -25,11 +20,7 @@
 --     status SCHEDULED|COMPLETED|CANCELLED, created_by_id, completed_at, cancelled_at, created_at)
 --   crew_activity_participants (activity_id, user_id, response PENDING|JOINED|DECLINED, attended, xp_awarded,
 --     responded_at, attended_at; UNIQUE(activity_id, user_id))
---   family_contacts (astronaut_id, user_id, relationship, is_active, created_at; UNIQUE(astronaut_id, user_id))
 
 -- Managed automatically via SQLAlchemy ORM metadata in backend.app.models.models
 -- Run `python scripts/init_demo_db.py` to initialize schema and seed DEMO data.
--- Existing databases: on every start, backend.app.database.seed.apply_lightweight_migrations() runs an
--- idempotent upgrade (ALTER TABLE conversations ADD COLUMN channel ... DEFAULT 'MISSION'; in SQLite,
--- message_attachments is rebuilt to make message_id nullable and add the new columns, preserving rows).
--- New tables are created by create_all; catalogs, the FAMILY_MEMBER role and demo relatives are seeded idempotently.
+-- Existing databases: new tables are created by create_all and catalogs are seeded idempotently on every start.

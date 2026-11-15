@@ -1,4 +1,4 @@
-/* AstroVital · Consola · utilidades compartidas por las vistas del menú "Más"
+/* SEMSA · Consola · utilidades compartidas por las vistas del menú "Más"
  * (bienestar, cognitivo, emocional, tripulación, administración, ajustes).
  *
  * - Estados de bienestar/emocionales como etiqueta de TEXTO (sin amarillo/rojo: esos colores

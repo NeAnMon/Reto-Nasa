@@ -1,5 +1,5 @@
 /*
- * AstroVital · Clases de alerta de la consola (fuente única)
+ * SEMSA · Clases de alerta de la consola (fuente única)
  *
  * La consola usa la convención Caution & Warning de NASA (ISS SSP 50313 §11,
  * NASA-STD-3001 Vol. 2). Hay tres clases de alerta, de más a menos grave:
@@ -69,6 +69,11 @@ export function alertClassOf(state) {
 
 /* ¿Es alarma (W o C)? */
 export const isAlarm = (l) => l === CLS.WARNING || l === CLS.CAUTION;
+
+/* ¿Es una alerta temprana? (reglas RULE_EARLY_* de backend/app/rules/early_warnings.py, p. ej. la
+ * recomendación de contacto con Tierra). Son de clase A: en Alertas van en desplegables y su
+ * recomendación se muestra en el Resumen de la consola. */
+export const isEarlyAlert = (a) => String(a?.rule_code || "").startsWith("RULE_EARLY_");
 
 /* Clase desde una puntuación de gravedad 0..3 (0 = nominal) */
 export const classFromRank = (r) => (r >= 3 ? CLS.WARNING : r >= 2 ? CLS.CAUTION : r >= 1 ? CLS.ADVISORY : STATE.NOMINAL);

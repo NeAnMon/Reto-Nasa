@@ -1,4 +1,4 @@
-/* AstroVital · Consola · Vista "Insights por entorno"
+/* SEMSA · Consola · Vista "Insights por entorno"
  * Solo clases av-env-*; usa los tokens de .av-console definidos en console.css.
  * Dark cockpit: nominal sin color; amarillo solo para nivel alto. El color nunca va solo:
  * cada nivel lleva texto (Bajo / Medio / Alto) y cada estado su letra.
@@ -51,17 +51,22 @@
 .av-env-lv { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font: 600 11px/1.2 "IBM Plex Mono", monospace; letter-spacing: .04em; text-transform: uppercase; color: var(--av-muted); }
 .av-env-lv-bars { display: inline-flex; gap: 2px; }
 .av-env-lv-bars i { display: block; width: 6px; height: 10px; border: 1px solid var(--av-strong); }
-.av-env-lv-1 .av-env-lv-bars i:nth-child(-n+1),
-.av-env-lv-2 .av-env-lv-bars i:nth-child(-n+2) { background: var(--av-text2); border-color: var(--av-text2); }
-.av-env-lv-3 .av-env-lv-bars i { background: var(--av-y); border-color: var(--av-y); }
-.av-env-lv-2 { color: var(--av-text2); }
-.av-env-lv-3 { color: var(--av-y); }
-body[data-theme="daylight-clean"] .av-env-lv-3 { color: var(--av-text); }
+/* Colores por nivel (issue #5): bajo = blanco, medio = amarillo, alto = rojo */
+.av-env-lv-1 .av-env-lv-bars i:nth-child(-n+1) { background: var(--av-text); border-color: var(--av-text); }
+.av-env-lv-2 .av-env-lv-bars i:nth-child(-n+2) { background: var(--av-y); border-color: var(--av-y); }
+.av-env-lv-3 .av-env-lv-bars i { background: var(--av-r); border-color: var(--av-r); }
+.av-env-lv-1 { color: var(--av-text); }
+.av-env-lv-2 { color: var(--av-y); }
+.av-env-lv-3 { color: var(--av-r-text); }
+/* Tema claro: el "blanco" pasa a texto principal y el texto amarillo/rojo se oscurece para mantener contraste */
+body[data-theme="daylight-clean"] .av-env-lv-2 { color: #7a5c00; }
+body[data-theme="daylight-clean"] .av-env-lv-3 { color: #a4262c; }
 
 /* Peligros */
 .av-env-hzlist { list-style: none; margin: 0; padding: 12px; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
 .av-env-hz { display: flex; flex-direction: column; gap: 4px; padding: 10px; background: var(--av-bg); border: 1px solid var(--av-border); min-width: 0; }
-.av-env-hz-3 { border-left: 3px solid var(--av-y); }
+.av-env-hz-2 { border-left: 3px solid var(--av-y); }
+.av-env-hz-3 { border-left: 3px solid var(--av-r); }
 .av-env-hzval { font-size: 18px; font-weight: 600; line-height: 1.2; overflow-wrap: anywhere; }
 .av-env-hzlv { margin-top: auto; padding-top: 4px; }
 

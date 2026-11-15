@@ -1,5 +1,5 @@
 /*
- * AstroVital · Consola de salud · Vista "Alertas" (resumen C&W)
+ * SEMSA · Consola de salud · Vista "Alertas" (resumen C&W)
  *
  * Resumen de alertas críticas y de precaución según ISS SSP 50313 §11 y NASA-STD-3001 Vol. 2:
  *  - columnas Estado (ALARM/NORM), Clase (W crítico, C precaución, A vigilar; ver alert-classes.js), ACK (X),
@@ -13,7 +13,7 @@
  *
  * Reemplaza a renderAlertsCenter (app.js) y conserva todas sus funciones: listado,
  * explicación, acción inmediata, seguimiento recomendado, reconocer, resolver, escalar,
- * contactar al líder en Tierra (prefill de mensaje) e historial de actuaciones.
+ * e historial de actuaciones (el contacto por Mensajes se retiró con ese módulo, issue #15).
  *
  * Importante: el contenedor de secciones es compartido y console.js tiene listeners
  * delegados que reaccionan a [data-act], [data-nav] y form[data-form] dentro de
@@ -27,7 +27,8 @@ import { escapeHtml, gmt, badge, RANK, ruleOf } from "../console.js";
 import { apiService } from "../../services/api.js";
 import { tr, fmt } from "../../i18n/i18n.js";
 import { bt, btLines } from "/src/i18n/backend.js";
-import { CLS, ALERT_CLASSES, STATE_WORD, alertClassOf, isAlarm } from "../alert-classes.js";
+import { CLS, ALERT_CLASSES, STATE_WORD, alertClassOf, isAlarm, isEarlyAlert } from "../alert-classes.js";
+import { openWellbeingSub } from "./wellbeing.js";
 
 const esc = escapeHtml;
 
@@ -142,16 +143,12 @@ const DICT = {
     openCrewConsole: "Abrir la consola de este tripulante",
     openConsole: "Abrir la consola de salud",
     remeasure: "Volver a medir",
-    openMessages: "Abrir mensajes sobre esta alerta",
-    contactLead: "Contactar al líder en Tierra",
     actions: "Acciones",
     minNote: "Las notas necesitan al menos 3 caracteres. Todo queda en el historial y en la auditoría.",
     history: "Historial",
     annRefreshing: "Actualizando alertas…",
     annRefreshFail: "No se pudieron actualizar las alertas.",
     annRefreshed: "Alertas actualizadas.",
-    prefillLeader: "[Consulta sobre Alerta #{id}: {title}] Te escribo para revisar esta alerta contigo.",
-    prefillCrew: "[Consulta sobre Alerta #{id}: {title}] Solicito revisión u orientación operativa al equipo en Tierra.",
     filterApplied: "Filtro aplicado: {n} {w} en el resumen.",
     alertOne: "alerta",
     alertMany: "alertas",
@@ -165,6 +162,51 @@ const DICT = {
     actionFail: "No se pudo completar la acción: {msg}",
     newAlert: "Nueva alerta {c} ({w}): {t}{more}.",
     newMore: " y {n} más",
+    earlyTitle: "Alertas tempranas",
+    earlyCount: "{n} activas",
+    earlyCountOne: "1 activa",
+    earlyIntro: "Señales preventivas antes de que haga falta una alarma. Despliega cada una para ver la recomendación.",
+    earlyEmpty: "No hay alertas tempranas activas.",
+    earlyRec: "Recomendación",
+    earlyIfPersists: "Si continúa",
+    earlyKind: "Bienestar · aislamiento",
+    earlyEarth: "Ver canal con Tierra en Recomendaciones",
+    earlyManage: "Ver detalle y gestionar",
+    earlyListAria: "Alertas tempranas desplegables",
+    // Recomendaciones y contramedidas (issue #26)
+    recoTitle: "Recomendaciones y contramedidas",
+    recoIntro: "Qué hacer ahora con cada alerta activa, agrupada por el módulo donde se generó. La más grave va primero.",
+    recoCount: "{n} alertas activas",
+    recoCountOne: "1 alerta activa",
+    recoEmpty: "No hay alertas activas: no hace falta ninguna contramedida ahora.",
+    recoEarlyNote: "Las alertas tempranas de aislamiento tienen su recomendación en el bloque siguiente.",
+    recoNow: "Qué hacer ahora",
+    recoFollow: "Seguimiento",
+    recoCounter: "Contramedida",
+    recoDetail: "Ver detalle y gestionar",
+    recoMore: "Mostrar {n} más",
+    recoLess: "Mostrar menos",
+    recoGroupAria: "Alertas del módulo {m}",
+    module: {
+      VITALS: "Signos vitales",
+      RADIATION: "Radiación",
+      EMOTIONAL: "Bienestar · check-in emocional",
+      COGNITIVE: "Bienestar · evaluación cognitiva",
+      SLEEP: "Sueño, fatiga y ánimo",
+      HABITS: "Hidratación y actividad física",
+      ISOLATION: "Bienestar · aislamiento",
+      OTHER: "Otros módulos",
+    },
+    counter: {
+      VITALS: ["Reposo sentado 5 minutos, hidrátate y vuelve a medir. Si el valor sigue fuera de límite, escala al médico de vuelo.", "Volver a medir"],
+      RADIATION: ["Ve al área más blindada de la nave o refugio, aplaza la actividad extravehicular y revisa la dosis acumulada en el dosímetro.", "Abrir Radiación"],
+      EMOTIONAL: ["Busca un momento en privado con tu especialista de apoyo y completa el check-in emocional pendiente.", "Abrir Check-in emocional"],
+      COGNITIVE: ["Haz una pausa de recuperación (descanso o respiración guiada) y repite la evaluación cognitiva cuando estés descansado.", "Abrir Evaluación cognitiva"],
+      SLEEP: ["Higiene de sueño: compartimento oscuro y silencioso, sin pantallas antes de dormir; registra tu sueño en el check-in de Bienestar.", "Abrir Bienestar · Hoy"],
+      HABITS: ["Completa las contramedidas de hoy: rutina de hidratación y ejercicio programado.", "Abrir Contramedidas de hoy"],
+      ISOLATION: ["Programa un contacto con Tierra con familia o equipo de apoyo.", "Ver canal con Tierra"],
+      OTHER: ["Revisa las contramedidas de hoy y sigue el procedimiento de la alerta.", "Abrir Contramedidas de hoy"],
+    },
   },
   en: {
     status: {
@@ -274,16 +316,12 @@ const DICT = {
     openCrewConsole: "Open this crew member's console",
     openConsole: "Open health console",
     remeasure: "Re-measure",
-    openMessages: "Open messages about this alert",
-    contactLead: "Contact ground lead",
     actions: "Actions",
     minNote: "Notes need at least 3 characters. Everything is kept in the history and the audit log.",
     history: "History",
     annRefreshing: "Refreshing alerts…",
     annRefreshFail: "Could not refresh alerts.",
     annRefreshed: "Alerts refreshed.",
-    prefillLeader: "[Query about Alert #{id}: {title}] Writing to review this alert with you.",
-    prefillCrew: "[Query about Alert #{id}: {title}] Requesting review or operational guidance from the ground team.",
     filterApplied: "Filter applied: {n} {w} in the summary.",
     alertOne: "alert",
     alertMany: "alerts",
@@ -297,6 +335,51 @@ const DICT = {
     actionFail: "Could not complete the action: {msg}",
     newAlert: "New {c} alert ({w}): {t}{more}.",
     newMore: " and {n} more",
+    earlyTitle: "Early warnings",
+    earlyCount: "{n} active",
+    earlyCountOne: "1 active",
+    earlyIntro: "Preventive signals before an alarm is needed. Expand each one to see the recommendation.",
+    earlyEmpty: "No active early warnings.",
+    earlyRec: "Recommendation",
+    earlyIfPersists: "If it continues",
+    earlyKind: "Wellbeing · isolation",
+    earlyEarth: "See the Earth channel in Recommendations",
+    earlyManage: "See details and manage",
+    earlyListAria: "Expandable early warnings",
+    // Recommendations and countermeasures (issue #26)
+    recoTitle: "Recommendations and countermeasures",
+    recoIntro: "What to do now for each active alert, grouped by the module that raised it. The most severe comes first.",
+    recoCount: "{n} active alerts",
+    recoCountOne: "1 active alert",
+    recoEmpty: "No active alerts: no countermeasure is needed right now.",
+    recoEarlyNote: "Isolation early warnings have their recommendation in the next block.",
+    recoNow: "What to do now",
+    recoFollow: "Follow-up",
+    recoCounter: "Countermeasure",
+    recoDetail: "See details and manage",
+    recoMore: "Show {n} more",
+    recoLess: "Show less",
+    recoGroupAria: "Alerts from {m}",
+    module: {
+      VITALS: "Vital signs",
+      RADIATION: "Radiation",
+      EMOTIONAL: "Wellbeing · emotional check-in",
+      COGNITIVE: "Wellbeing · cognitive assessment",
+      SLEEP: "Sleep, fatigue and mood",
+      HABITS: "Hydration and physical activity",
+      ISOLATION: "Wellbeing · isolation",
+      OTHER: "Other modules",
+    },
+    counter: {
+      VITALS: ["Rest seated for 5 minutes, hydrate and measure again. If the value stays out of limits, escalate to the flight surgeon.", "Measure again"],
+      RADIATION: ["Move to the most shielded area or storm shelter, postpone extravehicular activity and check the accumulated dose on the dosimeter.", "Open Radiation"],
+      EMOTIONAL: ["Find a private moment with your support specialist and complete the pending emotional check-in.", "Open Emotional check-in"],
+      COGNITIVE: ["Take a recovery break (rest or guided breathing) and repeat the cognitive assessment once rested.", "Open Cognitive assessment"],
+      SLEEP: ["Sleep hygiene: dark, quiet crew quarters, no screens before sleeping; log your sleep in the Wellbeing check-in.", "Open Wellbeing · Today"],
+      HABITS: ["Complete today's countermeasures: hydration routine and scheduled exercise.", "Open Today's countermeasures"],
+      ISOLATION: ["Schedule an Earth contact with family or the support team.", "See the Earth channel"],
+      OTHER: ["Check today's countermeasures and follow the alert procedure.", "Open Today's countermeasures"],
+    },
   },
 };
 
@@ -319,7 +402,37 @@ const ui = {
   userId: null,
   sig: null,
   drafts: {},
+  earlyOpen: new Set(), // alertas tempranas desplegadas (sobreviven al sondeo y al repintado)
+  recoOpen: new Set(), // módulos de Recomendaciones con todas sus alertas a la vista
 };
+
+/* Módulo donde se generó cada alerta (regla o indicador) y dónde se hace su contramedida */
+const VITAL_CODES = new Set(["HEART_RATE", "BLOOD_PRESSURE", "BODY_TEMP", "SPO2", "RESP_RATE", "BLOOD_GLUCOSE"]);
+const MODULE_ORDER = ["VITALS", "RADIATION", "EMOTIONAL", "COGNITIVE", "SLEEP", "HABITS", "ISOLATION", "OTHER"];
+const RECO_VISIBLE = 3;
+/* act: data-al-act del botón de contramedida; sec/sub: sección (y pestaña de Bienestar) a la que lleva */
+const MODULE_GO = {
+  VITALS: { act: "go-measure" },
+  RADIATION: { act: "go-cm", sec: "radiation" },
+  EMOTIONAL: { act: "go-cm", sec: "emotional-center" },
+  COGNITIVE: { act: "go-cm", sec: "cognitive-center" },
+  SLEEP: { act: "go-cm", sec: "wellbeing-hub", sub: "today" },
+  HABITS: { act: "go-cm", sec: "daily-missions" },
+  ISOLATION: { act: "go-rec", rec: "earth-channel" },
+  OTHER: { act: "go-cm", sec: "daily-missions" },
+};
+function moduleOf(a) {
+  const rule = String(a.rule_code || "");
+  const ind = String(a.indicator_code || "");
+  if (isEarlyAlert(a)) return "ISOLATION";
+  if (rule.startsWith("RULE_EMOTIONAL") || rule.startsWith("RULE_SUPPORT")) return "EMOTIONAL";
+  if (rule.startsWith("RULE_COGNITIVE")) return "COGNITIVE";
+  if (ind.startsWith("RADIATION")) return "RADIATION";
+  if (VITAL_CODES.has(ind)) return "VITALS";
+  if (ind === "SLEEP_DURATION" || ind === "PERCEIVED_FATIGUE" || ind === "MOOD_WELLNESS") return "SLEEP";
+  if (ind === "HYDRATION" || ind === "PHYSICAL_ACTIVITY") return "HABITS";
+  return "OTHER";
+}
 
 /* Al cambiar de usuario (cerrar sesión y entrar con otro) se vuelve al estado inicial:
  * filtros, selección y borradores no pasan de una cuenta a otra. */
@@ -327,7 +440,7 @@ function resetUiFor(appState) {
   const uid = appState.currentUser?.id ?? null;
   if (ui.userId === uid) return;
   Object.assign(ui, { state: "ACTIVE", cls: "ALL", showAdv: false, crew: null, crewPicked: false,
-    selectedId: null, knownIds: null, sig: null, drafts: {}, userId: uid });
+    selectedId: null, knownIds: null, sig: null, drafts: {}, earlyOpen: new Set(), recoOpen: new Set(), userId: uid });
 }
 
 /* ───────────────────────── utilidades ───────────────────────── */
@@ -465,6 +578,8 @@ export async function renderAlertsView(container, appState, helpers) {
   <div class="av-console av-al-root">
     <div class="av-grid">
       <section class="av-col-b" aria-labelledby="av-al-h">
+        <div data-al-zone="reco"></div>
+        <div data-al-zone="early"></div>
         <div class="av-panel">
           <div class="av-panel-head">
             <div>
@@ -534,11 +649,143 @@ async function reload(ctx, { first = false, focusDetail = false, headerFresh = f
 }
 
 function renderAll(ctx) {
+  renderReco(ctx);
+  renderEarly(ctx);
   renderScope(ctx);
   renderCounters(ctx);
   renderFilters(ctx);
   renderTable(ctx);
   renderDetail(ctx);
+}
+
+/* Recomendaciones y contramedidas (issue #26): cada alerta activa del ámbito, de cualquier módulo,
+ * con su acción inmediata, su seguimiento y la contramedida del módulo a la vista (sin desplegar).
+ * Grupos por módulo de origen, el más grave primero; dentro, el orden de ctx.list (clase y hora).
+ * Las tempranas de aislamiento ya tienen su bloque desplegable debajo: aquí solo se mencionan. */
+function renderReco(ctx) {
+  const T = tr(DICT);
+  const z = zone(ctx, "reco");
+  if (!z) return;
+  const leader = isLeader(ctx.appState);
+  const active = ctx.list.filter((v) => v.active && !v.outOfScope);
+  const items = active.filter((v) => !isEarlyAlert(v.a));
+  const earlyN = active.length - items.length;
+  const groups = new Map();
+  items.forEach((v) => {
+    const m = moduleOf(v.a);
+    if (!groups.has(m)) groups.set(m, []);
+    groups.get(m).push(v);
+  });
+  const topRank = (list) => Math.max(...list.map((v) => RANK[v.cls] || 0));
+  const mods = [...groups.keys()].sort((x, y) =>
+    topRank(groups.get(y)) - topRank(groups.get(x)) || MODULE_ORDER.indexOf(x) - MODULE_ORDER.indexOf(y));
+
+  const card = (v, m) => {
+    const a = v.a;
+    const id = Number(a.id);
+    const go = MODULE_GO[m];
+    const [cmText, cmBtn] = T.counter[m];
+    const who = leader ? a.crew_code || a.astronaut_name || "" : "";
+    const val = `${a.value_recorded ?? ""} ${bt(a.unit ?? "")}`.trim();
+    const sub = [val ? `<span class="av-mono">${esc(val)}</span>` : "", esc(who), esc(statusText(v)), timeHTML(a.created_at)]
+      .filter(Boolean).join(" · ");
+    const goAttrs = `data-al-act="${go.act}" data-al-astro="${Number(a.astronaut_id)}"` +
+      (go.sec ? ` data-al-sec="${esc(go.sec)}"` : "") + (go.sub ? ` data-al-sub="${esc(go.sub)}"` : "") +
+      (go.rec ? ` data-al-rec="${esc(go.rec)}"` : "");
+    return `<li class="av-al-reco-card" data-cls="${esc(v.cls)}">
+      <div class="av-al-reco-head">
+        ${clsBadge(v.cls)}
+        <span class="av-al-reco-t">${esc(bt(a.title) || T.untitled)}</span>
+      </div>
+      <p class="av-sub av-al-p">${sub}</p>
+      <div class="av-al-reco-now">
+        <span class="av-lbl">${esc(T.recoNow)}</span>
+        <p class="av-al-p">${esc(bt(a.immediate_action) || T.noImmediate)}</p>
+      </div>
+      ${a.followup_recommendation ? `<p class="av-al-p"><strong>${esc(T.recoFollow)}:</strong> ${esc(bt(a.followup_recommendation))}</p>` : ""}
+      <p class="av-al-p av-al-reco-cm"><strong>${esc(T.recoCounter)}:</strong> ${esc(cmText)}</p>
+      <div class="av-al-btns">
+        <button type="button" class="av-btn av-btn-sm av-btn-primary" ${goAttrs}>${esc(cmBtn)}</button>
+        <button type="button" class="av-btn av-btn-sm" data-al-pick="${id}" aria-controls="av-al-detail">${esc(T.recoDetail)}</button>
+      </div>
+    </li>`;
+  };
+
+  const group = (m) => {
+    const list = groups.get(m);
+    const open = ui.recoOpen.has(m);
+    const shown = open ? list : list.slice(0, RECO_VISIBLE);
+    const rest = list.length - RECO_VISIBLE;
+    const name = T.module[m];
+    return `<section class="av-al-reco-group" aria-label="${esc(fmt(T.recoGroupAria, { m: name }))}">
+      <h3 class="av-h3 av-al-reco-mod">${esc(name)} <span class="av-sub av-mono">${list.length}</span></h3>
+      <ul class="av-al-reco-list">${shown.map((v) => card(v, m)).join("")}</ul>
+      ${rest > 0 ? `<button type="button" class="av-btn av-btn-sm av-al-reco-more" data-al-act="reco-more" data-al-mod="${m}" aria-expanded="${open}">
+        ${esc(open ? T.recoLess : fmt(T.recoMore, { n: rest }))}</button>` : ""}
+    </section>`;
+  };
+
+  const count = items.length === 1 ? T.recoCountOne : fmt(T.recoCount, { n: items.length });
+  z.innerHTML = `
+    <section class="av-panel av-al-reco" aria-labelledby="av-al-reco-h">
+      <div class="av-panel-head">
+        <h2 id="av-al-reco-h" class="av-h2">${esc(T.recoTitle)}</h2>
+        <span class="av-sub">${esc(count)}</span>
+      </div>
+      ${items.length
+        ? `<p class="av-sub av-al-pad av-al-reco-intro">${esc(T.recoIntro)}</p>
+           <div class="av-al-reco-groups">${mods.map(group).join("")}</div>`
+        : `<p class="av-sub av-al-pad">${esc(T.recoEmpty)}</p>`}
+      ${earlyN ? `<p class="av-sub av-al-pad av-al-reco-intro">${esc(T.recoEarlyNote)}</p>` : ""}
+    </section>`;
+}
+
+/* Alertas tempranas en desplegables (<details>, mismo patrón .av-fold que las secciones plegables
+ * de Radiación). Cerradas por defecto; las que se abren siguen abiertas tras el sondeo. */
+function renderEarly(ctx) {
+  const T = tr(DICT);
+  const z = zone(ctx, "early");
+  if (!z) return;
+  const leader = isLeader(ctx.appState);
+  const items = ctx.list.filter((v) => v.active && !v.outOfScope && isEarlyAlert(v.a));
+  const count = items.length === 1 ? T.earlyCountOne : fmt(T.earlyCount, { n: items.length });
+  const item = (v) => {
+    const a = v.a;
+    const id = Number(a.id);
+    const who = leader ? a.crew_code || a.astronaut_name || "" : "";
+    const sub = [who, T.earlyKind].filter(Boolean).join(" · ");
+    return `<li>
+      <details class="av-fold av-al-early-item" data-al-early="${id}" ${ui.earlyOpen.has(id) ? "open" : ""}>
+        <summary class="av-panel-head av-fold-head av-al-early-head">
+          ${clsBadge(v.cls)}
+          <span class="av-al-early-t">${esc(bt(a.title) || T.untitled)}</span>
+          <span class="av-mono av-sub av-al-early-time">${timeHTML(a.created_at)}</span>
+        </summary>
+        <div class="av-al-early-body">
+          <p class="av-sub av-al-p">${esc(sub)}${!v.acked ? ` · ${esc(T.status.NEW)}` : ""}</p>
+          <p class="av-al-p">${esc(bt(a.explanation) || T.noExplanation)}</p>
+          <h3 class="av-h3">${esc(T.earlyRec)}</h3>
+          <p class="av-al-p">${esc(bt(a.immediate_action) || T.noImmediate)}</p>
+          ${a.followup_recommendation ? `<p class="av-sub av-al-p"><strong>${esc(T.earlyIfPersists)}:</strong> ${esc(bt(a.followup_recommendation))}</p>` : ""}
+          <div class="av-al-btns">
+            <button type="button" class="av-btn av-btn-sm av-btn-primary" data-al-act="go-rec" data-al-rec="earth-channel">${esc(T.earlyEarth)}</button>
+            <button type="button" class="av-btn av-btn-sm" data-al-pick="${id}" aria-controls="av-al-detail">${esc(T.earlyManage)}</button>
+          </div>
+        </div>
+      </details>
+    </li>`;
+  };
+  z.innerHTML = `
+    <section class="av-panel av-al-early" aria-labelledby="av-al-early-h">
+      <div class="av-panel-head">
+        <h2 id="av-al-early-h" class="av-h2">${esc(T.earlyTitle)}</h2>
+        <span class="av-sub">${esc(count)}</span>
+      </div>
+      ${items.length
+        ? `<p class="av-sub av-al-pad av-al-early-intro">${esc(T.earlyIntro)}</p>
+           <ul class="av-al-early-list" aria-label="${esc(T.earlyListAria)}">${items.map(item).join("")}</ul>`
+        : `<p class="av-sub av-al-pad">${esc(T.earlyEmpty)}</p>`}
+    </section>`;
 }
 
 function renderScope(ctx) {
@@ -768,7 +1015,7 @@ function detailHTML(ctx, v) {
       <span class="av-sub">${esc(bt(a.unit || ""))}</span>
     </div>
     <dl class="av-al-kv">
-      <dt>${esc(T.kvIndicator)}</dt><dd>${esc(bt(cat?.name) || a.indicator_code || "—")}</dd>
+      <dt>${esc(T.kvIndicator)}</dt><dd>${esc(bt(cat?.name) || (isEarlyAlert(a) ? T.earlyKind : a.indicator_code) || "—")}</dd>
       <dt>${esc(T.kvRule)}</dt><dd><span class="av-mono">${esc(a.rule_code || "—")}${a.rule_version_label ? ` · v${esc(a.rule_version_label)}` : ""}</span>${demo ? ` ${tag("DEMO")}` : ""}</dd>
       <dt>${esc(T.kvPriority)}</dt><dd>${esc(T.priority[a.priority] || a.priority || "—")}</dd>
       <dt>${esc(T.kvQuality)}</dt><dd>${esc(T.quality[a.data_quality] || a.data_quality || "—")}</dd>
@@ -791,7 +1038,6 @@ function detailHTML(ctx, v) {
     <div class="av-al-btns">
       <button type="button" class="av-btn av-btn-sm" data-al-act="go-console" data-al-astro="${Number(a.astronaut_id)}">${esc(leader && otherCrew ? T.openCrewConsole : T.openConsole)}</button>
       <button type="button" class="av-btn av-btn-sm" data-al-act="go-measure" data-al-astro="${Number(a.astronaut_id)}">${esc(T.remeasure)}</button>
-      <button type="button" class="av-btn av-btn-sm" data-al-act="contact" data-al-id="${id}">${esc(leader ? T.openMessages : T.contactLead)}</button>
     </div>
   </section>
 
@@ -837,7 +1083,7 @@ function setBusy(ctx, on) {
 }
 
 function bind(ctx) {
-  const { root, appState, helpers } = ctx;
+  const { root, helpers } = ctx;
 
   root.addEventListener("click", async (ev) => {
     const pick = ev.target.closest("[data-al-pick]");
@@ -863,19 +1109,33 @@ function bind(ctx) {
     } else if (act === "go-console" || act === "go-measure") {
       await selectAstronautIfNeeded(ctx, Number(btn.getAttribute("data-al-astro")));
       helpers.navigateToSection(act === "go-console" ? "mission-control" : "my-health-check");
-    } else if (act === "contact") {
-      const v = ctx.list.find((x) => x.a.id === Number(btn.getAttribute("data-al-id")));
-      if (!v) return;
-      const T = tr(DICT);
-      // Mismo prefill que la vista anterior: lo consume el centro de comunicación.
-      // expansion_views.js lo inserta sin escapar dentro de un <textarea>, así que
-      // se quitan los caracteres que podrían cerrar la etiqueta o formar entidades.
-      const safeTitle = String(bt(v.a.title) || "").replace(/[<>&]/g, "");
-      appState.pendingAlertMessagePrefill = fmt(isLeader(appState) ? T.prefillLeader : T.prefillCrew, { id: Number(v.a.id), title: safeTitle });
-      appState.pendingAlertCategoryPrefill = "HEALTH_UPDATE";
-      helpers.navigateToSection("communication-center");
+    } else if (act === "go-cm") {
+      // Contramedida de una alerta: lleva al módulo donde se hace (y a su pestaña de Bienestar)
+      await selectAstronautIfNeeded(ctx, Number(btn.getAttribute("data-al-astro")));
+      const sub = btn.getAttribute("data-al-sub");
+      if (sub) openWellbeingSub(sub);
+      helpers.navigateToSection(btn.getAttribute("data-al-sec"));
+    } else if (act === "reco-more") {
+      const m = btn.getAttribute("data-al-mod");
+      if (ui.recoOpen.has(m)) ui.recoOpen.delete(m);
+      else ui.recoOpen.add(m);
+      renderReco(ctx);
+      root.querySelector(`[data-al-act="reco-more"][data-al-mod="${CSS.escape(m)}"]`)?.focus();
+    } else if (act === "go-rec") {
+      // Pestaña Recomendaciones con el cuadro pedido desplegado (lo lee views/recommendations.js)
+      try { sessionStorage.setItem("av_rec_open", btn.getAttribute("data-al-rec") || ""); } catch { /* sin almacenamiento */ }
+      helpers.navigateToSection("recommendations");
     }
   });
+
+  // "toggle" de <details> no burbujea: se escucha en captura para recordar los desplegables abiertos
+  root.addEventListener("toggle", (ev) => {
+    const d = ev.target;
+    if (!(d instanceof HTMLElement) || !d.matches("details[data-al-early]")) return;
+    const id = Number(d.getAttribute("data-al-early"));
+    if (d.open) ui.earlyOpen.add(id);
+    else ui.earlyOpen.delete(id);
+  }, true);
 
   const saveDraft = (ev) => {
     const k = draftKey(ev.target);
@@ -1002,6 +1262,9 @@ async function poll(ctx) {
   if (!root.isConnected) return;
   const fresh = ctx.list.filter((v) => !ui.knownIds.has(v.a.id));
   fresh.forEach((v) => ui.knownIds.add(v.a.id));
+  // los desplegables de alertas tempranas tampoco se repintan mientras se usan
+  if (!zone(ctx, "early").contains(document.activeElement)) renderEarly(ctx);
+  if (!zone(ctx, "reco").contains(document.activeElement)) renderReco(ctx);
   renderScope(ctx);
   renderCounters(ctx);
   // los filtros solo se repintan si no se están usando

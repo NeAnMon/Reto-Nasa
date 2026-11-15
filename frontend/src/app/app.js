@@ -9,16 +9,15 @@ import {
 import { renderMeasureView } from "../console/views/measure.js";
 import { renderCountermeasuresView } from "../console/views/countermeasures.js";
 import { renderAlertsView } from "../console/views/alerts.js";
-import { renderMessagesView } from "../console/views/messages.js";
+import { renderRecommendationsView } from "../console/views/recommendations.js";
 import { renderLogbookView } from "../console/views/logbook.js";
-import { renderWellnessView } from "../console/views/wellness.js";
 import { renderCognitiveView } from "../console/views/cognitive.js";
 import { renderEmotionalView } from "../console/views/emotional.js";
 import { renderCrewView } from "../console/views/crew.js";
 import { renderAdminView } from "../console/views/admin.js";
 import { renderSettingsView } from "../console/views/settings.js";
 import { renderEnvironmentsView } from "../console/views/environments.js";
-import { renderWellbeingView } from "../console/views/wellbeing.js";
+import { renderWellbeingView, openWellbeingSub } from "../console/views/wellbeing.js";
 import { initI18n, onLangChange, tr } from "../i18n/i18n.js";
 import { bt } from "/src/i18n/backend.js";
 
@@ -98,12 +97,6 @@ const appState = {
   breathingInterval: null,
 };
 
-/* Rol FAMILY_MEMBER (canal familiar "Conexión con Tierra"): solo puede usar la sección Mensajes */
-const FAMILY_SECTION = "communication-center";
-function isFamilyRole() {
-  return appState.currentUser?.role_code === "FAMILY_MEMBER";
-}
-
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -156,6 +149,21 @@ const appHelpers = {
 const SECTION_REDIRECTS = {
   "body-explorer": "mission-control",
   "mission-analytics": "mission-control",
+  // El módulo Mensajes se retiró (issue #15): el canal con Tierra pasa a ser una recomendación futura
+  "communication-center": "recommendations",
+  // El cuestionario de bienestar psicológico vive en Bienestar → Cuestionarios (se abre esa pestaña)
+  "wellness-center": "wellbeing-hub",
+  // Check-in emocional y Evaluación cognitiva son pestañas de Bienestar (issue #26): sus ids antiguos
+  // (contramedidas, cuestionarios, alertas) abren Bienestar en esa pestaña
+  "emotional-center": "wellbeing-hub",
+  "cognitive-center": "wellbeing-hub",
+};
+
+/* Pestaña de Bienestar que abre cada id antiguo redirigido */
+const WELLBEING_TAB_OF = {
+  "wellness-center": "checks",
+  "emotional-center": "emotional",
+  "cognitive-center": "cognitive",
 };
 
 /* Escribe texto en un elemento solo si existe (el antiguo encabezado hdr-* ya no está en el HTML) */
@@ -183,9 +191,8 @@ function setMoreMenu(open, { focusButton = false } = {}) {
 }
 
 /* Secciones sin entrada propia en la navegación que cuelgan de una pestaña: se marca la pestaña madre.
- * Bienestar psicológico, Evaluación cognitiva y Check-in emocional se abren desde Bienestar → Hoy. */
+ * (Evaluación cognitiva y Check-in emocional ya redirigen a sus pestañas de Bienestar; se dejan por si acaso.) */
 const NAV_PARENT = {
-  "wellness-center": "wellbeing-hub",
   "cognitive-center": "wellbeing-hub",
   "emotional-center": "wellbeing-hub",
 };
@@ -225,7 +232,7 @@ function syncNavigationState(sectionId) {
 /* Sin pantalla de acceso: la consola abre sola una sesión con la cuenta demo (datos SIMULADOS del seed
  * del backend, backend/app/core/config.py → DEMO_ASTRONAUT1_*). La API sigue exigiendo token Bearer + CSRF,
  * así que se hace un /auth/login silencioso. Sustituir antes de cualquier despliegue real. */
-const DEMO_SESSION = { email: "elena.rostova@astrovital.demo", password: "AstroCrew!2026" };
+const DEMO_SESSION = { email: "elena.rostova@semsa.demo", password: "AstroCrew!2026" };
 const REAUTH_COOLDOWN_MS = 15000; // evita bucles si el backend devuelve 401 de forma persistente
 let autoLoginInFlight = null;
 let lastReauthAt = 0;
@@ -302,7 +309,7 @@ async function initApp() {
   initI18n();
   bindStaticEvents();
   bindLanguageChange();
-  window.addEventListener("astrovital:unauthorized", reauthenticate);
+  window.addEventListener("semsa:unauthorized", reauthenticate);
   await bootSession();
 }
 
@@ -310,24 +317,6 @@ async function onAuthenticated(user) {
   appState.currentUser = user;
   apiService.setQueueOwner(user?.id); // la cola sin enlace es por persona usuaria
   document.body.setAttribute("data-theme", user.preferred_theme || "space-dark");
-
-  // Familiar (canal "Conexión con Tierra"): sin acceso a salud, misiones ni otros módulos (403 en el backend).
-  // No se cargan catálogos ni la barra HERA; aterriza directamente en Mensajes → Familia.
-  if (isFamilyRole()) {
-    appState.indicatorsCatalog = [];
-    appState.envProfiles = [];
-    appState.simulatorScenarios = [];
-    appState.usersList = [];
-    appState.missionsList = [];
-    appState.selectedAstronautId = null;
-    appState.selectedMissionId = null;
-    appState.healthSummary = null;
-    appState.currentSection = FAMILY_SECTION;
-    updateRoleNavigation();
-    syncThemeButton();
-    await navigateToSection(FAMILY_SECTION);
-    return;
-  }
 
   const [indRes, envRes, simRes, usersRes, missionsRes] = await Promise.all([
     apiService.getHealthIndicators(),
@@ -365,21 +354,6 @@ async function onAuthenticated(user) {
 
 function updateRoleNavigation() {
   const role = appState.currentUser?.role_code || "ASTRONAUT";
-  const family = role === "FAMILY_MEMBER";
-  // Familiar: solo la pestaña Mensajes; sin menú "Más", selector de tripulante ni barras de salud/HERA
-  document.getElementById("av-more")?.classList.toggle("hidden", family);
-  ["av-chrome-status", "av-chrome-alarm", "av-hera-bar"].forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) el.hidden = family;
-  });
-  if (family) {
-    setMoreMenu(false);
-    document.querySelectorAll("[data-nav-section]").forEach((btn) => {
-      btn.classList.toggle("hidden", btn.getAttribute("data-nav-section") !== FAMILY_SECTION);
-    });
-    document.getElementById("topbar-crew-selector-wrap")?.classList.add("hidden");
-    return;
-  }
   document.querySelectorAll("[data-nav-section]").forEach((btn) => {
     const sec = btn.getAttribute("data-nav-section");
     if (sec === "administration" && role !== "ADMINISTRATOR") {
@@ -408,7 +382,6 @@ function updateRoleNavigation() {
 }
 
 async function refreshGlobalHeaderAndSummary() {
-  if (isFamilyRole()) return; // sin datos de salud ni barras de estado para el rol familiar
   if (!appState.selectedAstronautId) {
     renderChrome(appState);
     return;
@@ -445,18 +418,8 @@ async function refreshGlobalHeaderAndSummary() {
     el.classList.toggle("hidden", alertCount === 0);
   });
 
-  // Expansion badges (Communication Center & Emotional Check-In)
+  // Insignia del check-in emocional (pestaña Bienestar)
   if (summary.expansion_cards) {
-    const commObj =
-      summary.expansion_cards.communication_center ||
-      summary.expansion_cards.communication_center_card ||
-      {};
-    const unreadComm = commObj.unread_messages_count || 0;
-    document.querySelectorAll(".js-comm-badge").forEach((el) => {
-      el.textContent = unreadComm;
-      el.classList.toggle("hidden", unreadComm === 0);
-    });
-
     const emoObj =
       summary.expansion_cards.emotional_check_in ||
       summary.expansion_cards.emotional_checkin_card ||
@@ -478,8 +441,8 @@ async function refreshGlobalHeaderAndSummary() {
 }
 
 async function navigateToSection(sectionId) {
+  if (WELLBEING_TAB_OF[sectionId]) openWellbeingSub(WELLBEING_TAB_OF[sectionId]);
   sectionId = SECTION_REDIRECTS[sectionId] || sectionId;
-  if (isFamilyRole()) sectionId = FAMILY_SECTION; // guardia: el rol familiar solo usa Mensajes
   appState.currentSection = sectionId;
   document.body.classList.toggle(
     "av-console-on",
@@ -505,10 +468,6 @@ async function navigateToSection(sectionId) {
       await renderWellbeingView(container, appState, expansionHelpers);
     } else if (sectionId === "my-health-check") {
       await renderMeasureView(container, appState, expansionHelpers);
-    } else if (sectionId === "wellness-center") {
-      await renderWellnessView(container, appState, expansionHelpers);
-    } else if (sectionId === "communication-center") {
-      await renderMessagesView(container, appState, expansionHelpers);
     } else if (sectionId === "cognitive-center") {
       await renderCognitiveView(container, appState, expansionHelpers);
     } else if (sectionId === "emotional-center") {
@@ -525,6 +484,8 @@ async function navigateToSection(sectionId) {
       await renderAdminView(container, appState, expansionHelpers);
     } else if (sectionId === "settings-help") {
       await renderSettingsView(container, appState, expansionHelpers);
+    } else if (sectionId === "recommendations") {
+      await renderRecommendationsView(container, appState, expansionHelpers);
     }
   } catch (err) {
     container.innerHTML = `
@@ -591,7 +552,7 @@ function bindStaticEvents() {
  * se vuelven a pintar el encabezado global y la sección abierta, y se reaplica la navegación por rol. */
 function bindLanguageChange() {
   onLangChange(() => {
-    if (!appState.currentUser) return; // pantalla de acceso: solo textos estáticos
+    if (!appState.currentUser) return; // sesión aún sin abrir: solo textos estáticos
     updateRoleNavigation();
     renderChrome(appState);
     syncNavigationState(appState.currentSection);

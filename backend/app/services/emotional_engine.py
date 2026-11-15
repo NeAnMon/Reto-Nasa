@@ -11,6 +11,11 @@ from backend.app.models.models import (
     EmotionalQuestion,
     EmotionalSupportRequest,
 )
+from backend.app.rules.early_warnings import (
+    SOURCE_EMOTIONAL,
+    create_earth_contact_alert,
+    emotional_needs_earth_contact,
+)
 
 
 def utcnow() -> datetime:
@@ -154,7 +159,7 @@ class EmotionalWellnessEngine:
                 "para facilitar el contacto con el equipo de apoyo."
             )
             next_step = (
-                "Accede al Wellness Center o abre un canal privado en Communication Center con tu líder o especialista."
+                "Pide apoyo desde Bienestar (check-in emocional) o coméntalo con tu especialista de apoyo en el próximo contacto con Tierra."
             )
         elif op_state == "EMOTIONAL_WELLNESS_MONITORING":
             auth_summary = (
@@ -163,7 +168,7 @@ class EmotionalWellnessEngine:
             personal_summary = (
                 "Se observan algunas dimensiones de carga o cansancio que vale la pena acompañar con pausas de recuperación."
             )
-            next_step = "Revisar recursos de descanso, respiración guiada y contacto social autorizado en el Wellness Center."
+            next_step = "Revisar en Bienestar los recursos de descanso, respiración guiada y tiempo libre, y mantener el contacto social autorizado."
         else:
             auth_summary = "Estado operativo EMOTIONAL_WELLNESS_STABLE: cuestionario completado dentro de parámetros habituales."
             personal_summary = (
@@ -228,6 +233,19 @@ class EmotionalWellnessEngine:
             )
             db.add(alert_created)
             db.flush()
+
+        # Alerta temprana "Contacto con Tierra" si la dimensión de aislamiento queda en preocupación
+        # (independiente del estado anterior; una sola abierta por astronauta)
+        if emotional_needs_earth_contact(concern_dimensions + severe_concern_dimensions):
+            create_earth_contact_alert(
+                db,
+                astronaut_id=assessment.astronaut_id,
+                mission_id=assessment.mission_id,
+                source=SOURCE_EMOTIONAL,
+                environment_code=assessment.environment_code,
+                phase_code=assessment.phase_code,
+                is_simulated=bool(assessment.is_simulated),
+            )
 
         return result, alert_created
 

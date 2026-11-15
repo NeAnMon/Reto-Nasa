@@ -204,8 +204,7 @@ class ConversationCreateRequest(BaseModel):
 
 
 class MessageCreateRequest(BaseModel):
-    # Puede ir vacío solo si el mensaje lleva al menos un adjunto (attachment_ids)
-    content: str = Field(default="", max_length=5000)
+    content: str = Field(..., min_length=1, max_length=5000)
     category: str = Field(default="GENERAL")
     is_important: bool = False
     reply_to_message_id: Optional[int] = None
@@ -215,15 +214,6 @@ class MessageCreateRequest(BaseModel):
     attachment_mime_type: Optional[str] = "text/plain"
     attachment_safe_note: Optional[str] = None
     is_simulated: bool = True
-    attachment_ids: List[int] = Field(default_factory=list, max_length=4)
-
-    @model_validator(mode="after")
-    def _content_or_attachment(self):
-        if not self.content.strip() and not self.attachment_ids:
-            raise ValueError("El mensaje debe tener texto o al menos un adjunto.")
-        if len(set(self.attachment_ids)) != len(self.attachment_ids):
-            raise ValueError("Adjuntos duplicados en el mensaje.")
-        return self
 
 
 class MessageFlagPatch(BaseModel):

@@ -1,5 +1,5 @@
 /*
- * AstroVital · Consola de salud de tripulación
+ * SEMSA · Consola de salud de tripulación
  *
  * Secciones "mission-control" (resumen / detalle de indicador) y "radiation", con:
  *  - encabezado global (#av-chrome, visible en todas las secciones): barra HERA,
@@ -20,7 +20,7 @@ import { apiService } from "../services/api.js";
 import { FIG, FIG_VIEWBOX, FIG_ATTRIBUTION_I18N, BONES, FIG_HOTSPOTS } from "./body-figure.js";
 import { tr, fmt, fmtNum, getLang, onLangChange } from "../i18n/i18n.js";
 import { bt, btLines } from "/src/i18n/backend.js";
-import { LETTER, RANK, STATE_WORD, STATE_LEGEND, CLASS_PLURAL, HERA_LETTER, alertClassOf, isAlarm, classFromRank } from "./alert-classes.js";
+import { LETTER, RANK, STATE_WORD, STATE_LEGEND, CLASS_PLURAL, HERA_LETTER, alertClassOf, isAlarm, classFromRank, isEarlyAlert } from "./alert-classes.js";
 
 /* ───────────────────────── idioma ─────────────────────────
  * Textos de la consola en DICT ({ es, en }); cada render obtiene el idioma actual con tr(DICT).
@@ -74,14 +74,12 @@ const DICT = {
     actionFailed: "No se pudo completar la acción: {msg}",
     // barra de estado
     statusAria: "Barra de estado de la misión",
-    mission: "Misión",
     crewMember: "Tripulante",
     groundLink: "Enlace con Tierra",
+    envBannerAlt: "Entorno {label}: {scene}",
     delay: "· retardo",
     countsAria: "Contadores de alertas",
     unacked: "Sin reconocer",
-    sensors: "Sensores",
-    online: "en línea",
     // celda entorno
     envLabel: "Entorno",
     syncSending: "enviando…",
@@ -177,7 +175,7 @@ const DICT = {
     bodyHint: "Pasa el cursor o el foco por una zona para ver sus lecturas; púlsala para fijar la ficha y filtrar la tabla.",
     sideL: "Lecturas por zona, columna izquierda",
     sideR: "Lecturas por zona, columna derecha",
-    figCredits: "En la figura: cabeza, tórax, abdomen, brazo, piel y huesos; el resto de sistemas, en la lista. Solo capa ósea simplificada: no se dibujan órganos.",
+    figCredits: "En la figura: cabeza, tórax, abdomen, brazo, piel y huesos; el resto de sistemas, en “Otros sistemas”. Solo capa ósea simplificada: no se dibujan órganos.",
     // columna derecha
     rightAria: "Alertas y actividades",
     cwTitle: "Alertas C&amp;W",
@@ -190,12 +188,28 @@ const DICT = {
     seeAll: "Ver todas",
     noTasks: "Sin tareas.",
     taskStatus: { PENDING: "Pendiente", COMPLETED: "Hecha", EXCUSED_OPERATIONAL_RESTRICTION: "Omitida por operación (no penaliza)", PAUSED_FOR_SAFETY: "Pausada por seguridad" },
-    surgeonTitle: "Médico de vuelo",
-    unreadMsgs: "Mensajes sin leer",
-    groundLead: "Líder en Tierra",
-    openSupport: "Solicitudes de apoyo abiertas",
-    offlineNote: "Sin enlace, todo se guarda a bordo y se envía en el próximo contacto.",
-    openMessages: "Abrir mensajes",
+    // recordatorio de contramedidas pendientes (no es alerta médica: no crea filas de Alert)
+    cmPendingPill: "{n} pendientes",
+    cmReminderOne: "1 contramedida pendiente hoy",
+    cmReminderMany: "{n} contramedidas pendientes hoy",
+    cmMore: "y {n} más",
+    cmGo: "Ir a contramedidas",
+    cmTabBadgeOne: "1 contramedida pendiente",
+    cmTabBadgeMany: "{n} contramedidas pendientes",
+    otherSystems: "Otros sistemas",
+    // cuadro "Recomendaciones" del Resumen (sustituye a "Mensajes sin leer", issue #15)
+    recTitle: "Recomendaciones",
+    recSub: "Mejoras previstas para próximas versiones de la app.",
+    recItems: ["Biometría continua con dispositivos vestibles", "Instrumentos médicos de a bordo conectados", "Dosimetría personal en tiempo real", "Canal asíncrono con Tierra y con la familia"],
+    recOpen: "Ver recomendaciones",
+    // recomendaciones activas (de las alertas tempranas, backend/app/rules/early_warnings.py)
+    recsActive: "Activas ahora",
+    recsAria: "Recomendaciones activas",
+    recsPlanned: "Mejoras previstas",
+    recsFor: "Para {name}",
+    recsSeeAlert: "Ver en Alertas",
+    recsSeeEarth: "Ver canal con Tierra",
+    recsActiveN: "Activas: {n}",
     // detalle de indicador
     backSummary: "← Resumen",
     idealRange: "Rango ideal",
@@ -241,7 +255,6 @@ const DICT = {
     escalateIf: "Escalar de inmediato si",
     escalateDefault: "Los síntomas empeoran, aparecen síntomas nuevos o el valor sigue fuera de límite tras la acción.",
     escalate: "Escalar al médico de vuelo",
-    contactSurgeon: "Contactar al médico de vuelo",
     historyFailed: "No se pudo cargar el historial.",
     followProtocol: "Sigue el protocolo del indicador.",
     noExplanation: "Sin explicación disponible.",
@@ -356,14 +369,12 @@ const DICT = {
     envPostFailed: "Environment: {label}. Could not be recorded on the server ({msg}); applied on this device only.",
     actionFailed: "Could not complete the action: {msg}",
     statusAria: "Mission status bar",
-    mission: "Mission",
     crewMember: "Crew member",
     groundLink: "Ground link",
+    envBannerAlt: "{label} environment: {scene}",
     delay: "· delay",
     countsAria: "Alert counters",
     unacked: "Unacknowledged",
-    sensors: "Sensors",
-    online: "online",
     envLabel: "Environment",
     syncSending: "sending…",
     syncSendingHelp: "Recording the change on the server",
@@ -452,7 +463,7 @@ const DICT = {
     bodyHint: "Hover or focus a zone to see its readings; select it to pin the card and filter the table.",
     sideL: "Readings by zone, left column",
     sideR: "Readings by zone, right column",
-    figCredits: "On the figure: head, chest, abdomen, arm, skin and bones; other systems are in the list. Simplified skeletal layer only: no organs are drawn.",
+    figCredits: "On the figure: head, chest, abdomen, arm, skin and bones; other systems are under “Other systems”. Simplified skeletal layer only: no organs are drawn.",
     rightAria: "Alerts and activities",
     cwTitle: "C&amp;W alerts",
     hideAdv: "Hide advisories (A)",
@@ -464,12 +475,25 @@ const DICT = {
     seeAll: "View all",
     noTasks: "No tasks.",
     taskStatus: { PENDING: "Pending", COMPLETED: "Done", EXCUSED_OPERATIONAL_RESTRICTION: "Skipped for operations (no penalty)", PAUSED_FOR_SAFETY: "Paused for safety" },
-    surgeonTitle: "Flight surgeon",
-    unreadMsgs: "Unread messages",
-    groundLead: "Ground lead",
-    openSupport: "Open support requests",
-    offlineNote: "Without a link, everything is stored onboard and sent at the next contact.",
-    openMessages: "Open messages",
+    cmPendingPill: "{n} pending",
+    cmReminderOne: "1 countermeasure pending today",
+    cmReminderMany: "{n} countermeasures pending today",
+    cmMore: "and {n} more",
+    cmGo: "Go to countermeasures",
+    cmTabBadgeOne: "1 pending countermeasure",
+    cmTabBadgeMany: "{n} pending countermeasures",
+    otherSystems: "Other systems",
+    recTitle: "Recommendations",
+    recSub: "Improvements planned for future versions of the app.",
+    recItems: ["Continuous biometrics with wearable devices", "Connected onboard medical instruments", "Real-time personal dosimetry", "Asynchronous channel with Earth and family"],
+    recOpen: "View recommendations",
+    recsActive: "Active now",
+    recsAria: "Active recommendations",
+    recsPlanned: "Planned improvements",
+    recsFor: "For {name}",
+    recsSeeAlert: "See in Alerts",
+    recsSeeEarth: "See Earth channel",
+    recsActiveN: "Active: {n}",
     backSummary: "← Overview",
     idealRange: "Ideal range",
     yellowLimit: "Yellow limit",
@@ -514,7 +538,6 @@ const DICT = {
     escalateIf: "Escalate immediately if",
     escalateDefault: "Symptoms worsen, new symptoms appear or the value stays out of limits after the action.",
     escalate: "Escalate to flight surgeon",
-    contactSurgeon: "Contact flight surgeon",
     historyFailed: "Could not load the history.",
     followProtocol: "Follow the indicator protocol.",
     noExplanation: "No explanation available.",
@@ -710,18 +733,18 @@ const SPE_PROFILE = [[0, 0.6], [8, 5], [15, 22], [25, 90], [35, 300], [45, 650],
  * al backend se envía siempre serverLocation (el módulo en español, estable entre idiomas). */
 const ENV_TEXT = {
   es: {
-    spacecraft: { label: "Nave espacial", short: "Nave", locationModule: "Cabina de la nave (tránsito en espacio profundo)", note: "espacio profundo, fuera de la magnetosfera" },
-    station: { label: "Estación espacial", short: "Estación", locationModule: "Módulo de la estación orbital (LEO)", note: "órbita baja, protegida en parte por la magnetosfera" },
-    rover: { label: "Rover", short: "Rover", locationModule: "Rover presurizado (superficie lunar)", note: "superficie lunar, blindaje ligero del rover" },
-    base: { label: "Base planetaria (Marte)", short: "Base Marte", locationModule: "Base marciana (hábitat presurizado)", note: "superficie de Marte, hábitat cubierto de regolito" },
-    moon: { label: "Luna (superficie)", short: "Luna", locationModule: "Superficie lunar (base Polo Sur)", note: "superficie lunar, sin atmósfera ni magnetosfera" },
+    spacecraft: { label: "Nave espacial", short: "Nave", locationModule: "Cabina de la nave (tránsito en espacio profundo)", note: "espacio profundo, fuera de la magnetosfera", scene: "nave espacial en tránsito con la Tierra al fondo" },
+    station: { label: "Estación espacial", short: "Estación", locationModule: "Módulo de la estación orbital (LEO)", note: "órbita baja, protegida en parte por la magnetosfera", scene: "vehículo orbital sobre la Tierra" },
+    rover: { label: "Rover", short: "Rover", locationModule: "Rover presurizado (superficie lunar)", note: "superficie lunar, blindaje ligero del rover", scene: "rover presurizado sobre la superficie" },
+    base: { label: "Base planetaria (Marte)", short: "Base Marte", locationModule: "Base marciana (hábitat presurizado)", note: "superficie de Marte, hábitat cubierto de regolito", scene: "base de cúpulas presurizadas en la superficie de Marte" },
+    moon: { label: "Luna (superficie)", short: "Luna", locationModule: "Superficie lunar (base Polo Sur)", note: "superficie lunar, sin atmósfera ni magnetosfera", scene: "paisaje de la superficie lunar" },
   },
   en: {
-    spacecraft: { label: "Spacecraft", short: "Spacecraft", locationModule: "Spacecraft cabin (deep-space transit)", note: "deep space, outside the magnetosphere" },
-    station: { label: "Space station", short: "Station", locationModule: "Orbital station module (LEO)", note: "low Earth orbit, partly shielded by the magnetosphere" },
-    rover: { label: "Rover", short: "Rover", locationModule: "Pressurized rover (lunar surface)", note: "lunar surface, light rover shielding" },
-    base: { label: "Planetary base (Mars)", short: "Mars base", locationModule: "Martian base (pressurized habitat)", note: "Martian surface, regolith-covered habitat" },
-    moon: { label: "Moon (surface)", short: "Moon", locationModule: "Lunar surface (South Pole base)", note: "lunar surface, no atmosphere or magnetosphere" },
+    spacecraft: { label: "Spacecraft", short: "Spacecraft", locationModule: "Spacecraft cabin (deep-space transit)", note: "deep space, outside the magnetosphere", scene: "spacecraft in transit with Earth in the background" },
+    station: { label: "Space station", short: "Station", locationModule: "Orbital station module (LEO)", note: "low Earth orbit, partly shielded by the magnetosphere", scene: "orbital vehicle above Earth" },
+    rover: { label: "Rover", short: "Rover", locationModule: "Pressurized rover (lunar surface)", note: "lunar surface, light rover shielding", scene: "pressurized rover on the surface" },
+    base: { label: "Planetary base (Mars)", short: "Mars base", locationModule: "Martian base (pressurized habitat)", note: "Martian surface, regolith-covered habitat", scene: "pressurized dome base on the Martian surface" },
+    moon: { label: "Moon (surface)", short: "Moon", locationModule: "Lunar surface (South Pole base)", note: "lunar surface, no atmosphere or magnetosphere", scene: "lunar surface landscape" },
   },
 };
 export const CREW_ENVIRONMENTS = [
@@ -732,6 +755,25 @@ export const CREW_ENVIRONMENTS = [
   { key: "moon", code: "LUNAR_SURFACE", phaseCode: "SURFACE", refMGyDay: 1.4, shielding: 1.0, speFactor: 1.0, cadLoc: "Hábitat" },
 ].map((e) => withText({ ...e, serverLocation: ENV_TEXT.es[e.key].locationModule }, ENV_TEXT, e.key));
 const ENV_BY_KEY = Object.fromEntries(CREW_ENVIRONMENTS.map((e) => [e.key, e]));
+/* Banner del entorno en la barra de estado (tras "Enlace con Tierra"): entorno → imagen en
+ * frontend/src/assets/env/. "station" no tiene imagen propia y reutiliza la de la nave; para darle
+ * una, basta con añadir el archivo y cambiar su entrada aquí. */
+const ENV_BANNER_FILE = {
+  spacecraft: "env-spacecraft.webp",
+  station: "env-spacecraft.webp",
+  rover: "env-rover.webp",
+  base: "env-base.webp",
+  moon: "env-moon.webp",
+};
+/* Sube este sello al cambiar las imágenes: Cloudflare cachea por URL (max-age 4 h) */
+const ENV_BANNER_VER = "2";
+const envBannerSrc = (key) =>
+  new URL(`../assets/env/${ENV_BANNER_FILE[key] || ENV_BANNER_FILE.spacecraft}?v=${ENV_BANNER_VER}`, import.meta.url).href;
+/* Logo SEMSA con fondo transparente, fijo a la izquierda del banner (la escena llena el resto).
+ * Versión aclarada para la barra oscura; el tema claro la cambia por la original en console.css. */
+const ENV_BANNER_LOGO = new URL(`../assets/env/semsa-logo-dark.webp?v=${ENV_BANNER_VER}`, import.meta.url).href;
+/* Encuadre vertical de cada escena al recortarla a lo ancho de la barra */
+const ENV_BANNER_FOCUS = { spacecraft: "50% 45%", station: "50% 45%", rover: "50% 62%", base: "50% 55%", moon: "50% 70%" };
 const ENV_STORAGE_KEY = "av_crew_env";
 const DEFAULT_ENV_KEY = "moon";
 /* mGy/día × blindaje → µGy/min (línea base simulada de HERA) */
@@ -1031,6 +1073,8 @@ onLangChange(() => {
   }
   if (hera.started) renderHeraBar();
   if (chromeState.appState) renderChrome();
+  // la insignia de la pestaña Contramedidas lleva texto para lectores de pantalla: se reescribe en el idioma nuevo
+  if (cache.data) syncCountermeasuresBadge(cache.data);
 });
 
 /* ───────────────────────── estado de la consola ───────────────────────── */
@@ -1046,6 +1090,7 @@ const consoleState = {
   pop: null, // región del mapa corporal con la ficha fijada (solo se muestra si coincide con sys)
   popFrom: null, // data-focus-id del control que fijó la ficha (para devolverle el foco)
   showAdv: false,
+  radFold: {}, // secciones plegadas de la vista Radiación (clave → false si está cerrada)
   layers: { mus: true, bon: true },
   proc: { step: 1, result: null },
   heraListener: null, // oyente HERA de la vista abierta (el del encabezado global es aparte)
@@ -1149,8 +1194,31 @@ async function loadData(appState) {
     act: ok(act, { points: [] }).points || [],
     sleep: ok(sleep, { points: [] }).points || [],
     rad: ok(rad, { points: [] }).points || [],
+    // si getDailyMissions falla no se muestra ningún recordatorio de contramedidas
+    missionsOk: missions.status === "fulfilled" && !!missions.value,
     errors: [sum, alerts, regions, missions].filter((r) => r.status === "rejected").length,
   };
+}
+
+/* Contramedidas accionables hoy: PENDING y no bloqueadas por seguridad. Si la petición de misiones
+ * falló (missionsOk false) devuelve [] para no mostrar ningún recordatorio con datos dudosos. */
+function pendingCountermeasures(data) {
+  if (!data || !data.missionsOk || !Array.isArray(data.missions)) return [];
+  return data.missions.filter((m) => m && m.status_today === "PENDING" && !m.safety_blocked);
+}
+
+/* Insignia de la pestaña Contramedidas (.js-cm-badge en index.html): número visible + texto para
+ * lectores de pantalla en el idioma actual; oculta con 0 pendientes o sin datos. */
+export function syncCountermeasuresBadge(data) {
+  if (typeof document === "undefined") return;
+  const n = pendingCountermeasures(data).length;
+  const T = tt();
+  const label = n === 1 ? T.cmTabBadgeOne : fmt(T.cmTabBadgeMany, { n: num(n) });
+  document.querySelectorAll(".js-cm-badge").forEach((el) => {
+    el.classList.toggle("hidden", n === 0);
+    el.title = n > 0 ? label : "";
+    el.innerHTML = n > 0 ? `<span aria-hidden="true">${esc(num(n))}</span><span class="av-tab-sr">${esc(label)}</span>` : "0";
+  });
 }
 
 /* Vuelve a pedir los datos de la consola y los deja en caché (una sola carga en curso por clave). */
@@ -1164,6 +1232,7 @@ export function refreshConsoleData(appState) {
         cache.at = Date.now();
         cache.pending = null;
         cache.pendingKey = null;
+        syncCountermeasuresBadge(data);
       }
       return data;
     },
@@ -1171,6 +1240,7 @@ export function refreshConsoleData(appState) {
       if (cache.pending === p) {
         cache.pending = null;
         cache.pendingKey = null;
+        syncCountermeasuresBadge(null); // sin datos fiables: la insignia se oculta
       }
       throw err;
     }
@@ -1265,7 +1335,7 @@ function buildAlerts(d, data) {
   }
   const hl = HERA_LEVELS.indexOf(hera.level);
   if (hl >= 1) {
-    list.push({ id: "hera", cls: classFromRank(Math.min(hl, 3)), acked: hera.ackedLevel === hera.level, msg: fmt(T.heraAlert, { lvl: HERA_TEXT[hera.level].short }), detail: `${num(heraCurrent().v, 1)} µGy/min`, t: heraCurrent().t, local: true, hera: true });
+    list.push({ id: "hera", cls: classFromRank(Math.min(hl, 3)), acked: hera.ackedLevel === hera.level, msg: fmt(T.heraAlert, { lvl: HERA_TEXT[hera.level].short }), detail: `${num(heraCurrent().v, 1)} µGy/min`, t: heraCurrent().t, local: true, hera: true, heraLevel: hera.level });
   }
   list.sort((a, b) => RANK[b.cls] - RANK[a.cls] || (a.t && b.t ? a.t - b.t : 0));
   return list;
@@ -1309,6 +1379,8 @@ export async function renderConsole(container, appState, helpers, opts = {}) {
     if (consoleState.view === "radiation") {
       const live = container.querySelector("#av-rad-live");
       if (live) live.innerHTML = radLiveInner(d);
+      const folds = container.querySelector("#av-rad-live-folds");
+      if (folds) folds.innerHTML = radLiveFolds(d);
     } else {
       const el = container.querySelector("#av-p1-rad");
       if (el) el.outerHTML = radCardHTML(d);
@@ -1347,6 +1419,53 @@ const chromeNow = () => new Date(Date.now() + chromeState.clockOffset);
 function tickChromeClock() {
   const el = document.getElementById("av-gmt");
   if (el) el.textContent = gmt(chromeNow());
+}
+
+/* Banner del entorno: un nodo persistente (dos <img> superpuestas para el fundido) que se
+ * vuelve a colocar en su hueco cada vez que se reescribe la barra de estado. */
+const envBanner = { node: null, preloaded: [] };
+
+function preloadEnvBanners() {
+  if (envBanner.preloaded.length) return;
+  [...new Set([ENV_BANNER_LOGO, ...Object.keys(ENV_BANNER_FILE).map(envBannerSrc)])].forEach((src) => {
+    const img = new Image();
+    img.decoding = "async";
+    img.src = src;
+    if (img.decode) img.decode().catch(() => { /* se reintenta al mostrarla */ });
+    envBanner.preloaded.push(img);
+  });
+}
+
+function placeEnvBanner() {
+  const slot = document.getElementById("av-env-banner-slot");
+  if (!slot) return;
+  if (!envBanner.node) {
+    const box = document.createElement("div");
+    box.className = "av-env-banner";
+    box.innerHTML = `<img class="av-env-banner-logo" decoding="async" alt="SEMSA" src="${ENV_BANNER_LOGO}"><div class="av-env-banner-scene"><img class="av-env-banner-img" decoding="async" alt=""><img class="av-env-banner-img" decoding="async" alt="" aria-hidden="true"></div>`;
+    envBanner.node = box;
+  }
+  envBanner.node.style.setProperty("--av-env-focus", ENV_BANNER_FOCUS[envState.key] || "50% 50%");
+  const env = ENV_BY_KEY[envState.key];
+  const src = envBannerSrc(envState.key);
+  const alt = env ? fmt(tt().envBannerAlt, { label: env.label, scene: env.scene }) : "";
+  const [a, b] = envBanner.node.querySelectorAll(".av-env-banner-img");
+  const on = a.classList.contains("is-on") ? a : b.classList.contains("is-on") ? b : null;
+  if (!on) {
+    a.src = src; a.alt = alt; a.removeAttribute("aria-hidden"); a.classList.add("is-on");
+  } else if (on.getAttribute("src") === src) {
+    on.alt = alt; // mismo archivo (p. ej. nave ↔ estación): solo cambia el texto alternativo
+  } else {
+    const next = on === a ? b : a;
+    next.src = src;
+    next.alt = alt;
+    next.removeAttribute("aria-hidden");
+    on.alt = "";
+    on.setAttribute("aria-hidden", "true");
+    next.classList.add("is-on");
+    on.classList.remove("is-on");
+  }
+  if (envBanner.node.parentNode !== slot) slot.appendChild(envBanner.node);
 }
 
 /* Solo reescribe el HTML si cambió (evita repetir el anuncio de role="alert") */
@@ -1537,6 +1656,7 @@ export function initChrome(appState, helpers = {}) {
     () => { /* sin perfiles: se usan los nombres locales */ }
   );
 
+  preloadEnvBanners();
   hera.listeners.add(chromeHeraListener);
   clearInterval(chromeState.clockTimer);
   chromeState.clockTimer = setInterval(tickChromeClock, 1000);
@@ -1565,22 +1685,27 @@ export function renderChrome(appState) {
   const envFocused = document.activeElement && document.activeElement.id === "av-env-select";
   setHTML(statusEl, statusBarHTML(st, d, alerts));
   if (envFocused && document.activeElement?.id !== "av-env-select") document.getElementById("av-env-select")?.focus({ preventScroll: true });
+  placeEnvBanner();
   setHTML(alarmEl, alarmBarHTML(alerts));
   chromeState.lastLevel = hera.level;
   chromeState.lastAcked = hera.ackedLevel;
 }
 
+/* Primera celda de la barra de estado: rótulo = misión, valor = nombre de la app
+ * (antes "Misión · DEMO" + código de misión; issues #5 y #14). El código y nombre
+ * de la misión del backend quedan en el tooltip. */
+const BRAND_LABEL = "TeleCreation UTS";
+const APP_NAME = "SEMSA";
+
 function statusBarHTML(appState, d, alerts) {
   const s = d.s;
   const mission = s.mission || {};
-  const astro = s.astronaut || appState.currentUser || {};
+  // Tripulante = usuario con la sesión iniciada (issue #5), no el astronauta seleccionado
+  const astro = appState.currentUser || s.astronaut || {};
   const ctx = s.context || {};
   const w = alerts.filter((a) => a.cls === "W").length;
   const c = alerts.filter((a) => a.cls === "C").length;
   const unack = alerts.filter((a) => isAlarm(a.cls) && !a.acked).length;
-  const sensors = s.sensors || [];
-  const online = sensors.filter((x) => String(x.status || "").toUpperCase() === "ONLINE" || String(x.status || "").toUpperCase() === "ACTIVE").length;
-  const stale = d.cards.filter((x) => x.state === "STALE").length;
   const link = ctx.connectivity_status || "—";
   const crew = `${astro.full_name || "—"}${astro.crew_code ? ` · ${astro.crew_code}` : ""}`;
   const envName = bt(ctx.environment_name) || ctx.environment_code || "";
@@ -1588,7 +1713,7 @@ function statusBarHTML(appState, d, alerts) {
   const T = tt();
   return `
   <div class="av-status" role="group" aria-label="${esc(T.statusAria)}">
-    <div class="av-st"><span class="av-lbl">${esc(T.mission)}${mission.is_simulated ? " · DEMO" : ""}</span><span class="av-v" title="${esc(bt(mission.name) || "")}">${esc(mission.code || "—")}</span></div>
+    <div class="av-st av-st-brand"><span class="av-lbl">${esc(BRAND_LABEL)}</span><span class="av-v" title="${esc([mission.code, bt(mission.name)].filter(Boolean).join(" — "))}">${esc(APP_NAME)}</span></div>
     <div class="av-st"><span class="av-lbl">${esc(T.crewMember)}</span><span class="av-v" title="${esc(crew)}">${esc(crew)}</span></div>
     <div class="av-st av-st-row av-st-fixed">
       <div><div class="av-lbl">GMT</div><div class="av-mono av-v av-st-clock" id="av-gmt">${gmt(chromeNow())}</div></div>
@@ -1596,13 +1721,13 @@ function statusBarHTML(appState, d, alerts) {
     </div>
     ${envCellHTML(ctx, envName)}
     <div class="av-st"><span class="av-lbl">${esc(T.groundLink)}</span><span class="av-st-line"><span class="av-mono av-v">${esc(link === "ONLINE" ? "AOS" : link === "OFFLINE" ? "LOS" : link)}</span> <span class="av-sub">${esc(T.delay)}</span> <span class="av-mono">${delay}</span></span></div>
+    <div class="av-st av-st-fixed av-st-banner" id="av-env-banner-slot"></div>
     <div class="av-grow"></div>
     <div class="av-st av-st-row av-st-fixed av-st-counts" role="group" aria-label="${esc(T.countsAria)}">
       <span class="av-st-count">${w ? badge("W", CLASS_PLURAL.W) : `<span class="av-badge" style="color:var(--av-r-text);border-color:var(--av-r)" title="${esc(CLASS_PLURAL.W)}">W</span>`}<span class="av-mono av-v">${w}</span></span>
       <span class="av-st-count">${c ? badge("C", CLASS_PLURAL.C) : `<span class="av-badge" style="color:var(--av-y);border-color:var(--av-y)" title="${esc(CLASS_PLURAL.C)}">C</span>`}<span class="av-mono av-v">${c}</span></span>
       <span class="av-st-col"><span class="av-lbl">${esc(T.unacked)}</span><span class="av-mono av-v">${unack}</span></span>
     </div>
-    <div class="av-st av-st-fixed"><span class="av-lbl">${esc(T.sensors)}</span><span class="av-st-line"><span class="av-mono av-v">${online}/${sensors.length}</span> ${esc(T.online)}${stale ? ` · ${badge("S")} ${stale}` : ""}</span></div>
   </div>`;
 }
 
@@ -1636,9 +1761,11 @@ function alarmBarHTML(alerts) {
     return `<div class="av-alarm av-alarm-quiet" role="status"><span>${esc(T.alarmQuiet)}</span><span>${esc(T.inAlarm)} <span class="av-mono">${inAlarm}</span></span></div>`;
   }
   const canProc = top.indicator || top.hera;
+  // HERA en refugio (WARNING): naranja rojizo; el rojo queda para la emergencia
+  const shelter = top.hera && top.heraLevel === "WARNING";
   return `
-  <div class="av-alarm av-alarm-${top.cls}" role="alert">
-    <span class="av-badge" style="background:currentColor" title="${esc(STATE_WORD[top.cls])}"><span style="color:${top.cls === "W" ? "#D13438" : "#F2C94C"}">${top.cls}</span></span>
+  <div class="av-alarm av-alarm-${top.cls}${shelter ? " av-alarm-shelter" : ""}" role="alert">
+    <span class="av-badge" style="background:currentColor" title="${esc(STATE_WORD[top.cls])}"><span style="color:${shelter ? "#E8541C" : top.cls === "W" ? "#D13438" : "#F2C94C"}">${top.cls}</span></span>
     <strong style="letter-spacing:.04em;text-transform:uppercase">${esc(top.msg)}</strong>
     <span class="av-mono">${esc(top.detail)}</span>
     <span class="av-mono">${top.t ? gmt(top.t, false) : ""}</span>
@@ -1681,7 +1808,7 @@ function summaryHTML(appState, d, data, alerts) {
   const p1 = `
   <section aria-label="${esc(T.p1Aria)}">
     <div class="av-lbl" style="margin:0 0 6px 2px">${esc(T.p1Label)}</div>
-    <div class="av-cards">
+    <div class="av-cards av-cards-3x2">
       ${radCardHTML(d)}
       <article class="av-panel av-card ${RANK[d.co2Letter] >= 2 ? `av-card-${d.co2Letter}` : ""}">
         <div class="av-card-head"><h3 class="av-h3">${esc(T.co2Title)}</h3>${badge(d.co2Letter)}</div>
@@ -1712,6 +1839,7 @@ function summaryHTML(appState, d, data, alerts) {
         <div><button type="button" class="av-btn av-btn-sm" data-nav="wellbeing-hub">${esc(T.openWellbeing)}</button></div>
         <div class="av-foot">${sleep && sleep.measured_at ? `${esc(sleep.source_code || "")} · <span class="av-mono">${gmt(toDate(sleep.measured_at), false)}</span>` : esc(T.noRecord)}</div>
       </article>
+      ${alertsCardHTML(alerts)}
     </div>
   </section>`;
 
@@ -1750,7 +1878,7 @@ function summaryHTML(appState, d, data, alerts) {
     <tr class="av-nom-toggle-row"><td colspan="7"><button type="button" class="av-nom-toggle" data-act="toggle-nominal" data-focus-id="nom-toggle" aria-expanded="${nominalOpen}" aria-controls="av-nom-rows"><span>${esc(nomLabel)}</span> <span class="av-nom-caret" aria-hidden="true">▾</span></button></td></tr>` : ""}`;
   const nomBody = nomN ? `<tbody id="av-nom-rows" class="av-nom-rows"${nominalOpen ? "" : " hidden"}>${nomRows.map(rowOf).join("")}</tbody>` : "";
   const table = `
-  <section class="av-panel" aria-label="${esc(T.tableTitle)}">
+  <section class="av-panel av-table-panel" aria-label="${esc(T.tableTitle)}">
     <div class="av-panel-head">
       <h2 class="av-h2">${esc(T.tableTitle)}</h2>
       ${filterCodes ? `<button type="button" class="av-btn av-btn-sm" data-act="clear-sys" aria-label="${esc(fmt(T.clearFilterAria, { name: SYS_NAMES[consoleState.sys] || consoleState.sys }))}">${esc(fmt(T.filter, { name: SYS_NAMES[consoleState.sys] || consoleState.sys }))} <span aria-hidden="true">×</span></button>` : ""}
@@ -1768,7 +1896,7 @@ function summaryHTML(appState, d, data, alerts) {
   </section>`;
 
   // "Seguimiento periódico" (NASA IMM) se movió a la Bitácora: views/logbook-followup.js
-  return `<div class="av-grid">
+  return `<div class="av-grid av-grid-sum">
     ${systemsHTML(appState, data, d)}
     <main class="av-col-b">${p1}${table}</main>
     ${rightColHTML(appState, d, data, alerts)}
@@ -2124,11 +2252,12 @@ function systemsHTML(appState, data, d) {
   const pop = pinned
     ? `<div class="av-pop av-pop-${st(pinned)}" ${popAttrs} data-pop-region="${pinned}" data-anchor="${esc(consoleState.popFrom || `hot-${pinned}`)}" data-pinned="true">${popWrap(bodyPopInner(appState, d, data, pinned, true))}</div>`
     : `<div class="av-pop" ${popAttrs} hidden></div>`;
-  const order = Object.keys(SYS_NAMES).sort((a, b) => RANK[st(b)] - RANK[st(a)]);
-  const list = order.map((code) => {
-    const on = consoleState.sys === code;
-    return `<li><button type="button" class="av-sys-btn" data-act="sys" data-code="${code}" data-focus-id="sys-${code}" aria-pressed="${on}"><span style="flex:1 1 auto">${esc(SYS_NAMES[code])}</span>${badge(st(code))}</button></li>`;
-  }).join("");
+  // La lista completa de sistemas se quitó (issue #3: repetía la figura). Solo quedan, en una fila
+  // compacta, los sistemas que no tienen zona en la figura, para no perder el acceso a ellos.
+  const others = Object.keys(SYS_NAMES).filter((code) => !FIG_HOTSPOTS[code])
+    .sort((a, b) => RANK[st(b)] - RANK[st(a)])
+    .map((code) => `<button type="button" class="av-sys-chip" data-act="sys" data-code="${code}" data-focus-id="sys-${code}" aria-pressed="${consoleState.sys === code}">${badge(st(code))}<span>${esc(SYS_NAMES[code])}</span></button>`)
+    .join("");
   return `
   <section class="av-panel av-col-a av-col-body" aria-label="${esc(T.sysAria)}">
     <div style="display:flex;justify-content:space-between;align-items:baseline"><h2 class="av-h2">${esc(T.sysTitle)}</h2><span class="av-sub">${esc(T.noColorNominal)}</span></div>
@@ -2162,22 +2291,83 @@ function systemsHTML(appState, data, d) {
     <div class="av-side av-side-R" role="group" aria-label="${esc(T.sideR)}">${sideCol("R")}</div>
     ${pop}
     </div>
-    <ul class="av-sys-list" role="list">${list}</ul>
+    ${others ? `<div class="av-sys-chips" role="group" aria-label="${esc(T.otherSystems)}"><span class="av-lbl">${esc(T.otherSystems)}</span>${others}</div>` : ""}
     <p class="av-credits">${esc(T.figCredits)} ${esc(FIG_ATTRIBUTION_I18N[getLang()] || FIG_ATTRIBUTION_I18N.es)}</p>
   </section>`;
 }
 
-function rightColHTML(appState, d, data, alerts) {
+/* Tarjeta de alertas C&W dentro de la grilla de Prioridad 1 (3×2). El borde toma el color de la
+ * alerta más grave sin reconocer, igual que las demás tarjetas; la insignia lleva la letra. */
+function alertsCardHTML(alerts) {
   const shown = alerts.filter((a) => consoleState.showAdv || a.cls !== "A");
   const nAdv = alerts.filter((a) => a.cls === "A").length;
   const T = tt();
-  const alertRows = shown.map((a) => `<tr>
-      <td style="padding:8px 12px">${badge(a.cls)}</td>
-      <td class="av-mono" style="text-align:center">${a.acked ? "X" : ""}</td>
-      <td style="padding:8px 4px"><div style="font-weight:600">${esc(a.msg)}</div><div class="av-sub">${esc(a.detail)}${a.local ? ` · ${esc(T.onboard)}` : ""}</div></td>
-      <td class="av-mono av-sub" style="text-align:right;padding-right:12px">${a.t ? gmt(a.t, false) : ""}</td>
-    </tr>`).join("");
-  const missions = (data.missions || []).slice(0, 8);
+  const top = alerts.filter((a) => !a.acked).reduce((m, a) => (!m || RANK[a.cls] > RANK[m.cls] ? a : m), null);
+  const topL = top ? top.cls : "N";
+  const rows = shown.map((a) => `<li class="av-alert-row">
+      ${badge(a.cls)}
+      <span style="min-width:0"><span style="font-weight:600;display:block">${esc(a.msg)}</span><span class="av-sub">${esc(a.detail)}${a.local ? ` · ${esc(T.onboard)}` : ""}</span></span>
+      <span class="av-mono av-sub" style="text-align:right">${a.t ? gmt(a.t, false) : ""}${a.acked ? `<span style="display:block" title="ACK">ACK</span>` : ""}</span>
+    </li>`).join("");
+  return `<article class="av-panel av-card av-card-alerts ${RANK[topL] >= 2 ? `av-card-${topL}` : ""}" aria-label="${esc(T.cwTitle.replace("&amp;", "&"))}">
+    <div class="av-card-head"><h3 class="av-h3">${T.cwTitle}</h3>${badge(topL)}</div>
+    <ul class="av-alert-list" role="list">${rows || `<li class="av-sub" style="padding:8px 0">${esc(T.noActiveAlerts)}</li>`}</ul>
+    <div class="av-foot"><button type="button" class="av-btn av-btn-sm" data-act="toggle-adv" aria-pressed="${consoleState.showAdv}">${esc(consoleState.showAdv ? T.hideAdv : fmt(T.showAdv, { n: nAdv }))}</button></div>
+  </article>`;
+}
+
+/* Apertura del cuadro "Tareas de hoy" (<section> + encabezado + recordatorio). Con contramedidas
+ * pendientes se resalta igual que "Mensajes sin leer" (borde .av-card-C + insignia con texto
+ * "N pendientes"): es un recordatorio, no una alerta médica, así que no usa rojo ni crea alertas.
+ * Lista los primeros títulos y lleva a la pestaña Contramedidas (data-nav, manejado en console.js). */
+const CM_REMINDER_TITLES = 3;
+function tasksBoxOpenHTML(data, T) {
+  const pending = pendingCountermeasures(data);
+  const n = pending.length;
+  if (n === 0) {
+    return `<section class="av-panel av-sum-box">
+      <div class="av-panel-head"><h2 class="av-h2">${esc(T.tasksTitle)}</h2><button type="button" class="av-btn av-btn-sm" data-nav="daily-missions">${esc(T.seeAll)}</button></div>`;
+  }
+  const titles = pending.slice(0, CM_REMINDER_TITLES).map((m) => `<li>${esc(bt(m.title) || m.code || "")}</li>`).join("");
+  const rest = n - CM_REMINDER_TITLES;
+  const headline = n === 1 ? T.cmReminderOne : fmt(T.cmReminderMany, { n: num(n) });
+  return `<section class="av-panel av-sum-box av-card-C av-sum-remind" aria-label="${esc(T.tasksTitle)}: ${esc(headline)}">
+      <div class="av-panel-head"><h2 class="av-h2">${esc(T.tasksTitle)}</h2><span class="av-badge av-b-C av-pill">${esc(fmt(T.cmPendingPill, { n: num(n) }))}</span></div>
+      <div class="av-cm-remind">
+        <p class="av-cm-remind-head">${esc(headline)}</p>
+        <ul class="av-cm-remind-list">${titles}${rest > 0 ? `<li class="av-sub">${esc(fmt(T.cmMore, { n: num(rest) }))}</li>` : ""}</ul>
+        <button type="button" class="av-btn av-btn-sm av-btn-primary" data-nav="daily-missions">${esc(T.cmGo)}</button>
+      </div>`;
+}
+
+/* Recomendaciones activas: las que traen las alertas tempranas sin resolver (p. ej. "Contacto con
+ * Tierra", backend/app/rules/early_warnings.py). Van arriba del cuadro "Recomendaciones" del Resumen
+ * (un solo cuadro, columna de 2 del issue #3); la alerta en sí se gestiona en Alertas (desplegables).
+ * "Ver canal con Tierra" abre la pestaña Recomendaciones con el cuadro earth-channel desplegado. */
+function activeRecsHTML(appState, alerts, T) {
+  const recs = alerts.filter((a) => a.api && isEarlyAlert(a.raw) && a.raw.immediate_action);
+  if (!recs.length) return "";
+  const leader = (appState.currentUser?.role_code || "ASTRONAUT") !== "ASTRONAUT";
+  const items = recs.map(({ raw }) => `<li class="av-ew">
+      <div class="av-ew-head">
+        <h3 class="av-h3">${esc(bt(raw.title))}</h3>
+        <span class="av-mono av-sub">${gmt(toDate(raw.created_at), false)}</span>
+      </div>
+      ${leader && raw.astronaut_name ? `<div class="av-sub">${esc(fmt(T.recsFor, { name: raw.astronaut_name }))}</div>` : ""}
+      <p class="av-ew-p">${esc(bt(raw.immediate_action))}</p>
+      <div class="av-ew-btns">
+        <button type="button" class="av-btn av-btn-sm av-btn-primary" data-nav="recommendations" data-rec-open="earth-channel">${esc(T.recsSeeEarth)}</button>
+        <button type="button" class="av-btn av-btn-sm" data-nav="alerts-center">${esc(T.recsSeeAlert)}</button>
+      </div>
+    </li>`).join("");
+  return `<div class="av-lbl">${esc(T.recsActive)}</div>
+        <ul class="av-ew-list" aria-label="${esc(T.recsAria)}">${items}</ul>
+        <div class="av-lbl">${esc(T.recsPlanned)}</div>`;
+}
+
+function rightColHTML(appState, d, data, alerts) {
+  const T = tt();
+  const missions = (data.missions || []).slice(0, 5);
   const statusTxt = T.taskStatus;
   const tasks = missions.map((m) => {
     const done = m.status_today === "COMPLETED";
@@ -2187,28 +2377,21 @@ function rightColHTML(appState, d, data, alerts) {
       <span class="av-mono av-sub">+${esc(m.xp_reward)}</span>
     </li>`;
   }).join("");
-  const comm = (d.s.expansion_cards || {}).communication_center || {};
+  // Segundo cuadro: avance del módulo Recomendaciones (el módulo Mensajes se retiró, issue #15)
+  const recs = T.recItems.map((t) => `<li style="padding:6px 0;border-top:1px solid var(--av-row)">${esc(t)}</li>`).join("");
+  const nActive = alerts.filter((a) => a.api && isEarlyAlert(a.raw) && a.raw.immediate_action).length;
   return `
-  <aside class="av-col-c" aria-label="${esc(T.rightAria)}">
-    <section class="av-panel">
-      <div class="av-panel-head"><h2 class="av-h2">${T.cwTitle}</h2>
-        <button type="button" class="av-btn av-btn-sm" data-act="toggle-adv" aria-pressed="${consoleState.showAdv}">${esc(consoleState.showAdv ? T.hideAdv : fmt(T.showAdv, { n: nAdv }))}</button></div>
-      <table class="av-table" style="font-size:13px">
-        <thead><tr><th scope="col" style="padding-left:12px">${esc(T.thClass)}</th><th scope="col">ACK</th><th scope="col">${esc(T.thMsg)}</th><th scope="col" style="text-align:right;padding-right:12px">GMT</th></tr></thead>
-        <tbody>${alertRows || `<tr><td colspan="4" class="av-sub" style="padding:12px">${esc(T.noActiveAlerts)}</td></tr>`}</tbody>
-      </table>
+  <aside class="av-col-c av-col-sum" aria-label="${esc(T.rightAria)}">
+    ${tasksBoxOpenHTML(data, T)}
+      <ol class="av-sum-scroll" style="list-style:none;margin:0;padding:0">${tasks || `<li class="av-sub" style="padding:12px">${esc(T.noTasks)}</li>`}</ol>
     </section>
-    <section class="av-panel">
-      <div class="av-panel-head"><h2 class="av-h2">${esc(T.tasksTitle)}</h2><button type="button" class="av-btn av-btn-sm" data-nav="daily-missions">${esc(T.seeAll)}</button></div>
-      <ol style="list-style:none;margin:0;padding:0">${tasks || `<li class="av-sub" style="padding:12px">${esc(T.noTasks)}</li>`}</ol>
-    </section>
-    <section class="av-panel" style="padding:12px;display:flex;flex-direction:column;gap:8px">
-      <h2 class="av-h2">${esc(T.surgeonTitle)}</h2>
-      <div style="display:flex;justify-content:space-between"><span>${esc(T.unreadMsgs)}</span><span class="av-mono" style="font-weight:600">${esc(comm.unread_messages_count ?? 0)}</span></div>
-      <div style="display:flex;justify-content:space-between" class="av-sub"><span>${esc(T.groundLead)}</span><span>${esc(comm.assigned_leader_name || "—")}</span></div>
-      <div style="display:flex;justify-content:space-between" class="av-sub"><span>${esc(T.openSupport)}</span><span class="av-mono">${esc(comm.open_support_requests_count ?? comm.active_support_requests_count ?? 0)}</span></div>
-      <p class="av-sub" style="margin:0">${esc(T.offlineNote)}</p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="av-btn av-btn-primary" data-nav="communication-center">${esc(T.openMessages)}</button></div>
+    <section class="av-panel av-sum-box av-rec-box">
+      <div class="av-panel-head"><h2 class="av-h2">${esc(T.recTitle)}</h2>${nActive ? `<span class="av-badge av-b-A av-pill">${esc(fmt(T.recsActiveN, { n: num(nActive) }))}</span>` : ""}<button type="button" class="av-btn av-btn-sm" data-nav="recommendations">${esc(T.recOpen)}</button></div>
+      <div class="av-sum-scroll" style="padding:12px;display:flex;flex-direction:column;gap:8px">
+        ${activeRecsHTML(appState, alerts, T)}
+        <p class="av-sub" style="margin:0">${esc(T.recSub)}</p>
+        <ul style="list-style:none;margin:0;padding:0">${recs}</ul>
+      </div>
     </section>
   </aside>`;
 }
@@ -2313,8 +2496,7 @@ function indicatorHTML(appState, d, alerts) {
       <div style="margin:12px 16px 16px;padding:12px;border:1px solid var(--av-r-text);display:flex;flex-direction:column;gap:8px">
         <span class="av-lbl" style="color:var(--av-r-text)">${esc(T.escalateIf)}</span>
         <span>${esc(bt(r.escalation_conditions) || T.escalateDefault)}</span>
-        ${alert ? `<button type="button" class="av-btn av-btn-danger" style="align-self:flex-start" data-act="escalate" data-alert="${esc(alert.id)}">${esc(T.escalate)}</button>`
-          : `<button type="button" class="av-btn av-btn-danger" style="align-self:flex-start" data-nav="communication-center">${esc(T.contactSurgeon)}</button>`}
+        ${alert ? `<button type="button" class="av-btn av-btn-danger" style="align-self:flex-start" data-act="escalate" data-alert="${esc(alert.id)}">${esc(T.escalate)}</button>` : ""}
       </div>
     </aside>
   </div>`;
@@ -2524,7 +2706,7 @@ function heraChartSVG() {
   return `<svg viewBox="0 0 760 242" width="100%" role="img" aria-label="${esc(fmt(tt().heraChartAria, { n: pts.length }))}">
     ${ticks}
     ${line(HERA_TH.caution, "#F2C94C", esc(tt().thCaution), "6 4")}
-    ${line(HERA_TH.warning, "#FF8A8D", esc(tt().thShelter))}
+    ${line(HERA_TH.warning, "#E8541C", esc(tt().thShelter))}
     ${line(HERA_TH.emergency, "#FF8A8D", esc(tt().thEmergency), "2 3")}
     <polyline points="${pts.map((p) => `${xv(p.t.getTime()).toFixed(1)},${yv(p.v).toFixed(1)}`).join(" ")}" fill="none" stroke="#E6EAF0" stroke-width="1.6" stroke-linejoin="round"></polyline>
     <text x="${X0}" y="236" font-family="IBM Plex Mono, monospace" font-size="11" fill="#8B95A3">${gmt(pts[0].t, false)}</text>
@@ -2537,9 +2719,6 @@ function radLiveInner(d) {
   const cur = heraCurrent();
   const lvl = hera.level;
   const lvlLetter = HERA_LETTER[lvl];
-  const shelter = HERA_LEVELS.indexOf(lvl) >= 2;
-  const bfo30 = d.last30 + d.eventMGyEq;
-  const cns30 = d.last30 / 2.6 + d.eventMGy; // mGy (Q≈2,6 medido por HERA en Artemis I para GCR)
   const env = ENV_BY_KEY[envState.key];
   const T = tt();
   return `      <section class="av-panel ${RANK[lvlLetter] >= 2 ? `av-card-${lvlLetter}` : ""}" style="padding:16px;display:flex;flex-direction:column;gap:10px" aria-label="HERA">
@@ -2560,29 +2739,46 @@ function radLiveInner(d) {
         <p style="margin:0;color:var(--av-text)">${esc(HERA_TEXT[lvl].msg)}</p>
         ${radChartBlock()}
         <p class="av-sub" style="margin:0;font-size:12px">${esc(T.thresholdsNote)}</p>
-      </section>
+      </section>`;
+}
 
-      ${shelter ? `<section class="av-panel" style="padding:0;border-color:${lvlLetter === "W" ? "var(--av-r)" : "var(--av-y)"}" aria-label="${esc(T.shelterAria)}">
-        <div style="padding:14px 16px;border-bottom:1px solid var(--av-border)"><div class="av-lbl">${esc(T.procedureDemo)}</div><h2 style="margin:4px 0 0;font-size:18px">${esc(T.shelterTitle)}</h2></div>
+/* Secciones plegables que dependen de la lectura HERA (refugio y riesgos): se
+   repintan en vivo junto con la gráfica, pero dentro de la columna lateral de secciones. */
+function radLiveFolds(d) {
+  const lvl = hera.level;
+  const lvlLetter = HERA_LETTER[lvl];
+  const shelter = HERA_LEVELS.indexOf(lvl) >= 2;
+  const bfo30 = d.last30 + d.eventMGyEq;
+  const cns30 = d.last30 / 2.6 + d.eventMGy; // mGy (Q≈2,6 medido por HERA en Artemis I para GCR)
+  const T = tt();
+  return `
+      ${shelter ? radFold("shelter", esc(T.shelterTitle), esc(T.procedureDemo), `
         <ol class="av-steps">
           <li class="av-step ${lvl === "CAUTION" ? "av-step-active" : "av-step-done"}">${T.shelter1}</li>
           <li class="av-step ${lvl === "WARNING" ? "av-step-active" : lvl === "EMERGENCY" ? "av-step-done" : "av-step-todo"}">${T.shelter2}</li>
           <li class="av-step ${lvl === "EMERGENCY" ? "av-step-active" : "av-step-todo"}">${T.shelter3}</li>
           <li class="av-step av-step-todo">${T.shelter4}</li>
-        </ol>
-      </section>` : ""}
+        </ol>`, `border-color:${lvlLetter === "W" ? "var(--av-r)" : "var(--av-y)"}`) : ""}
 
-      <section aria-label="${esc(T.risksAria)}">
-        <div class="av-lbl" style="margin:0 0 6px 2px">${esc(T.risksLabel)}</div>
-        <div class="av-cards">
+      ${radFold("risks", esc(T.risksLabel), "", `
+        <div class="av-cards" style="padding:12px 12px 0">
           ${meterHTML(esc(T.mCarcTitle), d.career, CAREER_LIMIT_MSV, "mSv", esc(T.mCarcNote))}
           ${meterHTML(esc(T.mTissueTitle), bfo30, 250, "mGy-Eq", esc(T.mTissueNote))}
           ${meterHTML(esc(T.mCnsTitle), cns30, 500, "mGy", esc(T.mCnsNote))}
           ${meterHTML(esc(T.mArsTitle), d.eventMGyEq, 250, "mGy-Eq", esc(T.mArsNote), [[100, "100"]])}
         </div>
-        <p class="av-sub" style="font-size:12px;margin:6px 2px 0">${esc(T.risksNote)}</p>
-      </section>
+        <p class="av-sub" style="font-size:12px;margin:0;padding:6px 12px 12px">${esc(T.risksNote)}</p>`)}
   `;
+}
+
+/* Sección plegable de la vista Radiación (todas menos la gráfica HERA). El estado
+   abierto/cerrado vive en consoleState.radFold para sobrevivir al repintado en vivo. */
+function radFold(key, title, sub, inner, style = "") {
+  const open = consoleState.radFold[key] !== false;
+  return `<details class="av-panel av-fold" data-fold="${key}" ${open ? "open" : ""}${style ? ` style="${style}"` : ""}>
+        <summary class="av-panel-head av-fold-head" title="${title}${sub ? ` · ${sub}` : ""}"><h2 class="av-h2">${title}</h2>${sub ? `<span class="av-sub">${sub}</span>` : ""}</summary>
+        ${inner}
+      </details>`;
 }
 
 function radiationHTML(appState, d) {
@@ -2601,13 +2797,15 @@ function radiationHTML(appState, d) {
   const T = tt();
   const lim = (v) => (v === null ? "—" : num(v));
   const limRow = (label, a, b, c) => `<tr><td>${esc(label)}</td><td class="av-mono" style="text-align:right">${lim(a)}</td><td class="av-mono" style="text-align:right">${lim(b)}</td><td class="av-mono" style="text-align:right">${lim(c)}</td></tr>`;
+  // Fila 1: gráfica (izq.) | Riesgos y Dosímetro en 2 columnas internas (der.).
+  // Fila 2: Límites de referencia a todo el ancho.
   return `
-  <div class="av-grid">
-    <main class="av-col-b" id="av-rad-live">${radLiveInner(d)}</main>
+  <div class="av-rad">
+    <main id="av-rad-live">${radLiveInner(d)}</main>
 
-    <aside class="av-col-c">
-      <section class="av-panel" style="padding:0" aria-label="${esc(T.dosimeterAria)}">
-        <div class="av-panel-head"><h2 class="av-h2">${esc(T.dosimeterTitle)}</h2><span class="av-sub">${esc(T.manualEntry)}</span></div>
+    <div class="av-rad-folds">
+      <div id="av-rad-live-folds" style="display:contents">${radLiveFolds(d)}</div>
+      ${radFold("dosimeter", esc(T.dosimeterTitle), esc(T.manualEntry), `
         <form data-form="cad" style="padding:12px;display:flex;flex-direction:column;gap:10px">
           <div class="av-form-grid">
             <div class="av-field"><label for="av-cad-dev">${esc(T.device)}</label><input id="av-cad-dev" name="device" class="av-input" required value="${esc(lastCad?.device || "CAD-0082")}"></div>
@@ -2628,10 +2826,11 @@ function radiationHTML(appState, d) {
         </div>
         ${entries.length ? `<div class="av-hscroll" style="border-top:1px solid var(--av-border)"><table class="av-table" style="font-size:13px"><thead><tr><th scope="col" style="padding-left:12px">GMT</th><th scope="col" style="text-align:right">mGy</th><th scope="col" style="text-align:right">µGy/h</th><th scope="col">${esc(T.place)}</th></tr></thead><tbody>
           ${entries.slice(-6).reverse().map((e) => `<tr><td class="av-mono" style="padding-left:12px">${gmt(new Date(e.utc), false)}</td><td class="av-mono" style="text-align:right">${num(e.mgy, 3)}</td><td class="av-mono" style="text-align:right">${e.rate ? num(e.rate, 1) : "—"}</td><td>${esc(T.cadLoc[e.loc] || e.loc)}</td></tr>`).join("")}
-        </tbody></table></div>` : ""}
-      </section>
-      <section class="av-panel" style="padding:12px;display:flex;flex-direction:column;gap:6px" aria-label="${esc(T.limitsAria)}">
-        <h2 class="av-h2">${esc(T.limitsTitle)}</h2>
+        </tbody></table></div>` : ""}`)}
+    </div>
+
+    <div class="av-rad-limits">
+      ${radFold("limits", esc(T.limitsTitle), "", `<div style="padding:12px;display:flex;flex-direction:column;gap:6px">
         <table class="av-table" style="font-size:12px">
           <thead><tr><th scope="col">${esc(T.organ)}</th><th scope="col" style="text-align:right">30 d</th><th scope="col" style="text-align:right">${esc(T.year1)}</th><th scope="col" style="text-align:right">${esc(T.career)}</th></tr></thead>
           <tbody>
@@ -2644,8 +2843,8 @@ function radiationHTML(appState, d) {
           </tbody>
         </table>
         <span style="font-size:11px;color:var(--av-muted)">${esc(T.limitsSource)}</span>
-      </section>
-    </aside>
+      </div>`)}
+    </div>
   </div>`;
 }
 
@@ -2659,12 +2858,23 @@ function bindOnce(container, appState, helpers) {
   container.__avBound = true;
   container.__avCtx = { appState, helpers };
 
+  // "toggle" no burbujea: se escucha en captura para recordar las secciones plegadas
+  container.addEventListener("toggle", (ev) => {
+    const fold = ev.target instanceof Element ? ev.target.closest("details[data-fold]") : null;
+    if (fold === ev.target) consoleState.radFold[fold.dataset.fold] = fold.open;
+  }, true);
+
   container.addEventListener("click", async (ev) => {
     // solo dentro de la raíz propia de la consola (no en las vistas de src/console/views/)
     if (!ev.target.closest(ROOT_SEL)) return;
     const { appState: st, helpers: hp } = container.__avCtx;
     const navBtn = ev.target.closest("[data-nav]");
     if (navBtn) {
+      // data-rec-open: cuadro de Recomendaciones que debe abrirse desplegado (lo lee views/recommendations.js)
+      const recOpen = navBtn.getAttribute("data-rec-open");
+      if (recOpen) {
+        try { sessionStorage.setItem("av_rec_open", recOpen); } catch { /* sin almacenamiento: se abre la pestaña sin desplegar */ }
+      }
       document.body.classList.remove("av-console-on");
       hp.navigateToSection(navBtn.getAttribute("data-nav"));
       return;
@@ -2699,12 +2909,12 @@ function bindOnce(container, appState, helpers) {
         paint(container, st);
         focusQuiet(container, container.querySelector(`[data-focus-id="${consoleState.popFrom || `hot-${reg}`}"]`));
       } else if (act === "sys") {
+        // fila "Otros sistemas" (sistemas sin zona en la figura): filtra la tabla
         consoleState.sys = consoleState.sys === code ? null : code;
         if (consoleState.pop !== consoleState.sys) consoleState.pop = null;
         paint(container, st);
         focusQuiet(container, container.querySelector(`[data-focus-id="sys-${code}"]`));
-      }
-      else if (act === "clear-sys") { consoleState.sys = null; consoleState.pop = null; paint(container, st); }
+      } else if (act === "clear-sys") { consoleState.sys = null; consoleState.pop = null; paint(container, st); }
       else if (act === "toggle-nominal") {
         nominalOpen = !nominalOpen;
         paint(container, st);

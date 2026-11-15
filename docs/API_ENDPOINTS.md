@@ -1,6 +1,6 @@
-# Documentación de Endpoints REST — AstroVital (`/api/v1`)
+# Documentación de Endpoints REST — SEMSA (`/api/v1`)
 
-La API de **AstroVital** sigue principios RESTful bajo el prefijo versionado `/api/v1`. Todos los endpoints protegidos requieren el encabezado `Authorization: Bearer <access_token>` obtenido al iniciar sesión, y validan permisos de rol (`ASTRONAUT`, `MISSION_LEADER`, `ADMINISTRATOR`) y aislamiento horizontal de datos en el servidor.
+La API de **SEMSA** sigue principios RESTful bajo el prefijo versionado `/api/v1`. Todos los endpoints protegidos requieren el encabezado `Authorization: Bearer <access_token>` obtenido al iniciar sesión, y validan permisos de rol (`ASTRONAUT`, `MISSION_LEADER`, `ADMINISTRATOR`) y aislamiento horizontal de datos en el servidor.
 
 ---
 
@@ -171,7 +171,7 @@ La API de **AstroVital** sigue principios RESTful bajo el prefijo versionado `/a
 | :--- | :--- | :--- | :--- |
 | `POST` | `/api/v1/wellness/quick-checkin` | `ASTRONAUT` (para sí mismo) | Check-in rápido de sueño (0–16 h) y ánimo/energía/calidad (1–5), `feels_isolated` y nota privada (≤ 500). Calcula `operational_flag` (`OK` / `NEEDS_CHECK_IN`), otorga XP `MIND_CHECK` una vez al día y acepta `dedup_key` opcional (reenvío sin enlace sin duplicar). |
 | `GET` | `/api/v1/wellness/quick-checkin?astronaut_id=&limit=14` | Propio / Líder asignado / Administración | Historial y resumen de 7 días (`avg_sleep_hours_7d`, `nights_under_6h_7d`, `checkins_7d`, `operational_flag`, `circadian_tip`). Para líder y administración `note`, `mood`, `energy` y `feels_isolated` llegan como `null`. |
-| `GET` | `/api/v1/wellness/leisure?max_minutes=&category=` | Autenticado (no familiar) | Catálogo de actividades breves de tiempo libre (5–30 min) con pasos y fuente NASA. |
+| `GET` | `/api/v1/wellness/leisure?max_minutes=&category=` | Autenticado | Catálogo de actividades breves de tiempo libre (5–30 min) con pasos y fuente NASA. |
 | `POST` | `/api/v1/wellness/leisure/{code}/log` | `ASTRONAUT` | Registra minutos y disfrute (1–5); XP una vez al día. |
 | `GET` | `/api/v1/wellness/leisure/log?astronaut_id=&limit=20` | Propio / Líder asignado / Administración | Registros y `minutes_7d`; la nota solo la ve la propia persona. |
 | `GET` | `/api/v1/crew-activities/catalog` | `ASTRONAUT` / `MISSION_LEADER` / `ADMINISTRATOR` | Plantillas: comida compartida, noche de película, huerto en grupo, juego de mesa, observación de la Tierra, celebración. |
@@ -180,11 +180,3 @@ La API de **AstroVital** sigue principios RESTful bajo el prefijo versionado `/a
 | `POST` | `/api/v1/crew-activities/{id}/respond` | Participante | `JOINED` / `DECLINED` (solo actividades `SCHEDULED`). |
 | `POST` | `/api/v1/crew-activities/{id}/attend` | Participante con `JOINED` | Marca asistencia (solo de `scheduled_for − 15 min` a fin + 24 h; si no, 409); con quórum pasa a `COMPLETED`. XP solo con ≥ 2 asistentes, una vez por persona y actividad y como máximo una vez al día. Atómico ante peticiones simultáneas; autocura actividades con quórum que quedaron `SCHEDULED`. |
 | `POST` | `/api/v1/crew-activities/{id}/cancel` | Creador / líder asignado / administración | Cancela una actividad programada. |
-| `GET` | `/api/v1/family/contacts` | `ASTRONAUT` / `FAMILY_MEMBER` | Contactos autorizados (la otra persona del vínculo) y su `conversation_id` FAMILY (se crea bajo demanda). |
-| `GET` | `/api/v1/conversations?channel=MISSION` o `FAMILY` | Autenticado | Mismo formato `{conversations: [...]}` con `channel`, `message_count` y `family_contact` en FAMILY. Para `FAMILY_MEMBER`, `mission_code`, `mission_name`, `astronaut_crew_code` y `astronaut_callsign` llegan como `null`. Sin `channel` → solo MISSION. El líder nunca ve FAMILY; administración solo metadatos. |
-| `POST` | `/api/v1/attachments` | Participante de alguna conversación | Multipart (`file`). JPEG/PNG/WebP o WebM/OGG/MP4/MP3 ≤ 5 MB, validados por *magic bytes*; nombre aleatorio en disco. Queda huérfano hasta enviarse. Sin `Content-Length` → 411; mayor que 5 MB + 64 KB → 413 antes de parsear el multipart. MP4 con vídeo → 415. Huérfanos > 24 h se purgan. |
-| `DELETE` | `/api/v1/attachments/{id}` | Quien lo subió | Descarta un adjunto huérfano (fila + archivo) → 204. Ya enviado → 409; ajeno o inexistente → 404. |
-| `GET` | `/api/v1/attachments/{id}` | Participantes de la conversación (o quien lo subió si es huérfano) | Binario con `Content-Type` real, `Content-Disposition: inline`, `X-Content-Type-Options: nosniff`, `Cache-Control: private`. En FAMILY nunca líder ni administración. |
-| `POST` | `/api/v1/conversations/{id}/messages` | Participante | Acepta además `attachment_ids` (máx. 4, propios y huérfanos); el texto puede ir vacío si hay adjuntos. En FAMILY la categoría se fuerza a `GENERAL`. |
-
-Rol `FAMILY_MEMBER`: denegación por defecto; solo `/auth/me`, `/auth/logout`, `/conversations*`, `/messages/*`, `/attachments*` y `/family/*` (el resto devuelve 403).

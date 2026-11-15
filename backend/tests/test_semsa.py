@@ -10,7 +10,7 @@ from backend.app.database.session import Base, get_db
 from backend.app.database.seed import seed_database
 from backend.app.main import app
 
-TEST_DB_PATH = Path(__file__).resolve().parent / "test_astrovital.db"
+TEST_DB_PATH = Path(__file__).resolve().parent / "test_semsa.db"
 TEST_DATABASE_URL = f"sqlite:///{TEST_DB_PATH}"
 
 engine_test = create_engine(
@@ -77,8 +77,13 @@ def test_01_frontend_and_svg_delivery(client: TestClient):
     res_html = client.get("/")
     assert res_html.status_code == 200
     html_text = res_html.text
-    assert "AstroVital" in html_text
-    assert "Your health. Your mission. Your future." in html_text
+    assert "SEMSA" in html_text
+    # Sin pantalla de acceso: "/" sirve directamente la consola (la sesión demo la abre app.js)
+    assert 'id="app-shell"' in html_text
+    assert 'id="av-chrome-status"' in html_text
+    assert 'id="section-view-container"' in html_text
+    assert 'src="/src/app/app.js?v=' in html_text
+    assert "Your health. Your mission. Your future." not in html_text
 
     res_js = client.get("/src/app/app.js")
     assert res_js.status_code == 200
@@ -100,6 +105,15 @@ def test_01_frontend_and_svg_delivery(client: TestClient):
     ]:
         assert region_code in res_console.text
         assert region_code in res_figure.text
+
+
+def test_01b_env_banner_webp_served_as_image(client: TestClient):
+    """Las imágenes .webp del banner de entorno se sirven como image/webp (no application/octet-stream)."""
+    for name in ["env-spacecraft.webp", "semsa-logo-dark.webp"]:
+        res = client.get(f"/src/assets/env/{name}")
+        assert res.status_code == 200, name
+        assert res.headers["content-type"].split(";")[0].strip() == "image/webp", res.headers["content-type"]
+        assert res.content[:4] == b"RIFF" and res.content[8:12] == b"WEBP"
 
 
 def test_02_rbac_and_horizontal_access_protection(client: TestClient):
@@ -145,7 +159,7 @@ def test_02_rbac_and_horizontal_access_protection(client: TestClient):
         headers=leader["headers"],
         json={
             "crew_code": "HACK-01",
-            "email": "unauthorized@astrovital.demo",
+            "email": "unauthorized@semsa.demo",
             "full_name": "Unauthorized User",
             "password": "Password123!",
             "role_code": "ADMINISTRATOR",
@@ -344,7 +358,7 @@ def test_06_admin_suspension_reports_and_simulator_scenarios(client: TestClient)
         headers=admin["headers"],
         json={
             "crew_code": "AST-999",
-            "email": "temp.crew@astrovital.demo",
+            "email": "temp.crew@semsa.demo",
             "full_name": "Temp Astronaut",
             "password": "TempPassword!2026",
             "role_code": "ASTRONAUT",
@@ -364,7 +378,7 @@ def test_06_admin_suspension_reports_and_simulator_scenarios(client: TestClient)
     # Suspended user cannot log in
     blocked_login = client.post(
         "/api/v1/auth/login",
-        json={"email": "temp.crew@astrovital.demo", "password": "TempPassword!2026"},
+        json={"email": "temp.crew@semsa.demo", "password": "TempPassword!2026"},
     )
     assert blocked_login.status_code == 403
 
