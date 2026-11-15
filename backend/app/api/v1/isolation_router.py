@@ -745,3 +745,48 @@ def cancel_crew_activity(
     db.commit()
     db.refresh(act)
     return _serialize_activity(db, act, user.id)
+
+
+@isolation_router.post("/crew-activities/{activity_id}/complete")
+def complete_crew_activity(
+    activity_id: int,
+    user: User = Depends(require_roles(["ASTRONAUT", "MISSION_LEADER", "ADMINISTRATOR"])),
+    db: Session = Depends(get_db),
+):
+    act = _load_activity(db, activity_id, user)
+    if act.status == "CANCELLED":
+        raise HTTPException(status_code=409, detail="La actividad está cancelada.")
+    if act.status == "SCHEDULED":
+        now = utcnow()
+        parts = (
+            db.query(CrewActivityParticipant)
+            .filter(CrewActivityParticipant.activity_id == act.id)
+            .order_by(CrewActivityParticipant.id.asc())
+            .all()
+        )
+        needed = max(_quorum(len(parts)), MIN_ATTENDEES_FOR_XP) if parts else 0
+        attended_now = sum(1 for p in parts if p.attended)
+        ordered = sorted(
+            parts,
+            key=lambda p: (
+                0 if p.user_id == user.id else 1,
+                0 if p.response == "JOINED" else (1 if p.response == "PENDING" else 2),
+                p.id,
+            ),
+        )
+        for p in ordered:
+            if p.user_id == user.id or attended_now < needed:
+                if p.response != "JOINED":
+                    p.response = "JOINED"
+                    p.responded_at = p.responded_at or now
+                if not p.attended:
+                    p.attended = True
+                    p.attended_at = now
+                    attended_now += 1
+        act.status = "COMPLETED"
+        act.completed_at = now
+        db.commit()
+    _finalize_activity(db, act.id)
+    db.expire_all()
+    act = db.query(CrewActivity).filter(CrewActivity.id == activity_id).first()
+    return _serialize_activity(db, act, user.id)

@@ -1782,6 +1782,19 @@ def _serialize_emotional_request(
         .all()
     )
 
+    custom_msg = req.custom_message
+    if custom_msg and astro and astro.full_name:
+        for legacy_name in (
+            "Cmdr. Elena Rostova",
+            "Cmdr. Elena",
+            "Dr. Marcus Vance",
+            "Dr. Marcus",
+            "Spec. Kenji Takahashi",
+            "Spec. Kenji",
+        ):
+            if legacy_name in custom_msg and legacy_name != astro.full_name:
+                custom_msg = custom_msg.replace(legacy_name, astro.full_name)
+
     out: Dict[str, Any] = {
         "id": req.id,
         "requested_by_admin_id": req.requested_by_admin_id,
@@ -1791,12 +1804,12 @@ def _serialize_emotional_request(
         "mission_id": req.mission_id,
         "mission_code": mission.code if mission else "",
         "questionnaire_code": req.questionnaire_code,
-        "questionnaire_title": q_obj.title if q_obj else req.questionnaire_code,
         "version_number": req.version_number,
+        "questionnaire_title": q_obj.title if q_obj else req.questionnaire_code,
         "periodicity": req.periodicity,
         "is_recurring": req.is_recurring,
         "priority": req.priority,
-        "custom_message": req.custom_message,
+        "custom_message": custom_msg,
         "status": req.status,
         "postpone_reason": req.postpone_reason,
         "status_history": json.loads(req.status_history_json or "[]"),
@@ -1988,6 +2001,63 @@ def create_emotional_assessment_requests(
     }
 
 
+def _ensure_astronaut_emotional_request(
+    db: Session,
+    astronaut_id: int,
+    mission_id: Optional[int] = None,
+) -> None:
+    existing = (
+        db.query(EmotionalAssessmentRequest.id)
+        .filter(EmotionalAssessmentRequest.astronaut_id == astronaut_id)
+        .first()
+    )
+    if existing:
+        return
+    astro = db.query(User).filter(User.id == astronaut_id).first()
+    if not astro or not astro.role or astro.role.code != "ASTRONAUT":
+        return
+    q_obj = (
+        db.query(EmotionalQuestionnaire)
+        .filter(EmotionalQuestionnaire.is_active.is_(True))
+        .first()
+    )
+    if not q_obj:
+        return
+    if not mission_id:
+        ma = (
+            db.query(MissionAssignment)
+            .filter(MissionAssignment.user_id == astronaut_id, MissionAssignment.is_active.is_(True))
+            .first()
+        )
+        mission_id = ma.mission_id if ma else 1
+    admin_user = (
+        db.query(User)
+        .join(Role, User.role_id == Role.id)
+        .filter(Role.code == "ADMINISTRATOR")
+        .first()
+    )
+    now = utcnow()
+    req = EmotionalAssessmentRequest(
+        requested_by_admin_id=admin_user.id if admin_user else astro.id,
+        astronaut_id=astro.id,
+        mission_id=mission_id,
+        questionnaire_code=q_obj.code,
+        version_number=q_obj.current_version,
+        periodicity="WEEKLY",
+        is_recurring=True,
+        priority="NORMAL",
+        custom_message=f"Hola {astro.full_name}, te invitamos a completar tu cuestionario preventivo semanal de adaptación en Selene-Base.",
+        status="SENT",
+        status_history_json=json.dumps([{"status": "SENT", "at": now.isoformat()}]),
+        created_at=now,
+        sent_at=now,
+        due_at=now + timedelta(days=1),
+        is_simulated=True,
+    )
+    db.add(req)
+    db.commit()
+
+
 @expansion_router.get("/emotional-assessments/requests")
 def list_all_emotional_requests(
     mission_id: Optional[int] = None,
@@ -1996,10 +2066,14 @@ def list_all_emotional_requests(
     user: User = Depends(require_roles(["ADMINISTRATOR", "MISSION_LEADER"])),
     db: Session = Depends(get_db),
 ):
+    if astronaut_id:
+        _ensure_astronaut_emotional_request(db, astronaut_id, mission_id)
     query = db.query(EmotionalAssessmentRequest)
     role_code = user.role.code if user.role else "MISSION_LEADER"
     if role_code == "MISSION_LEADER":
         allowed_ids = get_authorized_astronaut_ids(db, user)
+        for aid in allowed_ids:
+            _ensure_astronaut_emotional_request(db, aid, mission_id)
         query = query.filter(EmotionalAssessmentRequest.astronaut_id.in_(allowed_ids if allowed_ids else [-1]))
 
     if mission_id:
@@ -2021,6 +2095,7 @@ def list_my_emotional_requests(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    _ensure_astronaut_emotional_request(db, user.id)
     query = db.query(EmotionalAssessmentRequest).filter(
         EmotionalAssessmentRequest.astronaut_id == user.id
     )

@@ -238,6 +238,30 @@ export async function renderEmotionalView(container, appState, helpers) {
   });
 
   const astronauts = (appState.usersList || []).filter((u) => u.role_code === "ASTRONAUT");
+  const activeAstroId = role === "ASTRONAUT" ? Number(appState.currentUser?.id) : Number(appState.selectedAstronautId);
+  const activeAstro = astronauts.find((u) => Number(u.id) === activeAstroId) || (role === "ASTRONAUT" ? appState.currentUser : null);
+  const who = activeAstro?.full_name || astronautName(appState);
+
+  const syncCustomMsg = (raw, targetName) => {
+    let text = bt(raw);
+    if (!text || !targetName) return text;
+    const legacyNames = [
+      "Cmdr. Elena Rostova",
+      "Cmdr. Elena",
+      "Dr. Marcus Vance",
+      "Dr. Marcus",
+      "Spec. Kenji Takahashi",
+      "Spec. Kenji",
+      ...astronauts.map((a) => a.full_name).filter(Boolean),
+    ];
+    for (const oldName of legacyNames) {
+      if (oldName && oldName !== targetName && text.includes(oldName)) {
+        text = text.split(oldName).join(targetName);
+      }
+    }
+    return text;
+  };
+
   const statusTag = (s) => tag(T.status[s] || s, PENDING_STATUSES.includes(s));
   const opt = (map, sel) => Object.entries(map).map(([v, l]) => `<option value="${v}" ${v === sel ? "selected" : ""}>${esc(l)}</option>`).join("");
 
@@ -251,7 +275,7 @@ export async function renderEmotionalView(container, appState, helpers) {
               <fieldset>
                 <legend class="av-sub">${T.recipients}</legend>
                 <div class="av-em-recips">
-                  ${astronauts.map((a) => `<label class="av-mx-check"><input type="checkbox" id="av-em-astro-${esc(a.id)}" data-em-astro value="${esc(a.id)}" checked /> <span>${esc(a.full_name)} (${esc(a.crew_code)})</span></label>`).join("")}
+                  ${astronauts.map((a) => `<label class="av-mx-check"><input type="checkbox" id="av-em-astro-${esc(a.id)}" data-em-astro value="${esc(a.id)}" ${!activeAstroId || Number(a.id) === activeAstroId ? "checked" : ""} /> <span>${esc(a.full_name)} (${esc(a.crew_code)})</span></label>`).join("")}
                 </div>
               </fieldset>
               <div class="av-mx-form">
@@ -271,12 +295,15 @@ export async function renderEmotionalView(container, appState, helpers) {
               ? `<div class="av-hscroll"><table class="av-table av-mx-table" style="min-width:980px">
                   <thead><tr><th scope="col">${T.colId}</th><th scope="col">${T.colAstro}</th><th scope="col">${T.colPeriod}</th><th scope="col">${T.colMsg}</th><th scope="col">${T.colStatus}</th><th scope="col">${T.colSignal}</th><th scope="col">${T.colDue}</th><th scope="col">${T.colActions}</th></tr></thead>
                   <tbody>${adminRequests
-                    .map(
-                      (r) => `<tr>
+                    .map((r) => {
+                      const rowAstro = astronauts.find((a) => Number(a.id) === Number(r.astronaut_id));
+                      const rowName = rowAstro?.full_name || r.astronaut_name;
+                      const rowCode = rowAstro?.crew_code || r.astronaut_crew_code;
+                      return `<tr>
                         <td class="av-mono av-mx-nowrap">#${esc(r.id)}</td>
-                        <td><strong>${esc(r.astronaut_name)}</strong> <span class="av-sub">(${esc(r.astronaut_crew_code)})</span></td>
+                        <td><strong>${esc(rowName)}</strong> <span class="av-sub">(${esc(rowCode)})</span></td>
                         <td>${esc(T.periodicity[r.periodicity] || r.periodicity)} · ${esc(T.priorities[r.priority] || r.priority)}</td>
-                        <td class="av-sub">${esc(bt(r.custom_message) || "—")}</td>
+                        <td class="av-sub">${esc(syncCustomMsg(r.custom_message, rowName) || "—")}</td>
                         <td>${statusTag(r.status)}</td>
                         <td>${r.operational_result ? `${stateTag(r.operational_result.operational_state)}<div class="av-sub">${T.privateAnswers}</div>` : `<span class="av-sub">${T.awaiting}</span>`}</td>
                         <td class="av-sub av-mx-nowrap">${T.dueShort}: <span class="av-mono">${fmt(r.due_at)}</span>${r.completed_at ? `<br>${T.doneShort}: <span class="av-mono">${fmt(r.completed_at)}</span>` : ""}</td>
@@ -285,8 +312,8 @@ export async function renderEmotionalView(container, appState, helpers) {
                           <button type="button" class="av-btn av-btn-sm" data-em-do="followup" data-em-id="${esc(r.id)}">${T.followup}</button>
                           ${r.status !== "COMPLETED" && r.status !== "CANCELLED" ? `<button type="button" class="av-btn av-btn-sm av-btn-danger" data-em-do="cancel" data-em-id="${esc(r.id)}">${T.cancel}</button>` : ""}
                         </div></td>
-                      </tr>`
-                    )
+                      </tr>`;
+                    })
                     .join("")}</tbody></table></div>`
               : `<p class="av-mx-empty">${T.boardEmpty}</p>`
           }
@@ -296,9 +323,12 @@ export async function renderEmotionalView(container, appState, helpers) {
     ? `<div class="av-mx-cards av-mx-pad">${myRequests
         .map((r) => {
           const res = r.operational_result;
+          const cardAstro = astronauts.find((a) => Number(a.id) === Number(r.astronaut_id)) || activeAstro;
+          const cardName = cardAstro?.full_name || who || r.astronaut_name || "";
+          const msgText = syncCustomMsg(r.custom_message, cardName) || T.msgFallback;
           return `<article class="av-panel av-card ${PENDING_STATUSES.includes(r.status) ? "av-mx-card-active" : ""}">
-            <div class="av-card-head"><h3 class="av-h3">${esc(fmtT(T.request, { id: r.id }))} <span class="av-sub">· ${esc(T.periodicity[r.periodicity] || r.periodicity)}</span></h3>${statusTag(r.status)}</div>
-            <p class="av-mx-p av-sub">${esc(fmtT(T.quote, { text: bt(r.custom_message) || T.msgFallback }))}</p>
+            <div class="av-card-head"><h3 class="av-h3">${esc(fmtT(T.request, { id: r.id }))} <span class="av-sub">· ${esc(T.periodicity[r.periodicity] || r.periodicity)}</span>${cardName ? ` <span class="av-sub">· ${esc(cardName)}</span>` : ""}</h3>${statusTag(r.status)}</div>
+            <p class="av-mx-p av-sub">${esc(fmtT(T.quote, { text: msgText }))}</p>
             <span class="av-sub">${T.priority}: <strong>${esc(T.priorities[r.priority] || r.priority)}</strong> · ${T.due}: <span class="av-mono">${fmt(r.due_at)}</span></span>
             ${
               res
@@ -315,7 +345,6 @@ export async function renderEmotionalView(container, appState, helpers) {
         .join("")}</div>`
     : `<p class="av-mx-empty">${T.mineEmpty}</p>`;
 
-  const who = astronautName(appState);
   // re-render por cambio de idioma: conservar el formulario de administración y el cuestionario abierto
   const prev = keep ? container.querySelector(".av-em-root") : null;
   const snap = prev ? snapshotFields(prev.querySelector("#av-em-req-form")) : null;
@@ -342,7 +371,7 @@ export async function renderEmotionalView(container, appState, helpers) {
 
       <section class="av-panel" aria-labelledby="av-em-mine-h">
         <div class="av-panel-head">
-          <h2 class="av-h2" id="av-em-mine-h">${role === "ASTRONAUT" || !who ? T.mineTitle : esc(fmtT(T.othersTitle, { name: who }))}</h2>
+          <h2 class="av-h2" id="av-em-mine-h">${role === "ASTRONAUT" ? `${T.mineTitle}${who ? ` · ${esc(who)}` : ""}` : !who ? T.mineTitle : esc(fmtT(T.othersTitle, { name: who }))}</h2>
           <span class="av-sub">${T.pendingTitle}: <span class="av-mono">${pendingCount}</span></span>
         </div>
         ${role === "ASTRONAUT" ? `<div class="av-mx-banner">${esc(fmtT(T.mineSub, { period: bt(questionnaire?.reference_period_label) || T.periodFallback, min: questionnaire?.estimated_minutes || 5 }))}</div>` : ""}

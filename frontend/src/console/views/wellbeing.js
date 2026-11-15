@@ -60,6 +60,14 @@ const DICT = {
     title: "Bienestar",
     intro: "Un espacio para cuidar el descanso, el ánimo y la conexión con los demás durante la misión. Todo lo que escribas aquí es privado por defecto.",
     introLeader: "Resumen de bienestar de {name}. Por privacidad, ánimo, energía, sensación de aislamiento y notas solo los ve la propia persona.",
+    crewModeOffTitle: "Vista de supervisión",
+    crewModeOffText: "El check-in de hoy, los cuestionarios, el chequeo del turno, el check-in emocional y la evaluación cognitiva los responde cada tripulante con su cuenta.",
+    crewModeEnter: "Responder como {name}",
+    crewModeOnTitle: "Modo tripulante",
+    crewModeOnText: "Respondes como {name}. Lo que registres queda en su cuenta.",
+    crewModeExit: "Volver a supervisión",
+    crewModeBusy: "Cambiando de cuenta…",
+    crewModeFailed: "No se pudo cambiar de cuenta: {msg}",
     tabsAria: "Secciones de bienestar",
     tabs: { today: "Hoy", checks: "Cuestionarios", emotional: "Check-in emocional", cognitive: "Evaluación cognitiva", breath: "Respiración", leisure: "Tiempo libre", crew: "Tripulación" },
     loading: "Cargando…",
@@ -193,11 +201,24 @@ const DICT = {
     badDesc: "La descripción admite como máximo 1000 caracteres.",
     badDur: "Indica la duración con un número entre 5 y 240 minutos.",
     catalogError: "No se pudo cargar el catálogo de actividades; inténtalo más tarde.",
+    completeAct: "Marcar como cumplida",
+    completedOk: "Actividad o misión marcada como cumplida. ¡Meta semanal de tripulación actualizada!",
+    suggestionsTitle: "Sugerencias y misiones de tripulación",
+    suggestionsSub: "Actividades recomendadas por NASA para reforzar la cohesión",
+    completeSuggestion: "Cumplir sugerencia / misión",
   },
   en: {
     title: "Well-being",
     intro: "A space to look after your rest, your mood and your connection with others during the mission. Everything you write here is private by default.",
     introLeader: "Well-being summary for {name}. For privacy, mood, energy, feeling isolated and notes are only visible to that person.",
+    crewModeOffTitle: "Supervision view",
+    crewModeOffText: "Today's check-in, the questionnaires, the shift check, the emotional check-in and the cognitive assessment are answered by each crew member with their own account.",
+    crewModeEnter: "Answer as {name}",
+    crewModeOnTitle: "Crew mode",
+    crewModeOnText: "You are answering as {name}. Everything you log is saved to their account.",
+    crewModeExit: "Back to supervision",
+    crewModeBusy: "Switching account…",
+    crewModeFailed: "Could not switch account: {msg}",
     tabsAria: "Well-being sections",
     tabs: { today: "Today", checks: "Questionnaires", emotional: "Emotional check-in", cognitive: "Cognitive assessment", breath: "Breathing", leisure: "Free time", crew: "Crew" },
     loading: "Loading…",
@@ -326,6 +347,11 @@ const DICT = {
     badDesc: "The description can be at most 1000 characters.",
     badDur: "Enter the duration as a number between 5 and 240 minutes.",
     catalogError: "Couldn't load the activity catalog; please try again later.",
+    completeAct: "Mark as completed",
+    completedOk: "Activity or mission marked as completed. Weekly crew goal updated!",
+    suggestionsTitle: "Crew suggestions and missions",
+    suggestionsSub: "NASA-recommended activities to strengthen team cohesion",
+    completeSuggestion: "Complete suggestion / mission",
   },
 };
 
@@ -471,6 +497,7 @@ export async function renderWellbeingView(container, appState, helpers) {
             <h2 class="av-h2" id="av-wb-h">${esc(T.title)}</h2>
           </div>
           <p class="av-mx-p av-wb-intro">${esc(intro)}</p>
+          ${crewModeHTML(appState, helpers, T)}
           <div class="av-wb-tabs" role="tablist" aria-label="${esc(T.tabsAria)}">
             ${SUBS.map((s) => tabHTML(s, T, own ? pendingEmotional(appState) : 0)).join("")}
           </div>
@@ -482,8 +509,52 @@ export async function renderWellbeingView(container, appState, helpers) {
     </div></div>`;
 
   bindTabs(container);
+  bindCrewMode(container);
   await renderPanel();
   if (snap) restoreFields(container.querySelector(".av-wb-root"), snap);
+}
+
+/* Modo tripulante (issue #44): el líder o la administración pasan a la cuenta demo del tripulante
+ * seleccionado para responder lo que solo puede responder esa persona; en modo tripulante se ofrece
+ * volver a supervisión. Las acciones las hace app.js (helpers.enterCrewMode / exitCrewMode). */
+function crewModeHTML(appState, helpers, T) {
+  if (appState.crewMode && helpers?.exitCrewMode) {
+    const me = appState.currentUser || {};
+    const who = `${me.full_name || "—"}${me.crew_code ? ` (${me.crew_code})` : ""}`;
+    return `<div class="av-mx-note av-wb-crewmode" role="status">
+        <strong>${esc(T.crewModeOnTitle)}</strong>
+        <span>${esc(fmtT(T.crewModeOnText, { name: who }))}</span>
+        <span class="av-mx-btns"><button type="button" class="av-btn av-btn-sm" data-wb-crewmode="exit">${esc(T.crewModeExit)}</button></span>
+      </div>`;
+  }
+  if (!helpers?.canEnterCrewMode?.(appState.selectedAstronautId)) return "";
+  const a = (appState.usersList || []).find((u) => Number(u.id) === Number(appState.selectedAstronautId));
+  return `<div class="av-mx-note av-wb-crewmode">
+      <strong>${esc(T.crewModeOffTitle)}</strong>
+      <span>${esc(T.crewModeOffText)}</span>
+      <span class="av-mx-btns"><button type="button" class="av-btn av-btn-sm av-btn-primary" data-wb-crewmode="enter">${esc(fmtT(T.crewModeEnter, { name: a?.full_name || "—" }))}</button></span>
+    </div>`;
+}
+
+function bindCrewMode(container) {
+  const btn = container.querySelector("[data-wb-crewmode]");
+  if (!btn) return;
+  btn.addEventListener("click", async () => {
+    const T = tr(DICT);
+    const { appState, helpers } = ctx;
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = T.crewModeBusy;
+    try {
+      if (btn.getAttribute("data-wb-crewmode") === "exit") await helpers.exitCrewMode();
+      else await helpers.enterCrewMode(appState.selectedAstronautId);
+      // la consola se recarga con la otra cuenta
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = label;
+      helpers.showToast?.(fmtT(T.crewModeFailed, { msg: errMsg(err) }), "error");
+    }
+  });
 }
 
 function tabHTML(s, T, pending) {
@@ -1080,6 +1151,9 @@ async function renderCrew(panel, isStale) {
         }
       }
     }
+    if (scheduled) {
+      btns.push(`<button type="button" class="av-btn av-btn-sm av-btn-primary" data-wb-complete ${dis}>${esc(T.completeAct)}</button>`);
+    }
     if (canCancel) btns.push(`<button type="button" class="av-btn av-btn-sm" data-wb-cancel ${dis}>${esc(T.cancel)}</button>`);
 
     return `<article class="av-panel av-wb-act" data-wb-id="${esc(id)}" aria-labelledby="av-wb-act-${esc(id)}">
@@ -1149,6 +1223,27 @@ async function renderCrew(panel, isStale) {
         </details>`
       : "";
 
+  const suggestionsHTML =
+    catalog && catalog.length
+      ? `<section class="av-panel" aria-labelledby="av-wb-sugg-h">
+          <div class="av-panel-head"><h3 class="av-h3" id="av-wb-sugg-h">${esc(T.suggestionsTitle)}</h3><span class="av-sub">${esc(T.suggestionsSub)}</span></div>
+          <div class="av-wb-cards av-mx-pad">${catalog
+            .map(
+              (c) => `<article class="av-panel av-wb-act" data-wb-tpl-card="${esc(c.code)}">
+                <div class="av-mx-row">
+                  <h4 class="av-h3">${esc(bt(c.title) || c.code)}</h4>
+                  ${tag(`${esc(c.duration_minutes || 45)} ${esc(T.minutes)}`)}
+                </div>
+                ${c.description ? `<p class="av-mx-p av-sub">${esc(btLines(c.description))}</p>` : ""}
+                <div class="av-mx-btns">
+                  <button type="button" class="av-btn av-btn-sm av-btn-primary" data-wb-complete-tpl="${esc(c.code)}" data-wb-tpl-dur="${esc(c.duration_minutes || 45)}" ${dis}>${esc(T.completeSuggestion)}</button>
+                </div>
+              </article>`
+            )
+            .join("")}</div>
+        </section>`
+      : "";
+
   panel.innerHTML = `<div class="av-wb-stack" data-wb-sub="crew">
       <section class="av-panel" aria-labelledby="av-wb-crew-h">
         <div class="av-panel-head"><h3 class="av-h3" id="av-wb-crew-h">${esc(T.crewTitle)}</h3><span class="av-sub">${esc(T.crewSub)}</span></div>
@@ -1160,6 +1255,7 @@ async function renderCrew(panel, isStale) {
         </div>
       </section>
       ${upcoming.length ? `<div class="av-wb-cards">${upcoming.map(actCard).join("")}</div>` : `<section class="av-panel"><p class="av-mx-empty">${esc(T.crewEmpty)}</p></section>`}
+      ${suggestionsHTML}
       ${proposeHTML}
       ${
         past.length
@@ -1185,6 +1281,8 @@ async function renderCrew(panel, isStale) {
     try {
       await fn(id);
       ui.result.crew = () => tr(DICT)[okKey];
+      ctx.helpers.showToast?.(ui.result.crew());
+      ctx.helpers.refreshGlobalHeaderAndSummary?.();
       ui.busy = false;
       ui.focusSel = "#av-wb-c-status";
       await renderPanel();
@@ -1206,6 +1304,46 @@ async function renderCrew(panel, isStale) {
   );
   panel.querySelectorAll("[data-wb-attend]").forEach((b) =>
     b.addEventListener("click", () => act(b, (id) => apiService.attendCrewActivity(id), "attendedOk"))
+  );
+  panel.querySelectorAll("[data-wb-complete]").forEach((b) =>
+    b.addEventListener("click", () => act(b, (id) => apiService.completeCrewActivity(id), "completedOk"))
+  );
+  panel.querySelectorAll("[data-wb-complete-tpl]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      if (ui.busy) return;
+      const T2 = tr(DICT);
+      if (apiService.simulatedOfflineMode) {
+        status.textContent = T2.needsLink;
+        return;
+      }
+      const code = b.getAttribute("data-wb-complete-tpl");
+      const dur = Number(b.getAttribute("data-wb-tpl-dur")) || 45;
+      if (!code) return;
+      ui.busy = true;
+      b.disabled = true;
+      try {
+        const created = await apiService.createCrewActivity({
+          mission_id: acts[0]?.mission_id || missionId,
+          template_code: code,
+          scheduled_for: new Date().toISOString(),
+          duration_minutes: dur,
+        });
+        const newId = created?.item?.id || created?.id;
+        if (newId) {
+          await apiService.completeCrewActivity(newId);
+        }
+        ui.result.crew = () => tr(DICT).completedOk;
+        ctx.helpers.showToast?.(ui.result.crew());
+        ctx.helpers.refreshGlobalHeaderAndSummary?.();
+        ui.busy = false;
+        ui.focusSel = "#av-wb-c-status";
+        await renderPanel();
+      } catch (err) {
+        ui.busy = false;
+        b.disabled = false;
+        status.textContent = fmtT(T2.actionError, { msg: errMsg(err) });
+      }
+    })
   );
   panel.querySelectorAll("[data-wb-cancel]").forEach((b) =>
     b.addEventListener("click", () => {
