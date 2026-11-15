@@ -966,6 +966,40 @@ def test_crew_mode_lets_supervision_answer_wellbeing_as_the_crew_member():
     assert "crewModeUnavailable" in _keys(app_es, 4) and "crewModeUnavailable" in _keys(app_en, 4)
 
 
+def test_leisure_and_crew_reminders_reach_alerts_summary_and_wellbeing_tabs():
+    """Issue #44: los recordatorios de tiempo libre y tripulación (alertas tempranas del backend) tienen
+    traducción al inglés, su módulo en Alertas lleva a la pestaña de Bienestar y las pestañas se marcan."""
+    from backend.app.rules import early_warnings as ew
+
+    texts = {
+        ew.LEISURE_TITLE, ew.LEISURE_EXPLANATION, ew.LEISURE_ACTION, ew.LEISURE_FOLLOWUP, ew.LEISURE_RESOLVED_NOTE,
+        *ew.CREW_TITLE.values(), *ew.CREW_EXPLANATION.values(), *ew.CREW_ACTION.values(),
+        ew.CREW_FOLLOWUP, ew.CREW_RESOLVED_NOTE,
+    }
+    missing = sorted({_norm(t) for t in texts} - _en_keys(I18N_DIR / "backend-en-runtime.js"))
+    assert not missing, f"backend-en-runtime.js is missing English translations for: {missing}"
+
+    model_js = (FRONTEND_ROOT / "src" / "console" / "alert-model.js").read_text(encoding="utf-8")
+    assert 'LEISURE: "ISOLATION", CREW: "ISOLATION"' in model_js
+    assert f'a?.indicator_code === "{ew.LEISURE_INDICATOR}") return "LEISURE";' in model_js
+    assert f'a?.indicator_code === "{ew.CREW_INDICATOR}") return "CREW";' in model_js
+    assert 'LEISURE: { act: "go-cm", sec: "wellbeing-hub", sub: "leisure" },' in model_js
+    assert 'CREW: { act: "go-cm", sec: "wellbeing-hub", sub: "crew" },' in model_js
+    order = re.search(r"export const MODULE_ORDER = Object\.freeze\(\[([^\]]+)\]\);", model_js).group(1)
+    assert '"LEISURE"' in order and '"CREW"' in order
+    es_block, en_block = _dict_blocks(model_js)
+    for block in (es_block, en_block):
+        assert len(re.findall(r"^      LEISURE: ", block, re.M)) == 2  # módulo y contramedida
+        assert len(re.findall(r"^      CREW: ", block, re.M)) == 2
+
+    wellbeing_js = (FRONTEND_ROOT / "src" / "console" / "views" / "wellbeing.js").read_text(encoding="utf-8")
+    assert "wellbeing_reminders" in _function_body(wellbeing_js, "function remindersOf(appState)")
+    assert "data-wb-reminder" in _function_body(wellbeing_js, "function tabInner(s, T, pending)")
+    assert wellbeing_js.count("syncReminderTabs();") == 3  # tras "Lo hice", responder/asistir/cancelar y proponer
+    wb_es, wb_en = _dict_blocks(wellbeing_js)
+    assert "reminderBadge" in _keys(wb_es, 4) and "reminderBadge" in _keys(wb_en, 4)
+
+
 def test_environments_module_redistributed_with_chart_solar_3d_and_minimized_folds():
     """El módulo de Entorno muestra una rejilla superior de 2 columnas (izquierda: gráfica del entorno;
     derecha: Sistema Solar 3D integrado desde repo-planets.vercel.app que enfoca el entorno seleccionado)

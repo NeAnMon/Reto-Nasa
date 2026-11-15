@@ -127,6 +127,7 @@ const DICT = {
     noteShort: "Nota",
     // Pestaña Check-in emocional · pendientes
     toolPending: "{n} pendientes",
+    reminderBadge: "pendiente",
     // Tiempo libre
     leisureTitle: "Tiempo libre",
     leisureSub: "Pausas breves que ayudan a desconectar",
@@ -270,6 +271,7 @@ const DICT = {
     isolatedShort: "Isolation",
     noteShort: "Note",
     toolPending: "{n} pending",
+    reminderBadge: "to do",
     leisureTitle: "Free time",
     leisureSub: "Short breaks that help you switch off",
     leisureIntro: "On long missions, small personal routines —tending plants, reading, listening to music— help cope with isolation. Pick whatever you feel like: it's not one more task.",
@@ -549,11 +551,43 @@ function bindCrewMode(container) {
 
 function tabHTML(s, T, pending) {
   const on = s === ui.sub;
+  return `<button type="button" role="tab" class="av-wb-tab" id="av-wb-tab-${s}" data-wb-tab="${s}"
+      aria-controls="av-wb-panel" aria-selected="${on}" tabindex="${on ? 0 : -1}">${tabInner(s, T, pending)}</button>`;
+}
+
+/* Recordatorios abiertos de Tiempo libre y Tripulación (GET /health/summary → wellbeing_reminders,
+ * alertas tempranas RULE_EARLY_LEISURE / RULE_EARLY_CREW_ACTIVITY, issue #44) */
+function remindersOf(appState) {
+  const r = appState?.healthSummary?.wellbeing_reminders || {};
+  return { leisure: r.leisure === true, crew: r.crew === true };
+}
+
+function tabInner(s, T, pending) {
+  const rem = remindersOf(ctx?.appState);
   const badge = s === "emotional" && pending > 0
     ? ` <span class="av-wb-count">${esc(fmtT(T.toolPending, { n: pending }))}</span>`
-    : "";
-  return `<button type="button" role="tab" class="av-wb-tab" id="av-wb-tab-${s}" data-wb-tab="${s}"
-      aria-controls="av-wb-panel" aria-selected="${on}" tabindex="${on ? 0 : -1}">${esc(T.tabs[s])}${badge}</button>`;
+    : (s === "leisure" && rem.leisure) || (s === "crew" && rem.crew)
+      ? ` <span class="av-wb-count" data-wb-reminder>${esc(T.reminderBadge)}</span>`
+      : "";
+  return `${esc(T.tabs[s])}${badge}`;
+}
+
+/* Tras registrar tiempo libre o actuar en Tripulación el backend retira (o crea) el recordatorio:
+ * se vuelve a pedir el resumen y se repintan las marcas de las pestañas. Un fallo solo deja la marca anterior. */
+async function syncReminderTabs() {
+  if (!ctx) return;
+  const { container, appState, helpers } = ctx;
+  try {
+    await helpers.refreshGlobalHeaderAndSummary?.();
+  } catch {
+    return;
+  }
+  const T = tr(DICT);
+  const own = isOwnAstronaut(appState);
+  container.querySelectorAll("[data-wb-tab]").forEach((b) => {
+    const s = b.getAttribute("data-wb-tab");
+    b.innerHTML = tabInner(s, T, own ? pendingEmotional(appState) : 0);
+  });
 }
 
 function bindTabs(container) {
@@ -1031,6 +1065,7 @@ async function renderLeisure(panel, isStale) {
         ui.busy = false;
         ui.focusSel = "#av-wb-l-status";
         await renderPanel();
+        syncReminderTabs();
       } catch (err) {
         ui.busy = false;
         form.querySelectorAll("button").forEach((x) => (x.disabled = false));
@@ -1249,6 +1284,7 @@ async function renderCrew(panel, isStale) {
       ui.busy = false;
       ui.focusSel = "#av-wb-c-status";
       await renderPanel();
+      syncReminderTabs();
     } catch (err) {
       ui.busy = false;
       if (err && Number(err.status) === 409) {
@@ -1352,6 +1388,7 @@ async function renderCrew(panel, isStale) {
       ui.busy = false;
       ui.focusSel = "#av-wb-c-status";
       await renderPanel();
+      syncReminderTabs();
     } catch (err) {
       ui.busy = false;
       submitBtn.disabled = false;

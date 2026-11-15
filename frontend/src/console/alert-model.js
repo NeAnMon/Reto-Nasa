@@ -27,7 +27,7 @@ const ENGINE_ALIAS = {
   PREDICTION: "PREDICTION", PREDICTIONS: "PREDICTION", PREDICTIVE: "PREDICTION", PRED: "PREDICTION", FORECAST: "PREDICTION",
   COGNITIVE: "COGNITIVE", COGNITION: "COGNITIVE", COG: "COGNITIVE",
   EMOTIONAL: "EMOTIONAL", EMOTION: "EMOTIONAL", EMO: "EMOTIONAL", SUPPORT: "EMOTIONAL", PSYCH: "EMOTIONAL", WELLNESS: "EMOTIONAL",
-  ISOLATION: "ISOLATION", EARTH: "ISOLATION", ISO: "ISOLATION",
+  ISOLATION: "ISOLATION", EARTH: "ISOLATION", ISO: "ISOLATION", LEISURE: "ISOLATION", CREW: "ISOLATION",
   RADIATION: "RADIATION", RAD: "RADIATION", HERA: "RADIATION",
   ENVIRONMENT: "ENVIRONMENT", ENV: "ENVIRONMENT", CABIN: "ENVIRONMENT",
   RULES: "RULES", RULE: "RULES", RULE_ENGINE: "RULES", RULES_ENGINE: "RULES", CLINICAL: "RULES", ENGINE: "RULES", VITALS: "RULES",
@@ -50,7 +50,7 @@ export function engineOf(a) {
 /* ───────────────────────── módulo de la contramedida ───────────────────────── */
 
 const VITAL_CODES = new Set(["HEART_RATE", "BLOOD_PRESSURE", "BODY_TEMP", "SPO2", "RESP_RATE", "BLOOD_GLUCOSE"]);
-export const MODULE_ORDER = Object.freeze(["VITALS", "RADIATION", "EMOTIONAL", "COGNITIVE", "SLEEP", "HABITS", "ISOLATION", "OTHER"]);
+export const MODULE_ORDER = Object.freeze(["VITALS", "RADIATION", "EMOTIONAL", "COGNITIVE", "SLEEP", "HABITS", "LEISURE", "CREW", "ISOLATION", "OTHER"]);
 /* act: acción del botón de contramedida; sec/sub: sección (y pestaña de Bienestar); rec: cuadro de Recomendaciones */
 export const MODULE_GO = Object.freeze({
   VITALS: { act: "go-measure", sec: "my-health-check" },
@@ -59,6 +59,9 @@ export const MODULE_GO = Object.freeze({
   COGNITIVE: { act: "go-cm", sec: "cognitive-center" },
   SLEEP: { act: "go-cm", sec: "wellbeing-hub", sub: "today" },
   HABITS: { act: "go-cm", sec: "daily-missions" },
+  // Recordatorios de Bienestar (issue #44): llevan a su pestaña
+  LEISURE: { act: "go-cm", sec: "wellbeing-hub", sub: "leisure" },
+  CREW: { act: "go-cm", sec: "wellbeing-hub", sub: "crew" },
   ISOLATION: { act: "go-rec", sec: "recommendations", rec: "earth-channel" },
   OTHER: { act: "go-cm", sec: "daily-missions" },
 });
@@ -66,6 +69,9 @@ export const MODULE_GO = Object.freeze({
 /* Módulo donde se generó la alerta y donde se hace su contramedida */
 export function moduleOf(a) {
   const eng = engineOf(a);
+  // Recordatorios de tiempo libre y tripulación (RULE_EARLY_LEISURE / RULE_EARLY_CREW_ACTIVITY, issue #44)
+  if (eng === "ISOLATION" && a?.indicator_code === "LEISURE_TIME") return "LEISURE";
+  if (eng === "ISOLATION" && a?.indicator_code === "CREW_ACTIVITY") return "CREW";
   if (eng === "ISOLATION" || eng === "EMOTIONAL" || eng === "COGNITIVE" || eng === "RADIATION") return eng;
   if (eng === "ENVIRONMENT") return String(a?.indicator_code || "").toUpperCase().startsWith("RADIATION") ? "RADIATION" : "OTHER";
   const ind = String(a?.indicator_code || "");
@@ -102,6 +108,8 @@ const DICT = {
       COGNITIVE: "Bienestar · evaluación cognitiva",
       SLEEP: "Sueño, fatiga y ánimo",
       HABITS: "Hidratación y actividad física",
+      LEISURE: "Bienestar · tiempo libre",
+      CREW: "Bienestar · tripulación",
       ISOLATION: "Bienestar · aislamiento",
       OTHER: "Otros módulos",
     },
@@ -121,6 +129,8 @@ const DICT = {
       COGNITIVE: ["Haz una pausa de recuperación (descanso o respiración guiada) y repite la evaluación cognitiva cuando estés descansado.", "Abrir Evaluación cognitiva"],
       SLEEP: ["Higiene de sueño: compartimento oscuro y silencioso, sin pantallas antes de dormir; registra tu sueño en el check-in de Bienestar.", "Abrir Bienestar · Hoy"],
       HABITS: ["Completa las contramedidas de hoy: rutina de hidratación y ejercicio programado.", "Abrir Contramedidas de hoy"],
+      LEISURE: ["Elige una actividad breve de tiempo libre y regístrala con «Lo hice» al terminar.", "Abrir Bienestar · Tiempo libre"],
+      CREW: ["Responde a la actividad de la tripulación o propón una para esta semana.", "Abrir Bienestar · Tripulación"],
       ISOLATION: ["Programa un contacto con Tierra con familia o equipo de apoyo.", "Ver canal con Tierra"],
       OTHER: ["Revisa las contramedidas de hoy y sigue el procedimiento de la alerta.", "Abrir Contramedidas de hoy"],
     },
@@ -133,6 +143,8 @@ const DICT = {
       COGNITIVE: "Wellbeing · cognitive assessment",
       SLEEP: "Sleep, fatigue and mood",
       HABITS: "Hydration and physical activity",
+      LEISURE: "Wellbeing · free time",
+      CREW: "Wellbeing · crew",
       ISOLATION: "Wellbeing · isolation",
       OTHER: "Other modules",
     },
@@ -152,6 +164,8 @@ const DICT = {
       COGNITIVE: ["Take a recovery break (rest or guided breathing) and repeat the cognitive assessment once rested.", "Open Cognitive assessment"],
       SLEEP: ["Sleep hygiene: dark, quiet crew quarters, no screens before sleeping; log your sleep in the Wellbeing check-in.", "Open Wellbeing · Today"],
       HABITS: ["Complete today's countermeasures: hydration routine and scheduled exercise.", "Open Today's countermeasures"],
+      LEISURE: ["Pick a short free-time activity and log it with “I did it” when you finish.", "Open Wellbeing · Free time"],
+      CREW: ["Answer the crew activity or propose one for this week.", "Open Wellbeing · Crew"],
       ISOLATION: ["Schedule an Earth contact with family or the support team.", "See the Earth channel"],
       OTHER: ["Check today's countermeasures and follow the alert procedure.", "Open Today's countermeasures"],
     },
