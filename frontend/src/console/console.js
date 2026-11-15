@@ -178,7 +178,7 @@ const DICT = {
     bodyHint: "Pasa el cursor o el foco por una zona para ver sus lecturas; púlsala para fijar la ficha y filtrar la tabla.",
     sideL: "Lecturas por zona, columna izquierda",
     sideR: "Lecturas por zona, columna derecha",
-    figCredits: "En la figura: cabeza, tórax, abdomen, brazo, piel y huesos; el resto de sistemas, en la lista. Solo capa ósea simplificada: no se dibujan órganos.",
+    figCredits: "En la figura: cabeza, tórax, abdomen, brazo, piel y huesos; el resto de sistemas, en “Otros sistemas”. Solo capa ósea simplificada: no se dibujan órganos.",
     // columna derecha
     rightAria: "Alertas y actividades",
     cwTitle: "Alertas C&amp;W",
@@ -193,6 +193,8 @@ const DICT = {
     taskStatus: { PENDING: "Pendiente", COMPLETED: "Hecha", EXCUSED_OPERATIONAL_RESTRICTION: "Omitida por operación (no penaliza)", PAUSED_FOR_SAFETY: "Pausada por seguridad" },
     surgeonTitle: "Médico de vuelo",
     unreadMsgs: "Mensajes sin leer",
+    unreadPill: "{n} sin leer",
+    otherSystems: "Otros sistemas",
     groundLead: "Líder en Tierra",
     openSupport: "Solicitudes de apoyo abiertas",
     offlineNote: "Sin enlace, todo se guarda a bordo y se envía en el próximo contacto.",
@@ -454,7 +456,7 @@ const DICT = {
     bodyHint: "Hover or focus a zone to see its readings; select it to pin the card and filter the table.",
     sideL: "Readings by zone, left column",
     sideR: "Readings by zone, right column",
-    figCredits: "On the figure: head, chest, abdomen, arm, skin and bones; other systems are in the list. Simplified skeletal layer only: no organs are drawn.",
+    figCredits: "On the figure: head, chest, abdomen, arm, skin and bones; other systems are under “Other systems”. Simplified skeletal layer only: no organs are drawn.",
     rightAria: "Alerts and activities",
     cwTitle: "C&amp;W alerts",
     hideAdv: "Hide advisories (A)",
@@ -468,6 +470,8 @@ const DICT = {
     taskStatus: { PENDING: "Pending", COMPLETED: "Done", EXCUSED_OPERATIONAL_RESTRICTION: "Skipped for operations (no penalty)", PAUSED_FOR_SAFETY: "Paused for safety" },
     surgeonTitle: "Flight surgeon",
     unreadMsgs: "Unread messages",
+    unreadPill: "{n} unread",
+    otherSystems: "Other systems",
     groundLead: "Ground lead",
     openSupport: "Open support requests",
     offlineNote: "Without a link, everything is stored onboard and sent at the next contact.",
@@ -1754,7 +1758,7 @@ function summaryHTML(appState, d, data, alerts) {
   const p1 = `
   <section aria-label="${esc(T.p1Aria)}">
     <div class="av-lbl" style="margin:0 0 6px 2px">${esc(T.p1Label)}</div>
-    <div class="av-cards">
+    <div class="av-cards av-cards-3x2">
       ${radCardHTML(d)}
       <article class="av-panel av-card ${RANK[d.co2Letter] >= 2 ? `av-card-${d.co2Letter}` : ""}">
         <div class="av-card-head"><h3 class="av-h3">${esc(T.co2Title)}</h3>${badge(d.co2Letter)}</div>
@@ -1785,6 +1789,7 @@ function summaryHTML(appState, d, data, alerts) {
         <div><button type="button" class="av-btn av-btn-sm" data-nav="wellbeing-hub">${esc(T.openWellbeing)}</button></div>
         <div class="av-foot">${sleep && sleep.measured_at ? `${esc(sleep.source_code || "")} · <span class="av-mono">${gmt(toDate(sleep.measured_at), false)}</span>` : esc(T.noRecord)}</div>
       </article>
+      ${alertsCardHTML(alerts)}
     </div>
   </section>`;
 
@@ -1823,7 +1828,7 @@ function summaryHTML(appState, d, data, alerts) {
     <tr class="av-nom-toggle-row"><td colspan="7"><button type="button" class="av-nom-toggle" data-act="toggle-nominal" data-focus-id="nom-toggle" aria-expanded="${nominalOpen}" aria-controls="av-nom-rows"><span>${esc(nomLabel)}</span> <span class="av-nom-caret" aria-hidden="true">▾</span></button></td></tr>` : ""}`;
   const nomBody = nomN ? `<tbody id="av-nom-rows" class="av-nom-rows"${nominalOpen ? "" : " hidden"}>${nomRows.map(rowOf).join("")}</tbody>` : "";
   const table = `
-  <section class="av-panel" aria-label="${esc(T.tableTitle)}">
+  <section class="av-panel av-table-panel" aria-label="${esc(T.tableTitle)}">
     <div class="av-panel-head">
       <h2 class="av-h2">${esc(T.tableTitle)}</h2>
       ${filterCodes ? `<button type="button" class="av-btn av-btn-sm" data-act="clear-sys" aria-label="${esc(fmt(T.clearFilterAria, { name: SYS_NAMES[consoleState.sys] || consoleState.sys }))}">${esc(fmt(T.filter, { name: SYS_NAMES[consoleState.sys] || consoleState.sys }))} <span aria-hidden="true">×</span></button>` : ""}
@@ -1841,7 +1846,7 @@ function summaryHTML(appState, d, data, alerts) {
   </section>`;
 
   // "Seguimiento periódico" (NASA IMM) se movió a la Bitácora: views/logbook-followup.js
-  return `<div class="av-grid">
+  return `<div class="av-grid av-grid-sum">
     ${systemsHTML(appState, data, d)}
     <main class="av-col-b">${p1}${table}</main>
     ${rightColHTML(appState, d, data, alerts)}
@@ -2197,11 +2202,12 @@ function systemsHTML(appState, data, d) {
   const pop = pinned
     ? `<div class="av-pop av-pop-${st(pinned)}" ${popAttrs} data-pop-region="${pinned}" data-anchor="${esc(consoleState.popFrom || `hot-${pinned}`)}" data-pinned="true">${popWrap(bodyPopInner(appState, d, data, pinned, true))}</div>`
     : `<div class="av-pop" ${popAttrs} hidden></div>`;
-  const order = Object.keys(SYS_NAMES).sort((a, b) => RANK[st(b)] - RANK[st(a)]);
-  const list = order.map((code) => {
-    const on = consoleState.sys === code;
-    return `<li><button type="button" class="av-sys-btn" data-act="sys" data-code="${code}" data-focus-id="sys-${code}" aria-pressed="${on}"><span style="flex:1 1 auto">${esc(SYS_NAMES[code])}</span>${badge(st(code))}</button></li>`;
-  }).join("");
+  // La lista completa de sistemas se quitó (issue #3: repetía la figura). Solo quedan, en una fila
+  // compacta, los sistemas que no tienen zona en la figura, para no perder el acceso a ellos.
+  const others = Object.keys(SYS_NAMES).filter((code) => !FIG_HOTSPOTS[code])
+    .sort((a, b) => RANK[st(b)] - RANK[st(a)])
+    .map((code) => `<button type="button" class="av-sys-chip" data-act="sys" data-code="${code}" data-focus-id="sys-${code}" aria-pressed="${consoleState.sys === code}">${badge(st(code))}<span>${esc(SYS_NAMES[code])}</span></button>`)
+    .join("");
   return `
   <section class="av-panel av-col-a av-col-body" aria-label="${esc(T.sysAria)}">
     <div style="display:flex;justify-content:space-between;align-items:baseline"><h2 class="av-h2">${esc(T.sysTitle)}</h2><span class="av-sub">${esc(T.noColorNominal)}</span></div>
@@ -2235,22 +2241,34 @@ function systemsHTML(appState, data, d) {
     <div class="av-side av-side-R" role="group" aria-label="${esc(T.sideR)}">${sideCol("R")}</div>
     ${pop}
     </div>
-    <ul class="av-sys-list" role="list">${list}</ul>
+    ${others ? `<div class="av-sys-chips" role="group" aria-label="${esc(T.otherSystems)}"><span class="av-lbl">${esc(T.otherSystems)}</span>${others}</div>` : ""}
     <p class="av-credits">${esc(T.figCredits)} ${esc(FIG_ATTRIBUTION_I18N[getLang()] || FIG_ATTRIBUTION_I18N.es)}</p>
   </section>`;
 }
 
-function rightColHTML(appState, d, data, alerts) {
+/* Tarjeta de alertas C&W dentro de la grilla de Prioridad 1 (3×2). El borde toma el color de la
+ * alerta más grave sin reconocer, igual que las demás tarjetas; la insignia lleva la letra. */
+function alertsCardHTML(alerts) {
   const shown = alerts.filter((a) => consoleState.showAdv || a.cls !== "A");
   const nAdv = alerts.filter((a) => a.cls === "A").length;
   const T = tt();
-  const alertRows = shown.map((a) => `<tr>
-      <td style="padding:8px 12px">${badge(a.cls)}</td>
-      <td class="av-mono" style="text-align:center">${a.acked ? "X" : ""}</td>
-      <td style="padding:8px 4px"><div style="font-weight:600">${esc(a.msg)}</div><div class="av-sub">${esc(a.detail)}${a.local ? ` · ${esc(T.onboard)}` : ""}</div></td>
-      <td class="av-mono av-sub" style="text-align:right;padding-right:12px">${a.t ? gmt(a.t, false) : ""}</td>
-    </tr>`).join("");
-  const missions = (data.missions || []).slice(0, 8);
+  const top = alerts.filter((a) => !a.acked).reduce((m, a) => (!m || RANK[a.cls] > RANK[m.cls] ? a : m), null);
+  const topL = top ? top.cls : "N";
+  const rows = shown.map((a) => `<li class="av-alert-row">
+      ${badge(a.cls)}
+      <span style="min-width:0"><span style="font-weight:600;display:block">${esc(a.msg)}</span><span class="av-sub">${esc(a.detail)}${a.local ? ` · ${esc(T.onboard)}` : ""}</span></span>
+      <span class="av-mono av-sub" style="text-align:right">${a.t ? gmt(a.t, false) : ""}${a.acked ? `<span style="display:block" title="ACK">ACK</span>` : ""}</span>
+    </li>`).join("");
+  return `<article class="av-panel av-card av-card-alerts ${RANK[topL] >= 2 ? `av-card-${topL}` : ""}" aria-label="${esc(T.cwTitle.replace("&amp;", "&"))}">
+    <div class="av-card-head"><h3 class="av-h3">${T.cwTitle}</h3>${badge(topL)}</div>
+    <ul class="av-alert-list" role="list">${rows || `<li class="av-sub" style="padding:8px 0">${esc(T.noActiveAlerts)}</li>`}</ul>
+    <div class="av-foot"><button type="button" class="av-btn av-btn-sm" data-act="toggle-adv" aria-pressed="${consoleState.showAdv}">${esc(consoleState.showAdv ? T.hideAdv : fmt(T.showAdv, { n: nAdv }))}</button></div>
+  </article>`;
+}
+
+function rightColHTML(appState, d, data, alerts) {
+  const T = tt();
+  const missions = (data.missions || []).slice(0, 5);
   const statusTxt = T.taskStatus;
   const tasks = missions.map((m) => {
     const done = m.status_today === "COMPLETED";
@@ -2261,27 +2279,24 @@ function rightColHTML(appState, d, data, alerts) {
     </li>`;
   }).join("");
   const comm = (d.s.expansion_cards || {}).communication_center || {};
+  const unread = Number(comm.unread_messages_count) || 0;
+  // mensajes sin leer: el cuadro cambia de color (borde amarillo) como las tarjetas de Prioridad;
+  // nunca solo color: la insignia "N sin leer" lo dice en texto
   return `
-  <aside class="av-col-c" aria-label="${esc(T.rightAria)}">
-    <section class="av-panel">
-      <div class="av-panel-head"><h2 class="av-h2">${T.cwTitle}</h2>
-        <button type="button" class="av-btn av-btn-sm" data-act="toggle-adv" aria-pressed="${consoleState.showAdv}">${esc(consoleState.showAdv ? T.hideAdv : fmt(T.showAdv, { n: nAdv }))}</button></div>
-      <table class="av-table" style="font-size:13px">
-        <thead><tr><th scope="col" style="padding-left:12px">${esc(T.thClass)}</th><th scope="col">ACK</th><th scope="col">${esc(T.thMsg)}</th><th scope="col" style="text-align:right;padding-right:12px">GMT</th></tr></thead>
-        <tbody>${alertRows || `<tr><td colspan="4" class="av-sub" style="padding:12px">${esc(T.noActiveAlerts)}</td></tr>`}</tbody>
-      </table>
-    </section>
-    <section class="av-panel">
+  <aside class="av-col-c av-col-sum" aria-label="${esc(T.rightAria)}">
+    <section class="av-panel av-sum-box">
       <div class="av-panel-head"><h2 class="av-h2">${esc(T.tasksTitle)}</h2><button type="button" class="av-btn av-btn-sm" data-nav="daily-missions">${esc(T.seeAll)}</button></div>
-      <ol style="list-style:none;margin:0;padding:0">${tasks || `<li class="av-sub" style="padding:12px">${esc(T.noTasks)}</li>`}</ol>
+      <ol class="av-sum-scroll" style="list-style:none;margin:0;padding:0">${tasks || `<li class="av-sub" style="padding:12px">${esc(T.noTasks)}</li>`}</ol>
     </section>
-    <section class="av-panel" style="padding:12px;display:flex;flex-direction:column;gap:8px">
-      <h2 class="av-h2">${esc(T.surgeonTitle)}</h2>
-      <div style="display:flex;justify-content:space-between"><span>${esc(T.unreadMsgs)}</span><span class="av-mono" style="font-weight:600">${esc(comm.unread_messages_count ?? 0)}</span></div>
-      <div style="display:flex;justify-content:space-between" class="av-sub"><span>${esc(T.groundLead)}</span><span>${esc(comm.assigned_leader_name || "—")}</span></div>
-      <div style="display:flex;justify-content:space-between" class="av-sub"><span>${esc(T.openSupport)}</span><span class="av-mono">${esc(comm.open_support_requests_count ?? comm.active_support_requests_count ?? 0)}</span></div>
-      <p class="av-sub" style="margin:0">${esc(T.offlineNote)}</p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="av-btn av-btn-primary" data-nav="communication-center">${esc(T.openMessages)}</button></div>
+    <section class="av-panel av-sum-box av-msg-box${unread > 0 ? " av-card-C av-msg-unread" : ""}">
+      <div class="av-panel-head"><h2 class="av-h2">${esc(T.unreadMsgs)}</h2>${unread > 0 ? `<span class="av-badge av-b-C av-pill">${esc(fmt(T.unreadPill, { n: num(unread) }))}</span>` : badge("N")}</div>
+      <div class="av-sum-scroll" style="padding:12px;display:flex;flex-direction:column;gap:8px">
+        <div><span class="av-big">${num(unread)}</span> <span class="av-sub">${esc(T.surgeonTitle)}</span></div>
+        <div style="display:flex;justify-content:space-between" class="av-sub"><span>${esc(T.groundLead)}</span><span>${esc(comm.assigned_leader_name || "—")}</span></div>
+        <div style="display:flex;justify-content:space-between" class="av-sub"><span>${esc(T.openSupport)}</span><span class="av-mono">${esc(comm.open_support_requests_count ?? comm.active_support_requests_count ?? 0)}</span></div>
+        <p class="av-sub" style="margin:0">${esc(T.offlineNote)}</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:auto"><button type="button" class="av-btn av-btn-primary" data-nav="communication-center">${esc(T.openMessages)}</button></div>
+      </div>
     </section>
   </aside>`;
 }
@@ -2772,12 +2787,12 @@ function bindOnce(container, appState, helpers) {
         paint(container, st);
         focusQuiet(container, container.querySelector(`[data-focus-id="${consoleState.popFrom || `hot-${reg}`}"]`));
       } else if (act === "sys") {
+        // fila "Otros sistemas" (sistemas sin zona en la figura): filtra la tabla
         consoleState.sys = consoleState.sys === code ? null : code;
         if (consoleState.pop !== consoleState.sys) consoleState.pop = null;
         paint(container, st);
         focusQuiet(container, container.querySelector(`[data-focus-id="sys-${code}"]`));
-      }
-      else if (act === "clear-sys") { consoleState.sys = null; consoleState.pop = null; paint(container, st); }
+      } else if (act === "clear-sys") { consoleState.sys = null; consoleState.pop = null; paint(container, st); }
       else if (act === "toggle-nominal") {
         nominalOpen = !nominalOpen;
         paint(container, st);
