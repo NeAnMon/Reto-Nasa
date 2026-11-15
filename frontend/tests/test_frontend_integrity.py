@@ -446,6 +446,25 @@ def test_early_warnings_dropdowns_and_summary_recommendations():
     assert not missing, f"Missing English translations for early_warnings texts: {missing}"
 
 
+def test_prediction_service_texts_have_english_translation():
+    """Los textos en español que el servicio de predicción devuelve al usuario (descripción del método y
+    nota de validación) tienen traducción al inglés; describen pronósticos de tendencia, no diagnósticos."""
+    tree = ast.parse(
+        (PROJECT_ROOT / "backend" / "app" / "services" / "prediction_service.py").read_text(encoding="utf-8")
+    )
+    texts = set()
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
+            name = node.targets[0].id
+            if name == "METHOD_DESCRIPTION" or name.startswith("VALIDATION_NOTE_"):
+                assert isinstance(node.value, ast.Constant) and isinstance(node.value.value, str), name
+                texts.add(_norm(node.value.value))
+    assert len(texts) == 3, texts
+    assert not [t for t in texts if re.search(r"enfermedad|diagn[oó]stic", t, re.I)], texts
+    missing = sorted(texts - _en_keys(I18N_DIR / "backend-en-runtime.js"))
+    assert not missing, f"Missing English translations for prediction_service texts: {missing}"
+
+
 def test_branding_is_semsa_and_status_bar_shows_telecreation_mission():
     """Issue #14: la app se llama SEMSA y la barra superior muestra SEMSA + misión TeleCreation UTS."""
     console_js = (FRONTEND_ROOT / "src" / "console" / "console.js").read_text(encoding="utf-8")
@@ -461,6 +480,64 @@ def test_branding_is_semsa_and_status_bar_shows_telecreation_mission():
             text = re.sub(r'"astrovital_(session_token|csrf_token|offline_queue)"', "", text)
         hits += [f"{path.relative_to(FRONTEND_ROOT)}: {word}" for word in ("AstroVital", "astrovital", "ARTEMIS-IV") if word in text]
     assert not hits, f"Restos de la marca anterior: {hits}"
+
+
+def test_alert_recommendations_and_rule_sources_have_english_translation():
+    """Motor de alertas calibrado con el dataset: cada recomendación del catálogo (paso del indicador,
+    paso del nivel y seguimiento), los textos de reserva, las instrucciones de la versión de regla y la
+    fuente de cada umbral tienen traducción al inglés; el bloque de dos pasos y los motivos nuevos tienen
+    su patrón. Los límites amarillo/rojo se pintan también cuando el rango normal coincide con el amarillo."""
+    from backend.app.rules import recommendations as rec
+    from backend.app.rules.calibration import CALIBRATION, CALIBRATION_APPROVED_BY
+
+    runtime_js = (I18N_DIR / "backend-en-runtime.js").read_text(encoding="utf-8")
+    runtime_keys = _en_keys(I18N_DIR / "backend-en-runtime.js")
+    seed_keys = _en_keys(I18N_DIR / "backend-en-seed.js")
+
+    texts = rec.all_texts()
+    alert_texts = texts["now"] | texts["followup"] | texts["level"] | {rec.FALLBACK_IMMEDIATE, rec.FALLBACK_FOLLOWUP}
+    assert len(texts["now"]) >= 20 and len(texts["followup"]) >= 20 and len(texts["level"]) == 3
+    missing = sorted({_norm(t) for t in alert_texts} - runtime_keys)
+    assert not missing, f"backend-en-runtime.js is missing English translations for: {missing}"
+
+    rule_texts = {
+        rec.RULE_IMMEDIATE_INSTRUCTIONS, rec.RULE_FOLLOWUP_INSTRUCTIONS, rec.RULE_ESCALATION_CONDITIONS,
+        CALIBRATION_APPROVED_BY, *(cal.source for cal in CALIBRATION.values()),
+    }
+    missing_rule = sorted({_norm(t) for t in rule_texts} - seed_keys)
+    assert not missing_rule, f"backend-en-seed.js is missing English translations for: {missing_rule}"
+
+    # Acción inmediata = "1. <paso>\n2. Nivel ...": se traduce con un patrón que traduce cada paso
+    assert r"(2\. Nivel (?:de observación|de seguimiento|crítico): .+)$/" in runtime_js
+    for state, step in rec.LEVEL_STEP.items():
+        assert re.match(r"^2\. Nivel (de observación|de seguimiento|crítico): .+$", step), state
+    # Motivos nuevos del motor (rules/evaluation.py y rules/engine.py)
+    for fragment in (
+        "sin línea base personal válida, se aplica solo el umbral absoluto",
+        "además se aleja de la línea base personal",
+        "es habitual para esta persona",
+        "desvío fuerte frente a la línea base personal",
+        "desvío frente a la línea base personal confirmado en dos lecturas seguidas",
+        "desvío aislado frente a la línea base personal",
+        "Se evalúa la media de las últimas",
+        "Noche aislada de",
+        "Aún hay menos de",
+        "Dosis acumulada registrada de",
+        "Última lectura en nivel",
+    ):
+        assert fragment in runtime_js, f"backend-en-runtime.js needs a pattern for: {fragment}"
+    evaluation_src = (PROJECT_ROOT / "backend" / "app" / "rules" / "evaluation.py").read_text(encoding="utf-8")
+    engine_src = (PROJECT_ROOT / "backend" / "app" / "rules" / "engine.py").read_text(encoding="utf-8")
+    for fragment in ("sin línea base personal válida", "es habitual para esta persona", "Noche aislada de",
+                     "Dosis acumulada registrada de"):
+        assert fragment in evaluation_src
+    assert "Última lectura en nivel" in engine_src
+
+    # Límites: en las reglas calibradas normal == amarillo, así que la comparación incluye la igualdad
+    console_js = (FRONTEND_ROOT / "src" / "console" / "console.js").read_text(encoding="utf-8")
+    trends_js = (FRONTEND_ROOT / "src" / "console" / "views" / "logbook-trends.js").read_text(encoding="utf-8")
+    assert "lo <= r.normal_min" in console_js and "hi >= r.normal_max" in console_js
+    assert "Number(v) <= nLo" in trends_js and "Number(v) >= nHi" in trends_js
 
 
 def test_predictions_view_wired_and_handles_all_states():
@@ -514,3 +591,242 @@ def test_predictions_view_wired_and_handles_all_states():
     assert 'from "./prediction-chart.js"' in view_js
     assert not re.search(r'["/]chart(\.umd)?(\.min)?\.js', index_html, re.I), "no external Chart.js"
     assert "new Chart(" not in view_js
+
+
+def test_predictions_view_follows_calibrated_forecast_contract():
+    """La vista de Predicciones describe el método calibrado (nivel robusto, no una recta OLS) y pinta lo
+    que añade el contrato: tendencia, bandas de predicción, proyección contra umbrales, recomendación y
+    validación empírica. Todo lo nuevo es opcional: con un servidor anterior se pinta como antes."""
+    views_dir = FRONTEND_ROOT / "src" / "console" / "views"
+    view_js = (views_dir / "predictions.js").read_text(encoding="utf-8")
+    chart_js = (views_dir / "prediction-chart.js").read_text(encoding="utf-8")
+    chart_css = (views_dir / "prediction-chart.css").read_text(encoding="utf-8")
+    view_css = (views_dir / "predictions.css").read_text(encoding="utf-8")
+    es_block, en_block = _dict_blocks(view_js)
+
+    # 1. Textos coherentes con el método: ni OLS, ni recta de regresión, ni "3 días de validación"
+    for block in (es_block, en_block):
+        assert not re.search(r"OLS|regresi[oó]n|regression|3 días de validación|3 validation days", block), (
+            "predictions.js DICT still describes the OLS line"
+        )
+        assert "{model}" in block and "{ols}" not in block
+    assert "repetir el último valor" in es_block and "validación dentro de la propia serie" in es_block
+    assert "nivel robusto" in es_block and "robust level" in en_block
+
+    # 2. Tendencia desde el objeto `trend`; el corte sobre beta1 queda solo como respaldo del servidor anterior
+    assert "function trendCardHTML" in view_js
+    for field in ("p.trend", "t.direction", "t.significant", "t.extrapolated", "t.slope_per_day"):
+        assert field in view_js, f"predictions.js must read {field}"
+    assert "p.beta1" in view_js
+    trend_keys = {"trendUp", "trendDown", "trendFlat", "trendUnknown", "trendProjected", "trendNotProjected", "trendNone"}
+    assert trend_keys <= _keys(es_block, 4)
+    assert "no se proyecta porque no reduce el error" in es_block
+
+    # 3. Línea base con desviación de relleno
+    assert es_block.count("placeholder_std_dev:") == 1 and en_block.count("placeholder_std_dev:") == 1
+
+    # 4. Bandas de predicción en la gráfica: datos, área, leyenda, tooltip y eje Y
+    for field in ("lower_80", "upper_80", "lower_95", "upper_95"):
+        assert field in view_js and field in chart_js, f"prediction bands need {field}"
+    assert {"band80", "band95"} <= _keys(es_block, 6)
+    for cls in ("av-pc-band80", "av-pc-band95", "av-pc-key-b80", "av-pc-key-b95", "av-pc-tip-band"):
+        assert cls in chart_js and cls in chart_css, f"prediction-chart needs {cls}"
+    assert "vals.push(p.b95[0], p.b95[1])" in chart_js  # el dominio del eje Y incluye las bandas
+    assert "function bandOf" in chart_js and "return lo <= v && v <= hi ? [lo, hi] : null" in chart_js
+
+    # 5. Proyección contra umbrales y recomendación, antes de la gráfica
+    assert "function projectionHTML" in view_js
+    for field in ("threshold_projection", "first_expected_crossing", "first_possible_crossing", "current_state",
+                  "recommendation", "rec.basis", "rec.text", "days_ahead"):
+        assert field in view_js, f"predictions.js must read {field}"
+    assert "projectionHTML(r) + chartPanelHTML(r)" in view_js
+    assert {"projH", "projExpected", "projPossible", "projNow", "projNone", "projNoRule", "recH"} <= _keys(es_block, 4)
+    assert {"NORMAL", "MONITOR", "WARNING", "CRITICAL", "above", "below", "both"} <= _keys(es_block, 6)
+    assert "esc(bt(recText))" in view_js  # el texto de la regla llega del backend: se traduce y se escapa
+    assert ".av-pr-proj" in view_css and ".av-pr-rec" in view_css
+
+    # 6. Validación empírica: validado con datos reales o no
+    assert "empirical_validation" in view_js and "validated_with_real_data" in view_js
+    assert {"valYes", "valNo"} <= _keys(es_block, 4)
+    assert "esc(bt(String(ev.note)))" in view_js
+
+    # 7. Tolerancia: sin los campos nuevos no se pinta el bloque ni las bandas, y no hay errores
+    assert '!("threshold_projection" in p) && !("recommendation" in p)' in view_js
+    assert 't && typeof t === "object"' in view_js
+    assert "innerHTML" in view_js and "${rec.text}" not in view_js and "${ev.note}" not in view_js
+
+
+def _function_body(source, signature):
+    """Texto de una función de primer nivel: desde su firma hasta la siguiente llave de cierre en columna 0."""
+    start = source.index(signature)
+    return source[start:source.index("\n}\n", start)]
+
+
+def test_crew_selector_lives_in_status_bar_and_old_topbar_selector_is_gone():
+    """La celda "Tripulante" de la barra de estado es el selector del astronauta mostrado (líder y
+    administración); el selector anterior de la fila de pestañas (#topbar-crew-select) ya no existe."""
+    console_js = (FRONTEND_ROOT / "src" / "console" / "console.js").read_text(encoding="utf-8")
+    index_html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+    app_js = (FRONTEND_ROOT / "src" / "app" / "app.js").read_text(encoding="utf-8")
+    console_css = (FRONTEND_ROOT / "src" / "console" / "console.css").read_text(encoding="utf-8")
+
+    # 1. El selector se pinta en la barra de estado, con rótulo y ayuda accesible asociados
+    cell = _function_body(console_js, "function crewCellHTML(appState, sessionName)")
+    assert '<select id="av-crew-select"' in cell
+    assert '<label class="av-lbl" for="av-crew-select">' in cell
+    assert 'aria-describedby="av-crew-help"' in cell and '<span id="av-crew-help"' in cell
+    assert "${crewCellHTML(appState, crew)}" in _function_body(console_js, "function statusBarHTML(appState, d, alerts)")
+    assert ".av-crew-select" in console_css
+
+    # 2. Solo líder y administración: un astronauta no recibe selector (texto fijo con su sesión)
+    selectable = _function_body(console_js, "function selectableAstronauts(appState)")
+    assert '=== "ASTRONAUT") return [];' in selectable
+    assert 'filter((u) => u.role_code === "ASTRONAUT")' in selectable
+    assert "if (!list.length) {" in cell
+
+    # 3. Los datos de usuario (id, nombre, código) se escapan al pintar las opciones
+    assert 'value="${esc(a.id)}"' in cell
+    assert '${esc(`${a.full_name || "—"}${a.crew_code ? ` · ${a.crew_code}` : ""}`)}</option>' in cell
+    assert "${a.full_name}" not in cell and ">${a." not in cell  # nada de datos de usuario sin esc()
+
+    # 4. Listener delegado en el encabezado (la barra se reescribe): solo ids numéricos, vía helpers.selectAstronaut
+    init = _function_body(console_js, "export function initChrome(appState, helpers = {})")
+    assert 'root.addEventListener("change", (ev) => {' in init
+    assert 'ev.target.closest("#av-crew-select")' in init
+    assert r"if (!sel || !/^\d+$/.test(sel.value)) return;" in init
+    assert "setSelectedAstronaut(Number(sel.value));" in init
+    assert "await hp.selectAstronaut(id);" in _function_body(console_js, "async function setSelectedAstronaut(id)")
+
+    # 5. El repintado de la barra es por celdas y devuelve el foco al selector que lo tenía
+    render = _function_body(console_js, "export function renderChrome(appState)")
+    assert "setStatusHTML(statusEl, statusBarHTML(st, d, alerts));" in render
+    assert 'focusedId === "av-env-select" || focusedId === "av-crew-select"' in render
+    assert "function setStatusHTML(el, html)" in console_js
+
+    # 6. Sin restos del selector anterior ni de su clave i18n en todo el frontend
+    hits = []
+    for path in [FRONTEND_ROOT / "index.html", *(FRONTEND_ROOT / "src").rglob("*"), *(FRONTEND_ROOT / "dev").rglob("*")]:
+        if path.suffix not in {".js", ".css", ".html"} or not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8")
+        hits += [f"{path.relative_to(FRONTEND_ROOT)}: {word}" for word in ("topbar-crew", '"crew.label"') if word in text]
+        if re.search(r"\.av-crew(?![\w-])", text) or re.search(r'class="[^"]*\bav-crew(?![\w-])', text):
+            hits.append(f"{path.relative_to(FRONTEND_ROOT)}: .av-crew")
+    assert not hits, f"Restos del selector de tripulante anterior: {hits}"
+    assert "topbar-crew-select" not in index_html and "topbar-crew-select" not in app_js
+
+
+def test_select_astronaut_updates_mission_and_is_shared_by_views():
+    """Cambiar de tripulante fija también una misión suya, invalida el resumen anterior y, si falla,
+    vuelve al estado anterior; el encabezado y las vistas usan el mismo helper (appHelpers.selectAstronaut)."""
+    app_js = (FRONTEND_ROOT / "src" / "app" / "app.js").read_text(encoding="utf-8")
+    views_dir = FRONTEND_ROOT / "src" / "console" / "views"
+    router_py = (PROJECT_ROOT / "backend" / "app" / "api" / "v1" / "router.py").read_text(encoding="utf-8")
+
+    # 1. selectAstronaut: astronauta + misión + resumen invalidado antes de pedir el nuevo
+    select = _function_body(app_js, "async function selectAstronaut(astronautId, { section, navigate = true } = {})")
+    assert "appState.selectedAstronautId = id;" in select
+    assert "appState.selectedMissionId = missionIdForAstronaut(id);" in select
+    assert "appState.healthSummary = null;" in select
+    assert select.index("appState.selectedMissionId = missionIdForAstronaut(id);") < select.index("await refreshGlobalHeaderAndSummary();")
+    # un astronauta no puede cambiar a otro tripulante
+    assert 'if (role === "ASTRONAUT" && id !== Number(appState.currentUser?.id)) return false;' in select
+
+    # 2. Dos cambios seguidos: gana el último; ante un error se restaura el último estado coherente
+    assert "const seq = ++selectAstronautSeq;" in select and select.count("if (seq !== selectAstronautSeq) return false;") == 2
+    assert "const prev = selectAstronautStable || {" in select
+    for line in ("appState.selectedAstronautId = prev.astronautId;", "appState.selectedMissionId = prev.missionId;",
+                 "appState.healthSummary = prev.summary;", "showToast(fmt(tr(DICT).crewChangeFailed"):
+        assert line in select, f"selectAstronaut must restore the previous crew member: {line}"
+    refresh = _function_body(app_js, "async function refreshGlobalHeaderAndSummary()")
+    assert "if (appState.selectedAstronautId !== astronautId || appState.selectedMissionId !== missionId) return;" in refresh
+    assert refresh.index("!== missionId) return;") < refresh.index("appState.healthSummary = summary;")
+
+    # 3. La misión sale de las asignaciones del usuario (GET /users → missions[].mission_id, _serialize_user)
+    mission = _function_body(app_js, "function missionIdForAstronaut(astronautId)")
+    assert "((user && user.missions) || []).map((m) => m.mission_id)" in mission
+    assert "if (!ids.length) return current;" in mission
+    assert '"mission_id": ma.mission.id,' in router_py and '"missions": missions_assigned,' in router_py
+    # al abrir la sesión la misión también es una del astronauta mostrado
+    assert "appState.selectedMissionId = missionIdForAstronaut(appState.selectedAstronautId);" in _function_body(
+        app_js, "async function onAuthenticated(user)")
+
+    # 4. El helper llega al encabezado y a las vistas; fmt (toast de error) está importado
+    helpers = app_js[app_js.index("const appHelpers = {"):app_js.index("};", app_js.index("const appHelpers = {"))]
+    assert "  selectAstronaut,\n" in helpers
+    assert "initChrome(appState, appHelpers);" in app_js
+    assert re.search(r'import \{[^}]*\bfmt\b[^}]*\} from "\.\./i18n/i18n\.js";', app_js)
+    alerts_js = (views_dir / "alerts.js").read_text(encoding="utf-8")
+    crew_js = (views_dir / "crew.js").read_text(encoding="utf-8")
+    assert "return helpers.selectAstronaut(astronautId, { navigate: false });" in alerts_js
+    assert alerts_js.count("if (!(await selectAstronautIfNeeded(ctx, Number(btn.getAttribute(\"data-al-astro\"))))) return;") == 2
+    assert 'helpers.selectAstronaut?.(Number(btn.getAttribute("data-cr-inspect")), { section: "mission-control" })' in crew_js
+    for name, text in (("alerts.js", alerts_js), ("crew.js", crew_js)):
+        assert "appState.selectedAstronautId =" not in text, f"{name} must change crew member through helpers.selectAstronaut"
+
+
+def test_crew_selector_texts_exist_in_spanish_and_english():
+    """Textos nuevos del selector de tripulante (console.js) y del aviso de error (app.js), en ES y EN."""
+    console_js = (FRONTEND_ROOT / "src" / "console" / "console.js").read_text(encoding="utf-8")
+    app_js = (FRONTEND_ROOT / "src" / "app" / "app.js").read_text(encoding="utf-8")
+    i18n_js = (FRONTEND_ROOT / "src" / "i18n" / "i18n.js").read_text(encoding="utf-8")
+
+    es_block, en_block = _dict_blocks(console_js)
+    for key in ("crewMember", "crewSession", "crewSelectHelp", "crewSrHelp"):
+        assert key in _keys(es_block, 4), f"console.js DICT.es needs {key}"
+        assert key in _keys(en_block, 4), f"console.js DICT.en needs {key}"
+    assert 'crewMember: "Tripulante",' in es_block and 'crewMember: "Crew member",' in en_block
+    assert 'crewSession: "Sesión iniciada: {name}",' in es_block and 'crewSession: "Signed in: {name}",' in en_block
+    for block in (es_block, en_block):  # la ayuda incluye quién tiene la sesión iniciada
+        for key in ("crewSelectHelp", "crewSrHelp"):
+            assert re.search(r"^    " + key + r': "[^"\n]*\{session\}[^"\n]*",$', block, re.M), f"{key} needs {{session}}"
+
+    app_es, app_en = _dict_blocks(app_js)
+    assert 'crewChangeFailed: "No se pudo cambiar de tripulante: {msg}",' in app_es
+    assert 'crewChangeFailed: "Could not switch crew member: {msg}",' in app_en
+
+    # la clave estática del selector anterior (index.html) se retiró de ambos idiomas
+    assert '"crew.label"' not in i18n_js
+
+
+def test_crew_name_can_be_edited_from_the_status_bar_context_menu():
+    """Clic derecho sobre la celda "Tripulante" (o el botón ✎) abre "Editar nombre"; se guarda con
+    PATCH /users/{id} y el nombre nuevo se refleja en el estado local sin recargar."""
+    console_js = (FRONTEND_ROOT / "src" / "console" / "console.js").read_text(encoding="utf-8")
+    console_css = (FRONTEND_ROOT / "src" / "console" / "console.css").read_text(encoding="utf-8")
+
+    # 1. La celda se marca como editable y trae un botón accesible (táctil / teclado)
+    cell = _function_body(console_js, "function crewCellHTML(appState, sessionName)")
+    assert "data-crew-cell" in cell
+    assert 'data-act="crew-rename"' in cell and 'aria-label="${esc(T.crewRename)}"' in cell
+
+    # 2. Menú contextual delegado en el encabezado y botón ✎ en el manejador de clics
+    init = _function_body(console_js, "export function initChrome(appState, helpers = {})")
+    assert 'root.addEventListener("contextmenu", (ev) => {' in init
+    assert '[data-crew-cell]' in init and "ev.preventDefault();" in init and "openCrewMenu(" in init
+    assert 'act === "crew-rename"' in init and "openCrewRename(" in init
+
+    # 3. El diálogo escapa el nombre, exige uno no vacío y guarda por la API
+    rename = _function_body(console_js, "function openCrewRename(x, y)")
+    assert 'value="${esc(target.full_name || "")}"' in rename
+    assert "apiService.updateUserProfile(target.id, { full_name: name })" in rename
+    assert "if (!name) { fail(T.crewRenameEmpty)" in rename
+    assert "applyCrewName(target.id" in rename
+
+    # 4. El estado local se actualiza (lista, sesión y resumen) y se repinta la barra
+    apply = _function_body(console_js, "function applyCrewName(userId, name)")
+    assert "u.full_name = name" in apply and "st.currentUser.full_name = name" in apply and "renderChrome();" in apply
+
+    # 5. A quién se renombra: el astronauta mostrado (líder/administración) o uno mismo (astronauta)
+    target = _function_body(console_js, "function crewRenameTarget()")
+    assert "return st.currentUser || null;" in target
+    assert "Number(a.id) === Number(st.selectedAstronautId)" in target
+
+    # 6. Textos en español e inglés, y estilos del menú y del diálogo
+    en_start = console_js.index("  en: {")
+    for key in ("crewRename", "crewRenameHint", "crewRenameTitle", "crewRenameLabel", "crewRenameSave",
+                "crewRenameCancel", "crewRenameEmpty", "crewRenamed"):
+        assert f"    {key}: " in console_js[:en_start], key
+        assert f"    {key}: " in console_js[en_start:], key
+    for cls in (".av-crew-pop", ".av-crew-menu-item", ".av-crew-rename", ".av-crew-edit"):
+        assert cls in console_css, cls

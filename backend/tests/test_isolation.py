@@ -92,6 +92,35 @@ def users(client):
     }
 
 
+@pytest.fixture
+def two_person_crew():
+    """Las pruebas de actividades grupales están escritas para la tripulación de dos personas de la
+    misión principal (Elena y Marcus): mientras dura la prueba, la tripulación genérica (AST-40x) queda
+    sin asignación activa, para que el quórum sea el de esas dos personas."""
+    db = IsoSession()
+    try:
+        ids = [u.id for u in db.query(User).filter(User.crew_code.like("AST-40%")).all()]
+        rows = db.query(MissionAssignment).filter(
+            MissionAssignment.user_id.in_(ids), MissionAssignment.is_active.is_(True)
+        ).all() if ids else []
+        row_ids = [r.id for r in rows]
+        for r in rows:
+            r.is_active = False
+        db.commit()
+    finally:
+        db.close()
+    yield
+    db = IsoSession()
+    try:
+        if row_ids:
+            db.query(MissionAssignment).filter(MissionAssignment.id.in_(row_ids)).update(
+                {MissionAssignment.is_active: True}, synchronize_session=False
+            )
+            db.commit()
+    finally:
+        db.close()
+
+
 def _xp(user_id: int) -> int:
     db = IsoSession()
     try:
@@ -228,7 +257,7 @@ def test_leisure_catalog_and_log(client, users):
 # 3. Actividades de integración de la tripulación
 # ---------------------------------------------------------------------------
 
-def test_crew_activities_flow_quorum_xp_and_permissions(client, users):
+def test_crew_activities_flow_quorum_xp_and_permissions(client, users, two_person_crew):
     elena, marcus, kenji, leader, admin = (users[k] for k in ("elena", "marcus", "kenji", "leader", "admin"))
     eid, mid = elena["user"]["id"], marcus["user"]["id"]
 
@@ -659,7 +688,7 @@ def test_branding_migration_renames_legacy_mission_and_demo_emails(tmp_path, mon
 
 
 
-def test_attend_window_daily_cap_and_min_attendees(client, users):
+def test_attend_window_daily_cap_and_min_attendees(client, users, two_person_crew):
     elena, marcus, kenji = users["elena"], users["marcus"], users["kenji"]
     eid, mid, kid = elena["user"]["id"], marcus["user"]["id"], kenji["user"]["id"]
     now = datetime.now(timezone.utc)
@@ -713,7 +742,7 @@ def test_attend_window_daily_cap_and_min_attendees(client, users):
     assert _xp(kid) == xp_k
 
 
-def test_concurrent_attend_completes_and_awards_once(client, users):
+def test_concurrent_attend_completes_and_awards_once(client, users, two_person_crew):
     elena, marcus = users["elena"], users["marcus"]
     eid, mid = elena["user"]["id"], marcus["user"]["id"]
     for _ in range(8):

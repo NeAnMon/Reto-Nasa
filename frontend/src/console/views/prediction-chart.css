@@ -2,6 +2,7 @@
  * Solo clases con prefijo av-pc-. Usa los tokens --av-* de console.css (con valores de
  * reserva por si la gráfica se monta fuera de .av-console).
  * Histórico = cian (--av-s) continuo · Pronóstico = violeta (--av-m) discontinuo ·
+ * Bandas de predicción = violeta translúcido (80 % más marcada que 95 %), siempre con leyenda ·
  * Línea base = gris (--av-text2) discontinua · Fuera de rango válido = rojo (--av-r), siempre con texto.
  */
 
@@ -23,6 +24,11 @@
 .av-pc-key-h { border-top: 2px solid var(--av-s, #4fc3f7); }
 .av-pc-key-f { border-top: 2px dashed var(--av-m, #b39ddb); }
 .av-pc-key-base { border-top: 2px dashed var(--av-text2, #a7b0bd); }
+/* Bandas: recuadro con el relleno translúcido de la gráfica (80 % = solape de las dos áreas) */
+.av-pc-key-band { position: relative; height: 10px; box-sizing: border-box; border: 1px solid var(--av-m, #b39ddb); }
+.av-pc-key-band::before { content: ""; position: absolute; inset: 0; background: var(--av-m, #b39ddb); }
+.av-pc-key-b80::before { opacity: .32; }
+.av-pc-key-b95::before { opacity: .14; }
 .av-pc-key-oor {
   width: 10px; height: 10px; border-radius: 50%;
   background: var(--av-r, #d13438); box-shadow: 0 0 0 2px var(--av-panel, #161b22), 0 0 0 3px var(--av-r, #d13438);
@@ -59,6 +65,11 @@
 .av-pc-fdot.av-pc-oor { fill: var(--av-r, #d13438); stroke: var(--av-panel, #161b22); stroke-width: 1.5; }
 .av-pc-oor-ring { fill: none; stroke: var(--av-r, #d13438); stroke-width: 1.5; }
 
+/* Bandas de predicción: la del 80 % se pinta sobre la del 95 % y el solape la hace más marcada */
+.av-pc-band { fill: var(--av-m, #b39ddb); stroke: none; pointer-events: none; }
+.av-pc-band95 { fill-opacity: .14; }
+.av-pc-band80 { fill-opacity: .2; }
+
 /* Cursor */
 .av-pc-cursor-line { stroke: var(--av-strong, #5a6473); stroke-width: 1; }
 .av-pc-cursor-dot { fill: var(--av-s, #4fc3f7); stroke: var(--av-panel, #161b22); stroke-width: 2; }
@@ -81,6 +92,7 @@
 .av-pc-tip-h::before { border-top: 2px solid var(--av-s, #4fc3f7); }
 .av-pc-tip-f::before { border-top: 2px dashed var(--av-m, #b39ddb); }
 .av-pc-tip-oor { color: var(--av-r-text, #ff8a8d); font-weight: 600; }
+.av-pc-tip-band { color: var(--av-text2, #a7b0bd); }
 
 /* Variantes de tema */
 body[data-theme="daylight-clean"] .av-pc-tip { box-shadow: 0 2px 8px rgba(0, 0, 0, .15); }
@@ -89,9 +101,18 @@ body[data-theme="high-contrast"] .av-pc-fczone { fill: none; }
 body[data-theme="high-contrast"] .av-pc-grid { stroke: var(--av-row, #888); stroke-dasharray: 2 4; }
 body[data-theme="high-contrast"] .av-pc-hline, body[data-theme="high-contrast"] .av-pc-fline { stroke-width: 2.5; }
 body[data-theme="high-contrast"] .av-pc-today { stroke-width: 1.5; }
+/* Alto contraste: sin rellenos translúcidos; contorno continuo (80 %) y punteado (95 %) */
+body[data-theme="high-contrast"] .av-pc-band { fill: none; stroke: var(--av-m, #b39ddb); stroke-width: 1; }
+body[data-theme="high-contrast"] .av-pc-band95 { stroke-dasharray: 2 3; }
+body[data-theme="high-contrast"] .av-pc-key-band::before { display: none; }
+body[data-theme="high-contrast"] .av-pc-key-b95 { border-style: dashed; }
 
 @media (forced-colors: active) {
   .av-pc-hline, .av-pc-fline, .av-pc-base, .av-pc-today, .av-pc-oor-ring { stroke: CanvasText; }
   .av-pc-hdot, .av-pc-fdot, .av-pc-cursor-dot { fill: CanvasText; }
   .av-pc-fczone { fill: none; }
+  .av-pc-band { fill: none; stroke: CanvasText; stroke-width: 1; }
+  .av-pc-band95 { stroke-dasharray: 2 3; }
+  .av-pc-key-band::before { display: none; }
+  .av-pc-key-b95 { border-style: dashed; }
 }

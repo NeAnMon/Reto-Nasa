@@ -335,7 +335,8 @@ export async function renderAdminView(container, appState, helpers) {
           password: root.querySelector("#av-ad-pass").value,
           role_code: root.querySelector("#av-ad-role").value,
         });
-        // el selector de tripulante del encabezado debe incluir la cuenta nueva
+        // el selector de tripulante de la barra de estado debe incluir la cuenta nueva
+        // (updateRoleNavigation repinta el encabezado)
         appState.usersList = (await apiService.getUsers()).users || appState.usersList;
         helpers.updateRoleNavigation?.();
       },

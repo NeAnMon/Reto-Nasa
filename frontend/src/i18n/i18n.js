@@ -117,7 +117,6 @@ export const STATIC = {
     "more.crew": "Monitoreo de tripulación",
     "more.admin": "Administración",
     "more.settings": "Ajustes y ayuda",
-    "crew.label": "Tripulante",
     "btn.contrast": "Contraste",
     "btn.contrastTitle": "Alternar alto contraste",
     // Modal
@@ -147,7 +146,6 @@ export const STATIC = {
     "more.crew": "Crew monitoring",
     "more.admin": "Administration",
     "more.settings": "Settings & help",
-    "crew.label": "Crew member",
     "btn.contrast": "Contrast",
     "btn.contrastTitle": "Toggle high contrast",
   },

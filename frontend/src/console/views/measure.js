@@ -10,7 +10,7 @@
  * fuente y calidad del dato, hora manual, cola sin conexión, tabla de límites).
  * La v1 está en measure.v1.bak.js por si hay que recuperar algo.
  *
- * Los datos vienen de ../data/measure-data.js (hoy JSON de ejemplo, luego SEMSA).
+ * Los datos vienen de ../data/measure-data.js (catálogo y mediciones desde la API de SEMSA).
  * Convención de color (alert-classes.js): el color nunca va solo, siempre con letra o texto.
  */
 // LETTER y STATE_WORD se toman de console.js (que los reexporta) para no depender de
@@ -19,7 +19,7 @@ import { escapeHtml, badge, LETTER, STATE_WORD } from "../console.js";
 
 const isAlarm = (l) => l === "W" || l === "C";
 import { tr, fmt, fmtNum, getLang } from "../../i18n/i18n.js";
-import { loadMeasureData, saveMeasurement, evaluate, validate, resetDemoData, DATA_MODE } from "../data/measure-data.js";
+import { loadMeasureData, saveMeasurement, evaluate, validate } from "../data/measure-data.js";
 
 const esc = escapeHtml;
 
@@ -34,10 +34,6 @@ const DICT = {
     upToDateWord: "al día",
     allDoneShort: "¡todo al día!",
     pendingHint: "sin dato o vencidos",
-    demoTag: "DATOS DE EJEMPLO",
-    demoHelp: "Modo demo: los datos vienen de un archivo de ejemplo y lo que guardes queda solo en este navegador.",
-    reset: "Restablecer datos de ejemplo",
-    resetDone: "Datos de ejemplo restablecidos.",
     loading: "Cargando…",
     loadFail: "No se pudieron cargar los indicadores: {msg}",
     pendingGroup: "Pendientes",
@@ -97,10 +93,6 @@ const DICT = {
     upToDateWord: "up to date",
     allDoneShort: "all caught up!",
     pendingHint: "missing or stale",
-    demoTag: "SAMPLE DATA",
-    demoHelp: "Demo mode: data comes from a sample file and whatever you save stays in this browser only.",
-    reset: "Reset sample data",
-    resetDone: "Sample data reset.",
     loading: "Loading…",
     loadFail: "Could not load indicators: {msg}",
     pendingGroup: "Due",
@@ -214,6 +206,10 @@ function parseNum(raw) {
 }
 
 function rangeText(lo, hi, ind) {
+  /* Un extremo igual al límite físico de validación significa "sin umbral en esa dirección"
+     (así lo guardan las reglas calibradas con el dataset): se muestra solo el otro extremo. */
+  if (!isNil(lo) && ind && !isNil(ind.min_valid_value) && lo <= ind.min_valid_value) lo = null;
+  if (!isNil(hi) && ind && !isNil(ind.max_valid_value) && hi >= ind.max_valid_value) hi = null;
   if (isNil(lo) && isNil(hi)) return "—";
   if (isNil(hi)) return `≥ ${fmtV(lo, ind)}`;
   if (isNil(lo)) return `≤ ${fmtV(hi, ind)}`;
@@ -306,7 +302,6 @@ function paint(container, appState, helpers) {
   <div class="av-console av-ms" data-av-measure-root ${sel ? "data-open" : ""}>
     <header class="av-ms-head">
       <h1 class="av-ms-title">${esc(T.title)}</h1>
-      ${DATA_MODE === "demo" ? `<span class="av-ms-tag" title="${esc(T.demoHelp)}">${esc(T.demoTag)}</span>` : ""}
       ${crew ? `<strong class="av-ms-crew">${esc(fmt(T.forCrew, { crew }))}</strong>` : ""}
       <div class="av-ms-progress-wrap">
         <span class="av-ms-progress-lbl">${esc(T.today)}</span>
@@ -320,7 +315,6 @@ function paint(container, appState, helpers) {
     <div class="av-ms-body">
       <div class="av-ms-left">
         ${tilesHTML(rows)}
-        ${DATA_MODE === "demo" ? `<p class="av-ms-foot">${esc(T.demoHelp)} <button type="button" class="av-ms-link" data-act="reset">${esc(T.reset)}</button></p>` : ""}
       </div>
       ${sel ? entryHTML(sel, rows) : ""}
     </div>
@@ -540,13 +534,6 @@ function bind(root, container, appState, helpers, sel, rows) {
         ui.focus = next ? "#av-ms-entry-title" : null;
       }
       repaint();
-    } else if (act === "reset") {
-      resetDemoData();
-      ui.code = null;
-      ui.result = null;
-      ui.skipped = new Set();
-      helpers.showToast?.(T.resetDone);
-      renderMeasureView(container, appState, helpers);
     }
   });
 
