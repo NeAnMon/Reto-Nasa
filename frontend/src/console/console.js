@@ -1405,7 +1405,7 @@ function paint(container, appState) {
   // la barra de estado, la de alarma y las pestañas viven en el encabezado global (#av-chrome)
   container.innerHTML = `<div class="av-console" ${ROOT_ATTR}>${body}</div>`;
   if (consoleState.view === "indicator") loadIndicatorExtras(container, appState);
-  else if (consoleState.view === "summary") placeBodyPop(container);
+  else if (consoleState.view === "summary") { spreadSideCols(container); placeBodyPop(container); }
 }
 
 /* Repinta la sección de consola abierta (si la hay) tras un cambio hecho desde el encabezado */
@@ -1578,7 +1578,7 @@ async function setCrewEnvironment(key) {
     envState.pending = false;
     renderChrome(st);
     repaintConsole();
-    if (hp.showToast) hp.showToast(fmt(tt().envPostFailed, { label: env.label, msg: bt(e.message) }));
+    if (hp.showToast) hp.showToast(fmt(tt().envPostFailed, { label: env.label, msg: bt(e.message) }), "error");
   }
 }
 
@@ -1638,7 +1638,7 @@ export function initChrome(appState, helpers = {}) {
         if (hp.navigateToSection) await hp.navigateToSection("radiation");
       }
     } catch (e) {
-      if (hp.showToast) hp.showToast(fmt(tt().actionFailed, { msg: bt(e.message) }));
+      if (hp.showToast) hp.showToast(fmt(tt().actionFailed, { msg: bt(e.message) }), "error");
       el.disabled = false;
     }
   });
@@ -2086,6 +2086,21 @@ function fillBodyPop(container, code, anchorId) {
  *  - más alta que el hueco visible: se limita su alto y el contenido se desplaza por dentro;
  *  - en móvil, o si no cabe a ningún lado, hoja fija al borde inferior de la ventana.
  * root: contenedor de la vista (o document). Se llama al abrir, repintar, desplazar y redimensionar. */
+/* Métricas laterales: el top ideal (data-top) supone 48 px de alto; si una métrica crece (la unidad
+ * baja a otra línea en columnas estrechas), las siguientes se desplazan para no montarse. */
+const SIDE_GAP = 8;
+function spreadSideCols(root) {
+  root.querySelectorAll(".av-side").forEach((col) => {
+    let bottom = -Infinity;
+    col.querySelectorAll(".av-side-btn[data-top]").forEach((b) => {
+      if (getComputedStyle(b).position !== "absolute") { b.style.top = ""; return; }
+      const top = Math.max(Number(b.dataset.top), bottom + SIDE_GAP);
+      b.style.top = `${top}px`;
+      bottom = top + b.offsetHeight;
+    });
+  });
+}
+
 function placeBodyPop(root) {
   const pop = root.querySelector("#av-bodypop");
   if (!pop || pop.hidden) return;
@@ -2245,9 +2260,9 @@ function systemsHTML(appState, data, d) {
         const m = zoneMetric(z, d, data);
         const on = consoleState.sys === z.code;
         const valTxt = m.value === null ? T.noData : `${m.value} ${m.unit}`.trim();
-        return `<button type="button" class="av-side-btn av-side-${m.l}" data-act="region" data-region="${z.code}" data-focus-id="side-${z.code}" aria-pressed="${on}" aria-controls="av-bodypop" aria-label="${esc(`${z.metricLbl}: ${valTxt}, ${STATE_WORD[m.l]}. ${SYS_NAMES[z.code]}`)}" style="top:${top}px">
+        return `<button type="button" class="av-side-btn av-side-${m.l}" data-act="region" data-region="${z.code}" data-focus-id="side-${z.code}" aria-pressed="${on}" aria-controls="av-bodypop" aria-label="${esc(`${z.metricLbl}: ${valTxt}, ${STATE_WORD[m.l]}. ${SYS_NAMES[z.code]}`)}" data-top="${top}" style="top:${top}px">
           <span class="av-side-lbl" aria-hidden="true"><span>${esc(z.metricLbl)}</span>${badge(m.l)}</span>
-          <span class="av-side-val" aria-hidden="true">${m.value === null ? `<span class="av-side-none">${esc(T.noData)}</span>` : `${esc(m.value)}<span class="av-side-unit"> ${esc(bt(m.unit))}</span>`}</span></button>`;
+          <span class="av-side-val" aria-hidden="true">${m.value === null ? `<span class="av-side-none">${esc(T.noData)}</span>` : `<span class="av-side-num">${esc(m.value)}</span>${m.unit ? `<span class="av-side-unit">${esc(bt(m.unit))}</span>` : ""}`}</span></button>`;
       }).join("");
   };
   const pinned = pinnedRegion();
@@ -2308,7 +2323,7 @@ function alertsCardHTML(alerts) {
   const T = tt();
   const top = alerts.filter((a) => !a.acked).reduce((m, a) => (!m || RANK[a.cls] > RANK[m.cls] ? a : m), null);
   const topL = top ? top.cls : "N";
-  const rows = shown.map((a) => `<li class="av-alert-row">
+  const rows = shown.map((a) => `<li class="av-alert-row" data-cls="${esc(a.cls)}">
       ${badge(a.cls)}
       <span style="min-width:0"><span style="font-weight:600;display:block">${esc(a.msg)}</span><span class="av-sub">${esc(a.detail)}${a.local ? ` · ${esc(T.onboard)}` : ""}</span></span>
       <span class="av-mono av-sub" style="text-align:right">${a.t ? gmt(a.t, false) : ""}${a.acked ? `<span style="display:block" title="ACK">ACK</span>` : ""}</span>
@@ -2947,7 +2962,7 @@ function bindOnce(container, appState, helpers) {
         await submitMeasurement(container, st, hp, { indicator_code: "HYDRATION", value: base + ml, notes: fmt(tt().hydNoteApi, { ml }) });
       }
     } catch (e) {
-      hp.showToast(fmt(tt().actionFailed, { msg: bt(e.message) }));
+      hp.showToast(fmt(tt().actionFailed, { msg: bt(e.message) }), "error");
       el.disabled = false;
     }
   });
@@ -3004,11 +3019,15 @@ function bindOnce(container, appState, helpers) {
   });
   /* La ficha es "fixed": se recoloca junto a su zona al desplazar (cualquier contenedor) o redimensionar */
   let popRaf = 0;
+  let resized = false; // al redimensionar también se recolocan las métricas laterales
   const reflowPop = (ev) => {
+    if (ev?.type === "resize") resized = true;
     if (popRaf || (ev && ev.target && ev.target.closest && ev.target.closest("#av-bodypop"))) return;
     popRaf = requestAnimationFrame(() => {
       popRaf = 0;
-      if (document.body.contains(container) && container.querySelector(ROOT_SEL)) placeBodyPop(container);
+      if (!document.body.contains(container) || !container.querySelector(ROOT_SEL)) return;
+      if (resized) { resized = false; spreadSideCols(container); }
+      placeBodyPop(container);
     });
   };
   window.addEventListener("scroll", reflowPop, { passive: true, capture: true });
@@ -3044,7 +3063,7 @@ function bindOnce(container, appState, helpers) {
         paint(container, st);
       }
     } catch (e) {
-      hp.showToast(fmt(tt().saveFailed, { msg: bt(e.message) }));
+      hp.showToast(fmt(tt().saveFailed, { msg: bt(e.message) }), "error");
     }
   });
 }
