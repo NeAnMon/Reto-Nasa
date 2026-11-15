@@ -401,6 +401,9 @@ button.av-pop-row:hover { background: var(--av-hover); }
 .av-st > .av-v, .av-st-line { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .av-status > .av-st-row { flex-direction: row; align-items: center; gap: 14px; }
 .av-status > .av-st-fixed { flex-shrink: 0; }
+/* "TeleCreation UTS" es más largo que el valor de debajo: la celda no se encoge bajo su rótulo (issue #5) */
+.av-status > .av-st-brand { flex-shrink: 0; }
+.av-status > .av-st-brand > .av-lbl { white-space: nowrap; }
 .av-st-clock { font-size: 15px; line-height: 1.25; white-space: nowrap; }
 .av-status > .av-st-counts { gap: 12px; border-left: 1px solid var(--av-border); }
 .av-st-count { display: flex; align-items: center; gap: 6px; }

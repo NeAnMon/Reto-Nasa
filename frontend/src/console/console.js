@@ -1657,7 +1657,7 @@ function statusBarHTML(appState, d, alerts) {
   const T = tt();
   return `
   <div class="av-status" role="group" aria-label="${esc(T.statusAria)}">
-    <div class="av-st"><span class="av-lbl">${esc(BRAND_LABEL)}</span><span class="av-v" title="${esc(bt(mission.name) || "")}">${esc(mission.code || "—")}</span></div>
+    <div class="av-st av-st-brand"><span class="av-lbl">${esc(BRAND_LABEL)}</span><span class="av-v" title="${esc(bt(mission.name) || "")}">${esc(mission.code || "—")}</span></div>
     <div class="av-st"><span class="av-lbl">${esc(T.crewMember)}</span><span class="av-v" title="${esc(crew)}">${esc(crew)}</span></div>
     <div class="av-st av-st-row av-st-fixed">
       <div><div class="av-lbl">GMT</div><div class="av-mono av-v av-st-clock" id="av-gmt">${gmt(chromeNow())}</div></div>
