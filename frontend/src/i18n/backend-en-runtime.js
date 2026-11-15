@@ -510,6 +510,17 @@ export const EXACT = {
   "Coordinar acompañamiento privado respetando las preferencias de confidencialidad del astronauta.":
     "Coordinate private support while respecting the astronaut's confidentiality preferences.",
 
+  /* ---------- rules/early_warnings.py: alerta temprana "Contacto con Tierra" ---------- */
+  "[ALERTA TEMPRANA] Contacto con Tierra recomendado": "[EARLY WARNING] Contact with Earth recommended",
+  "Alerta temprana: los check-ins de Bienestar de los últimos días muestran señales repetidas de riesgo de aislamiento. El programa de investigación humana de la NASA (HRP) señala el aislamiento y el confinamiento como un riesgo para el ánimo, el sueño y la convivencia; el apoyo de los seres queridos es uno de los recursos que más lo amortiguan. Los valores individuales (ánimo, aislamiento, notas) son privados y no se muestran en esta alerta.":
+    "Early warning: the Wellbeing check-ins of the last few days show repeated signs of isolation risk. NASA's Human Research Program (HRP) identifies isolation and confinement as a risk to mood, sleep and getting along with others; support from loved ones is one of the things that cushions it most. Individual values (mood, isolation, notes) are private and are not shown in this alert.",
+  "Alerta temprana: el cuestionario emocional registró preocupación en la dimensión de aislamiento. El programa de investigación humana de la NASA (HRP) señala el aislamiento y el confinamiento como un riesgo para el ánimo, el sueño y la convivencia; el apoyo de los seres queridos es uno de los recursos que más lo amortiguan. Las respuestas individuales son privadas y no se muestran en esta alerta.":
+    "Early warning: the emotional questionnaire recorded concern in the isolation dimension. NASA's Human Research Program (HRP) identifies isolation and confinement as a risk to mood, sleep and getting along with others; support from loved ones is one of the things that cushions it most. Individual answers are private and are not shown in this alert.",
+  "Recomendación: reserva hoy un momento para contactar con tus seres queridos por un canal asíncrono (mensajes de voz, chat o fotos del día a día) y escribe a tu equipo en Tierra desde Mensajes.":
+    "Recommendation: set aside a moment today to contact your loved ones through an asynchronous channel (voice messages, chat or everyday photos) and write to your team on Earth from Messages.",
+  "Sin videollamadas: con el retardo de la comunicación una conversación en directo resulta frustrante. Repite el check-in de Bienestar en 24 h; si las señales continúan, abre un canal privado con tu especialista de apoyo.":
+    "No video calls: with the communication delay, a live conversation becomes frustrating. Repeat the Wellbeing check-in in 24 h; if the signs continue, open a private channel with your support specialist.",
+
   /* ---------- api/v1/router.py ---------- */
   // Catálogo de regiones corporales (BODY_REGIONS_CATALOG)
   "Cabeza, Cerebro y Ritmo Circadiano": "Head, Brain and Circadian Rhythm",

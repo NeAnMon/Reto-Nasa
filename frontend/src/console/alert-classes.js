@@ -70,6 +70,11 @@ export function alertClassOf(state) {
 /* ¿Es alarma (W o C)? */
 export const isAlarm = (l) => l === CLS.WARNING || l === CLS.CAUTION;
 
+/* ¿Es una alerta temprana? (reglas RULE_EARLY_* de backend/app/rules/early_warnings.py, p. ej. la
+ * recomendación de contacto con Tierra). Son de clase A: en Alertas van en desplegables y su
+ * recomendación se muestra en el Resumen de la consola. */
+export const isEarlyAlert = (a) => String(a?.rule_code || "").startsWith("RULE_EARLY_");
+
 /* Clase desde una puntuación de gravedad 0..3 (0 = nominal) */
 export const classFromRank = (r) => (r >= 3 ? CLS.WARNING : r >= 2 ? CLS.CAUTION : r >= 1 ? CLS.ADVISORY : STATE.NOMINAL);
 

@@ -20,7 +20,7 @@ import { apiService } from "../services/api.js";
 import { FIG, FIG_VIEWBOX, FIG_ATTRIBUTION_I18N, BONES, FIG_HOTSPOTS } from "./body-figure.js";
 import { tr, fmt, fmtNum, getLang, onLangChange } from "../i18n/i18n.js";
 import { bt, btLines } from "/src/i18n/backend.js";
-import { LETTER, RANK, STATE_WORD, STATE_LEGEND, CLASS_PLURAL, HERA_LETTER, alertClassOf, isAlarm, classFromRank } from "./alert-classes.js";
+import { LETTER, RANK, STATE_WORD, STATE_LEGEND, CLASS_PLURAL, HERA_LETTER, alertClassOf, isAlarm, classFromRank, isEarlyAlert } from "./alert-classes.js";
 
 /* ───────────────────────── idioma ─────────────────────────
  * Textos de la consola en DICT ({ es, en }); cada render obtiene el idioma actual con tr(DICT).
@@ -196,6 +196,12 @@ const DICT = {
     openSupport: "Solicitudes de apoyo abiertas",
     offlineNote: "Sin enlace, todo se guarda a bordo y se envía en el próximo contacto.",
     openMessages: "Abrir mensajes",
+    // recomendaciones activas (de las alertas tempranas, backend/app/rules/early_warnings.py)
+    recsTitle: "Recomendaciones",
+    recsAria: "Recomendaciones activas",
+    recsEmpty: "Sin recomendaciones activas. Aparecen aquí cuando una alerta temprana las genera.",
+    recsFor: "Para {name}",
+    recsSeeAlert: "Ver en Alertas",
     // detalle de indicador
     backSummary: "← Resumen",
     idealRange: "Rango ideal",
@@ -470,6 +476,11 @@ const DICT = {
     openSupport: "Open support requests",
     offlineNote: "Without a link, everything is stored onboard and sent at the next contact.",
     openMessages: "Open messages",
+    recsTitle: "Recommendations",
+    recsAria: "Active recommendations",
+    recsEmpty: "No active recommendations. They appear here when an early warning generates one.",
+    recsFor: "For {name}",
+    recsSeeAlert: "See in Alerts",
     backSummary: "← Overview",
     idealRange: "Ideal range",
     yellowLimit: "Yellow limit",
@@ -1848,7 +1859,7 @@ function summaryHTML(appState, d, data, alerts) {
   // "Seguimiento periódico" (NASA IMM) se movió a la Bitácora: views/logbook-followup.js
   return `<div class="av-grid av-grid-sum">
     ${systemsHTML(appState, data, d)}
-    <main class="av-col-b">${p1}${table}</main>
+    <main class="av-col-b">${p1}${recsHTML(appState, alerts)}${table}</main>
     ${rightColHTML(appState, d, data, alerts)}
   </div>`;
 }
@@ -2264,6 +2275,31 @@ function alertsCardHTML(alerts) {
     <ul class="av-alert-list" role="list">${rows || `<li class="av-sub" style="padding:8px 0">${esc(T.noActiveAlerts)}</li>`}</ul>
     <div class="av-foot"><button type="button" class="av-btn av-btn-sm" data-act="toggle-adv" aria-pressed="${consoleState.showAdv}">${esc(consoleState.showAdv ? T.hideAdv : fmt(T.showAdv, { n: nAdv }))}</button></div>
   </article>`;
+}
+
+/* Recomendaciones activas (Resumen): las que traen las alertas tempranas sin resolver
+ * (p. ej. "Contacto con Tierra", backend/app/rules/early_warnings.py). La alerta en sí se gestiona
+ * en Alertas (desplegables); aquí solo la recomendación, compacta y sin colores de alarma. */
+function recsHTML(appState, alerts) {
+  const T = tt();
+  const recs = alerts.filter((a) => a.api && isEarlyAlert(a.raw) && a.raw.immediate_action);
+  const leader = (appState.currentUser?.role_code || "ASTRONAUT") !== "ASTRONAUT";
+  const items = recs.map(({ raw }) => `<li class="av-rec">
+      <div class="av-rec-head">
+        <h3 class="av-h3">${esc(bt(raw.title))}</h3>
+        <span class="av-mono av-sub">${gmt(toDate(raw.created_at), false)}</span>
+      </div>
+      ${leader && raw.astronaut_name ? `<div class="av-sub">${esc(fmt(T.recsFor, { name: raw.astronaut_name }))}</div>` : ""}
+      <p class="av-rec-p">${esc(bt(raw.immediate_action))}</p>
+      <div class="av-rec-btns">
+        <button type="button" class="av-btn av-btn-sm av-btn-primary" data-nav="communication-center">${esc(T.openMessages)}</button>
+        <button type="button" class="av-btn av-btn-sm" data-nav="alerts-center">${esc(T.recsSeeAlert)}</button>
+      </div>
+    </li>`).join("");
+  return `<section class="av-panel av-recs" aria-labelledby="av-recs-h">
+    <div class="av-panel-head"><h2 class="av-h2" id="av-recs-h">${esc(T.recsTitle)}</h2>${recs.length ? `<span class="av-badge av-b-A av-pill">${num(recs.length)}</span>` : ""}</div>
+    ${items ? `<ul class="av-recs-list" aria-label="${esc(T.recsAria)}">${items}</ul>` : `<p class="av-sub av-recs-empty">${esc(T.recsEmpty)}</p>`}
+  </section>`;
 }
 
 function rightColHTML(appState, d, data, alerts) {
