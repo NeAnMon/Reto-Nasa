@@ -354,8 +354,14 @@ body[data-theme="daylight-clean"] .av-console { --av-grid: rgba(20, 26, 34, .07)
 }
 .av-side-L .av-side-lbl { flex-direction: row-reverse; }
 .av-side-lbl .av-badge { min-width: 18px; height: 18px; padding: 0 4px; font-size: 11px; }
-.av-side-val { font: 600 15px/1.15 "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.av-side-unit { font-size: 11px; font-weight: 400; color: var(--av-text2); }
+/* número y unidad nunca se parten; si no caben juntos, la unidad baja a su propia línea */
+.av-side-val {
+  display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 4px; max-width: 100%;
+  font: 600 15px/1.15 "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums;
+}
+.av-side-L .av-side-val { justify-content: flex-end; }
+.av-side-num, .av-side-unit { white-space: nowrap; }
+.av-side-unit { font-size: 11px; font-weight: 400; line-height: 1.2; color: var(--av-text2); }
 .av-side-none { font: 500 12px/1.2 "IBM Plex Sans", system-ui, sans-serif; color: var(--av-text2); }
 
 /* Ficha de la región: popover anclado a la zona que lo abre. position: fixed con left/top
