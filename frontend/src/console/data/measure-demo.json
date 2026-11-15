@@ -1,5 +1,5 @@
 {
-  "_about": "Datos de ejemplo para la vista 'Registrar medición' mientras no está conectado el backend SEMSA. Umbrales copiados de backend/app/database/seed.py (INDICATORS_DATA). 'hours_ago' se resuelve contra la hora actual para que la demo siempre parezca reciente.",
+  "_about": "Datos de ejemplo para la vista 'Registrar medición' mientras no está conectado el backend SEMSA. Umbrales copiados de backend/app/rules/calibration.py (calibrados con el dataset del proyecto; lo comprueba backend/tests/test_alert_engine.py). 'hours_ago' se resuelve contra la hora actual para que la demo siempre parezca reciente.",
   "astronaut": { "id": 2, "full_name": "Elena Ríos", "crew_code": "AST-201" },
   "indicators": [
     {
@@ -9,7 +9,7 @@
       "device": "Sensor de pulso o contar latidos en la muñeca", "device_en": "Pulse sensor or count beats at the wrist",
       "how_to": ["Descansa 3 minutos.", "Cuenta los latidos durante 60 segundos o usa el sensor.", "Escribe el número de latidos."],
       "how_to_en": ["Rest for 3 minutes.", "Count beats for 60 seconds or use the sensor.", "Enter the number of beats."],
-      "normal_min": 52, "normal_max": 90, "monitor_min": 45, "monitor_max": 102, "warning_min": 38, "warning_max": 115
+      "normal_min": 51, "normal_max": 99, "monitor_min": 51, "monitor_max": 99, "warning_min": 41, "warning_max": 119
     },
     {
       "code": "BLOOD_PRESSURE", "name": "Presión arterial", "name_en": "Blood pressure", "unit": "mmHg",
@@ -19,7 +19,7 @@
       "how_to": ["Descansa 5 minutos sin cruzar las piernas.", "Ajusta el brazalete a la altura del corazón.", "Escribe la alta (sistólica) y la baja (diastólica)."],
       "how_to_en": ["Rest 5 minutes without crossing your legs.", "Place the cuff at heart level.", "Enter the high (systolic) and low (diastolic) numbers."],
       "secondary": { "label": "Baja (diastólica)", "label_en": "Low (diastolic)", "min": 30, "max": 160, "required": true },
-      "normal_min": 95, "normal_max": 128, "monitor_min": 88, "monitor_max": 139, "warning_min": 80, "warning_max": 159
+      "normal_min": 91, "normal_max": 139, "monitor_min": 91, "monitor_max": 139, "warning_min": 60, "warning_max": 179
     },
     {
       "code": "BODY_TEMP", "name": "Temperatura", "name_en": "Temperature", "unit": "°C",
@@ -28,7 +28,7 @@
       "device": "Termómetro", "device_en": "Thermometer",
       "how_to": ["No bebas nada caliente ni frío en los 15 minutos previos.", "Toma la temperatura con el termómetro.", "Escribe los grados."],
       "how_to_en": ["Avoid hot or cold drinks for 15 minutes before.", "Take your temperature with the thermometer.", "Enter the degrees."],
-      "normal_min": 36.1, "normal_max": 37.3, "monitor_min": 35.7, "monitor_max": 37.8, "warning_min": 35.0, "warning_max": 38.4
+      "normal_min": 35.0, "normal_max": 37.7, "monitor_min": 35.0, "monitor_max": 37.7, "warning_min": 35.0, "warning_max": 37.9
     },
     {
       "code": "SPO2", "name": "Oxígeno en sangre", "name_en": "Blood oxygen", "unit": "%",
@@ -37,7 +37,7 @@
       "device": "Pulsioxímetro de dedo", "device_en": "Finger pulse oximeter",
       "how_to": ["Mantén la mano quieta y tibia.", "Ponte el pulsioxímetro en el dedo índice.", "Espera a que el número se estabilice y escríbelo."],
       "how_to_en": ["Keep your hand still and warm.", "Put the oximeter on your index finger.", "Wait for the number to settle and enter it."],
-      "normal_min": 95, "normal_max": 100, "monitor_min": 93, "monitor_max": 100, "warning_min": 90, "warning_max": 100
+      "normal_min": 95, "normal_max": 100, "monitor_min": 95, "monitor_max": 100, "warning_min": 92, "warning_max": 100
     },
     {
       "code": "RESP_RATE", "name": "Respiración", "name_en": "Breathing rate", "unit": "rpm",
@@ -46,7 +46,7 @@
       "device": "Solo un reloj", "device_en": "Just a clock",
       "how_to": ["En reposo, cuenta cuántas veces sube el pecho en 60 segundos.", "Escribe el número."],
       "how_to_en": ["At rest, count how many times your chest rises in 60 seconds.", "Enter the number."],
-      "normal_min": 11, "normal_max": 18, "monitor_min": 9, "monitor_max": 22, "warning_min": 8, "warning_max": 26
+      "normal_min": 6, "normal_max": 20, "monitor_min": 6, "monitor_max": 20, "warning_min": 6, "warning_max": 23
     },
     {
       "code": "BLOOD_GLUCOSE", "name": "Glucosa", "name_en": "Blood glucose", "unit": "mg/dL",
@@ -55,7 +55,7 @@
       "device": "Glucómetro", "device_en": "Glucose meter",
       "how_to": ["Anota si estás en ayunas o después de comer.", "Haz la lectura con el glucómetro.", "Escribe el valor."],
       "how_to_en": ["Note whether you are fasting or after a meal.", "Take the reading with the meter.", "Enter the value."],
-      "normal_min": 75, "normal_max": 110, "monitor_min": 68, "monitor_max": 135, "warning_min": 60, "warning_max": 180
+      "normal_min": 70, "normal_max": 105, "monitor_min": 70, "monitor_max": 105, "warning_min": 60, "warning_max": 180
     },
     {
       "code": "SLEEP_DURATION", "name": "Sueño", "name_en": "Sleep", "unit": "h",
@@ -64,7 +64,7 @@
       "how_to": ["Escribe cuántas horas dormiste en el último descanso.", "Si quieres, marca qué tan bien dormiste."],
       "how_to_en": ["Enter how many hours you slept in your last rest period.", "Optionally, rate how well you slept."],
       "secondary": { "label": "¿Qué tan bien dormiste?", "label_en": "How well did you sleep?", "min": 1, "max": 10, "required": false, "scale": true, "low": "Muy mal", "low_en": "Very poorly", "high": "Muy bien", "high_en": "Very well" },
-      "normal_min": 6.5, "normal_max": 9, "monitor_min": 5.5, "monitor_max": 10, "warning_min": 4.5, "warning_max": 11.5
+      "normal_min": 6.0, "normal_max": 16, "monitor_min": 6.0, "monitor_max": 16, "warning_min": 5.5, "warning_max": 16
     },
     {
       "code": "HYDRATION", "name": "Agua bebida", "name_en": "Water intake", "unit": "mL",

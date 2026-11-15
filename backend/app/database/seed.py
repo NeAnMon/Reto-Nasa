@@ -76,6 +76,21 @@ from backend.app.models.models import (
 )
 from backend.app.security.auth import hash_password
 from backend.app.database.seed_analog import seed_analog_bed_rest
+from backend.app.rules.calibration import (
+    CALIBRATION,
+    CALIBRATION_APPROVED_BY,
+    CALIBRATION_CHANGE_SUMMARY,
+    CALIBRATION_VERSION,
+    LEGACY_SEED_STD_DEV,
+    MODEL_DEFAULT_STD_DEV,
+    demo_std_dev,
+)
+from backend.app.rules.engine import evaluate_measurement, upsert_alert_for_measurement
+from backend.app.rules.recommendations import (
+    RULE_ESCALATION_CONDITIONS,
+    RULE_FOLLOWUP_INSTRUCTIONS,
+    RULE_IMMEDIATE_INSTRUCTIONS,
+)
 from backend.app.services.cognitive_engine import COGNITIVE_DOMAINS_CATALOG
 
 # Misión principal de la demo (issue #14; antes "ARTEMIS-IV-DEMO" / "Artemis IV — Lunar South Pole Outpost (DEMO)")
@@ -279,6 +294,8 @@ ENVIRONMENT_PROFILES_DATA = [
 ]
 
 
+# Catálogo de indicadores. Los umbrales de alerta ya no viven aquí: salen del dataset del proyecto y
+# están, con su procedencia, en backend/app/rules/calibration.py (ver sync_clinical_rules más abajo).
 INDICATORS_DATA = [
     {
         "code": "HEART_RATE",
@@ -294,13 +311,6 @@ INDICATORS_DATA = [
         "step_by_step_instructions": "1. Permanezca en reposo 3 minutos.\n2. Coloque el sensor de pulso o cuente latidos radiales durante 60 segundos.\n3. Introduzca el valor en latidos por minuto (bpm) y confirme la fuente.",
         "educational_summary": "Número de contracciones cardíacas por minuto. Refleja la respuesta autonómica, el estado de hidratación y la carga física.",
         "spaceflight_risk_explanation": "En microgravedad e hipogravedad se produce redistribución cefálica de fluidos y remodelado cardiovascular, pudiendo alterar la frecuencia basal y la tolerancia ortostática.",
-        "normal_min": 52.0,
-        "normal_max": 90.0,
-        "monitor_min": 45.0,
-        "monitor_max": 102.0,
-        "warning_min": 38.0,
-        "warning_max": 115.0,
-        "baseline_delta": 18.0,
     },
     {
         "code": "BLOOD_PRESSURE",
@@ -316,13 +326,6 @@ INDICATORS_DATA = [
         "step_by_step_instructions": "1. Repose 5 minutos sin cruzar piernas ni sujetar cargas.\n2. Ajuste el brazalete a la altura del corazón.\n3. Registre el valor sistólico (principal) y diastólico (secundario) en mmHg.",
         "educational_summary": "Fuerza ejercida por la sangre contra las paredes arteriales en sístole y diástole.",
         "spaceflight_risk_explanation": "Los cambios gravitacionales alteran el reflejo barorreceptor y el volumen plasmático, incrementando el riesgo de hipotensión ortostática al reingreso o en superficie planetaria.",
-        "normal_min": 95.0,
-        "normal_max": 128.0,
-        "monitor_min": 88.0,
-        "monitor_max": 139.0,
-        "warning_min": 80.0,
-        "warning_max": 159.0,
-        "baseline_delta": 16.0,
     },
     {
         "code": "BODY_TEMP",
@@ -339,13 +342,6 @@ INDICATORS_DATA = [
         "educational_summary": "Equilibrio térmico entre producción de calor metabólico y disipación ambiental.",
         "spaceflight_risk_explanation": "En microgravedad disminuye la convección natural del aire, elevando ligeramente la temperatura central durante el ejercicio ("
         "space fever) y aumentando el riesgo térmico dentro del traje EVA.",
-        "normal_min": 36.1,
-        "normal_max": 37.3,
-        "monitor_min": 35.7,
-        "monitor_max": 37.8,
-        "warning_min": 35.0,
-        "warning_max": 38.4,
-        "baseline_delta": 0.7,
     },
     {
         "code": "SPO2",
@@ -361,13 +357,6 @@ INDICATORS_DATA = [
         "step_by_step_instructions": "1. Mantenga la mano estable y templada.\n2. Coloque el pulsioxímetro en el dedo índice y espere onda estable.\n3. Registre el porcentaje de SpO₂.",
         "educational_summary": "Porcentaje de hemoglobina arterial saturada con oxígeno.",
         "spaceflight_risk_explanation": "Esencial para vigilar la oxigenación en atmósferas de cabina despresurizadas, trajes EVA y exposición a polvo lunar o marciano.",
-        "normal_min": 95.0,
-        "normal_max": 100.0,
-        "monitor_min": 93.0,
-        "monitor_max": 100.0,
-        "warning_min": 90.0,
-        "warning_max": 100.0,
-        "baseline_delta": 3.0,
     },
     {
         "code": "RESP_RATE",
@@ -383,13 +372,6 @@ INDICATORS_DATA = [
         "step_by_step_instructions": "1. En reposo, cuente las elevaciones del tórax durante 60 segundos completos.\n2. Registre el total en respiraciones por minuto (rpm).",
         "educational_summary": "Número de ciclos ventilatorios completos por minuto.",
         "spaceflight_risk_explanation": "Sensible al incremento de CO₂ ambiental en compartimentos cerrados, fatiga física durante EVA y estrés agudo.",
-        "normal_min": 11.0,
-        "normal_max": 18.0,
-        "monitor_min": 9.0,
-        "monitor_max": 22.0,
-        "warning_min": 8.0,
-        "warning_max": 26.0,
-        "baseline_delta": 4.0,
     },
     {
         "code": "BLOOD_GLUCOSE",
@@ -405,13 +387,6 @@ INDICATORS_DATA = [
         "step_by_step_instructions": "1. Verifique estado de ayuno (≥8 h) o postprandial.\n2. Realice lectura con el analizador portátil autorizado.\n3. Registre el valor en mg/dL.",
         "educational_summary": "Concentración de glucosa circulante para soporte energético celular y cerebral.",
         "spaceflight_risk_explanation": "Los vuelos espaciales pueden inducir resistencia subclínica a la insulina asociada a inflamación, cambios de sueño y pérdida de masa muscular.",
-        "normal_min": 75.0,
-        "normal_max": 110.0,
-        "monitor_min": 68.0,
-        "monitor_max": 135.0,
-        "warning_min": 60.0,
-        "warning_max": 180.0,
-        "baseline_delta": 20.0,
     },
     {
         "code": "SLEEP_DURATION",
@@ -427,13 +402,6 @@ INDICATORS_DATA = [
         "step_by_step_instructions": "1. Indique el total de horas dormidas en el último ciclo de descanso.\n2. En el campo secundario, califique la calidad percibida de 1 (muy fragmentado) a 10 (reparador).",
         "educational_summary": "Horas efectivas de descanso y percepción subjetiva de recuperación neurocognitiva.",
         "spaceflight_risk_explanation": "La ausencia de ciclo solar natural de 24 h, el ruido de soporte vital y la incomodidad postural reducen frecuentemente el sueño en órbita a ~6 horas.",
-        "normal_min": 6.5,
-        "normal_max": 9.0,
-        "monitor_min": 5.5,
-        "monitor_max": 10.0,
-        "warning_min": 4.5,
-        "warning_max": 11.5,
-        "baseline_delta": 1.8,
     },
     {
         "code": "HYDRATION",
@@ -449,13 +417,6 @@ INDICATORS_DATA = [
         "step_by_step_instructions": "1. Sume los mililitros consumidos de agua y bebidas rehidratantes en las últimas 24 h.\n2. Introduzca el volumen acumulado en mL.",
         "educational_summary": "Ingesta hídrica diaria para mantener volumen plasmático, termorregulación y función renal.",
         "spaceflight_risk_explanation": "La diuresis inicial en microgravedad y la reabsorción de calcio óseo elevan el riesgo de nefrolitiasis (cálculos renales) si la hidratación es insuficiente.",
-        "normal_min": 2100.0,
-        "normal_max": 3400.0,
-        "monitor_min": 1600.0,
-        "monitor_max": 3800.0,
-        "warning_min": 1200.0,
-        "warning_max": 4500.0,
-        "baseline_delta": 500.0,
     },
     {
         "code": "PHYSICAL_ACTIVITY",
@@ -471,13 +432,6 @@ INDICATORS_DATA = [
         "step_by_step_instructions": "1. Registre los minutos de ejercicio aeróbico y resistivo autorizado completados hoy.\n2. Opcionalmente indique el tiempo estimado de sedentarismo/inmovilidad en el campo secundario.",
         "educational_summary": "Volumen diario de ejercicio físico preventivo para preservar masa muscular, ósea y capacidad aeróbica.",
         "spaceflight_risk_explanation": "Sin carga mecánica diaria, los astronautas pueden perder 1–1.5% de densidad mineral ósea mensual y masa muscular antigravitatoria.",
-        "normal_min": 45.0,
-        "normal_max": 150.0,
-        "monitor_min": 25.0,
-        "monitor_max": 180.0,
-        "warning_min": 10.0,
-        "warning_max": 220.0,
-        "baseline_delta": 30.0,
     },
     {
         "code": "PERCEIVED_FATIGUE",
@@ -493,13 +447,6 @@ INDICATORS_DATA = [
         "step_by_step_instructions": "1. Evalúe su nivel actual de cansancio físico y mental antes de tareas críticas.\n2. Seleccione un valor de 1 a 10 con honestidad; reportar fatiga protege a la tripulación y no genera penalizaciones.",
         "educational_summary": "Percepción subjetiva del nivel de agotamiento cognitivo y físico.",
         "spaceflight_risk_explanation": "La sobrecarga de horarios, los cambios circadianos y el trabajo en trajes presurizados aumentan el riesgo de errores operativos por fatiga.",
-        "normal_min": 1.0,
-        "normal_max": 4.5,
-        "monitor_min": 1.0,
-        "monitor_max": 6.5,
-        "warning_min": 1.0,
-        "warning_max": 7.9,
-        "baseline_delta": 2.5,
     },
     {
         "code": "MOOD_WELLNESS",
@@ -515,13 +462,6 @@ INDICATORS_DATA = [
         "step_by_step_instructions": "1. Reflexione sobre su disposición emocional, calma y motivación hoy.\n2. Registre un valor de 1 a 10. Nunca se otorgan ni restan puntos de gamificación por el valor reportado.",
         "educational_summary": "Indicador subjetivo de equilibrio emocional, adaptación al confinamiento y vitalidad.",
         "spaceflight_risk_explanation": "El aislamiento, la distancia de la Tierra y la convivencia prolongada en espacios cerrados requieren seguimiento preventivo no estigmatizante.",
-        "normal_min": 6.0,
-        "normal_max": 10.0,
-        "monitor_min": 4.5,
-        "monitor_max": 10.0,
-        "warning_min": 3.0,
-        "warning_max": 10.0,
-        "baseline_delta": 2.0,
     },
     {
         "code": "RADIATION_EXPOSURE",
@@ -537,13 +477,6 @@ INDICATORS_DATA = [
         "step_by_step_instructions": "1. Consulte la lectura acumulada de 24 h en su dosímetro personal o consola ambiental.\n2. Ingrese el valor en milisieverts por día (mSv/día).",
         "educational_summary": "Exposición biológica diaria a radiación cósmica galáctica y partículas solares.",
         "spaceflight_risk_explanation": "La radiación espacial es uno de los 5 grandes peligros: impacta el sistema hematopoyético e inmunológico, el cristalino ocular y la salud celular a largo plazo.",
-        "normal_min": 0.0,
-        "normal_max": 0.85,
-        "monitor_min": 0.0,
-        "monitor_max": 1.5,
-        "warning_min": 0.0,
-        "warning_max": 2.5,
-        "baseline_delta": 0.6,
     },
 ]
 
@@ -922,12 +855,16 @@ def seed_database(db: Session, force_reseed_sim: bool = False) -> None:
         # BD ya inicializada: mantiene al día los catálogos del módulo de aislamiento, sin cuentas demo
         if db.query(Role).count() > 0:
             seed_isolation_module(db)
+            apply_alert_calibration(db)
         return
 
     existing_roles = db.query(Role).count()
     existing_cog_domains = db.query(CognitiveDomain).count()
     if existing_roles > 0 and existing_cog_domains > 0 and not force_reseed_sim:
         seed_isolation_module(db)
+        # BD ya desplegada: los umbrales calibrados entran como versión nueva de regla y se corrigen
+        # las líneas base simuladas de relleno, sin borrar datos (idempotente)
+        apply_alert_calibration(db)
         seed_analog_bed_rest(db)
         return
 
@@ -1087,56 +1024,9 @@ def seed_database(db: Session, force_reseed_sim: bool = False) -> None:
             )
             db.add(defn)
             db.flush()
-
-        rule_code = f"RULE_{item['code']}_DEMO"
-        rule = db.query(ClinicalRule).filter(ClinicalRule.rule_code == rule_code).first()
-        if not rule:
-            rule = ClinicalRule(
-                rule_code=rule_code,
-                indicator_code=item["code"],
-                name=f"Protocolo Preventivo {item['name']} (DEMO)",
-                applicable_context="ALL_ENVIRONMENTS",
-                current_version_number="1.0-DEMO",
-                is_active=True,
-                is_demo_rule=True,
-            )
-            db.add(rule)
-            db.flush()
-
-            version = ClinicalRuleVersion(
-                rule_id=rule.id,
-                version_number="1.0-DEMO",
-                protocol_source="SEMSA DEMO Reference Protocol (Ilustrativo / No Clínico)",
-                approved_by="Comité de Demostración de Medicina Espacial (Ficticio)",
-                approval_date=now - timedelta(days=30),
-                review_due_date=now + timedelta(days=180),
-                normal_min=item["normal_min"],
-                normal_max=item["normal_max"],
-                monitor_min=item["monitor_min"],
-                monitor_max=item["monitor_max"],
-                warning_min=item["warning_min"],
-                warning_max=item["warning_max"],
-                baseline_delta_threshold=item["baseline_delta"],
-                priority_on_warning="HIGH",
-                priority_on_critical="CRITICAL",
-                immediate_instructions=(
-                    f"1. Suspenda actividad física exigente y permanezca en observación segura.\n"
-                    f"2. Verifique colocación del sensor o repita la medición de {item['name']} en 10 minutos.\n"
-                    f"3. Si el estado es CRITICAL, active comunicación prioritaria con el Oficial Médico de Tripulación y Tierra."
-                ),
-                followup_instructions=(
-                    f"Registrar medición de seguimiento de {item['name']}, revisar condiciones ambientales de cabina "
-                    f"(CO₂/temperatura) y documentar actuación en el Centro de Alertas."
-                ),
-                escalation_conditions=(
-                    "Escalamiento inmediato a Dirección de Medicina de Vuelo si persiste en rango WARNING por >2 mediciones "
-                    "o ante cualquier lectura en rango CRITICAL."
-                ),
-                change_reason="Versión inicial de demostración.",
-                is_current=True,
-            )
-            db.add(version)
     db.flush()
+    # Reglas del motor: una por indicador, con la versión calibrada con el dataset como vigente
+    sync_clinical_rules(db)
 
     # 5. Daily Missions, Badges & Wellness Catalog
     for code, title, cat, desc, xp, envs, contra, edu in DAILY_MISSIONS_DATA:
@@ -1639,7 +1529,8 @@ def _populate_synthetic_demo_records(
                 )
             )
 
-    # Baselines for astronauts
+    # Baselines for astronauts. La media es la de cada persona ficticia; la DE sale del dataset
+    # (calibration.demo_std_dev): 0.0 = el dataset no permite derivarla y solo aplica la capa absoluta.
     baselines_cfg = [
         ("HEART_RATE", 64.0, None),
         ("BLOOD_PRESSURE", 114.0, 72.0),
@@ -1667,25 +1558,49 @@ def _populate_synthetic_demo_records(
                         indicator_code=icode,
                         baseline_value=bval,
                         baseline_secondary_value=bsec,
-                        std_dev=4.0,
+                        std_dev=demo_std_dev(icode),
                         established_phase="TRAINING",
                         is_simulated=True,
                     )
                 )
     db.flush()
 
-    # Longitudinal time series for Elena (14 days across TRAINING -> LAUNCH -> TRANSIT -> SURFACE -> EVA)
+    # Las mediciones demo se evalúan con el mismo motor que las de la API (estado, motivos y alerta):
+    # ya no hay estados ni alertas escritos a mano en el seed.
     defn_map = {d.code: d for d in db.query(HealthIndicatorDefinition).all()}
-    rule_ver_map = {}
-    for r in db.query(ClinicalRule).all():
-        v = (
-            db.query(ClinicalRuleVersion)
-            .filter(ClinicalRuleVersion.rule_id == r.id, ClinicalRuleVersion.is_current.is_(True))
-            .first()
-        )
-        if v:
-            rule_ver_map[r.indicator_code] = (r, v)
 
+    def add_demo_measurement(astronaut_id, mission_id, icode, val, sec_val, ts, ph, env, notes, with_alert):
+        defn = defn_map[icode]
+        value = float(val)
+        secondary = float(sec_val) if sec_val is not None else None
+        evaluation = evaluate_measurement(
+            db, defn, astronaut_id, mission_id, value, secondary, ts, "DEMO_SIMULATION"
+        )
+        m = HealthMeasurement(
+            astronaut_id=astronaut_id,
+            mission_id=mission_id,
+            indicator_code=icode,
+            value=value,
+            secondary_value=secondary,
+            unit=defn.unit,
+            measured_at=ts,
+            received_at=ts + timedelta(minutes=2),
+            phase_code=ph,
+            environment_code=env,
+            source_code="DEMO_SIMULATION",
+            data_quality="SYNTHETIC_DEMO",
+            calculated_state=evaluation.state,
+            rule_version_id=evaluation.version.id if evaluation.version else None,
+            is_simulated=True,
+            notes=notes,
+        )
+        db.add(m)
+        db.flush()
+        if with_alert:
+            upsert_alert_for_measurement(db, m, defn, evaluation, created_at=ts)
+        return m
+
+    # Longitudinal time series for Elena (14 days across TRAINING -> LAUNCH -> TRANSIT -> SURFACE -> EVA)
     elena_timeline = [
         # (days_ago, phase, env, hr, sys_bp, dia_bp, temp, spo2, rr, glu, sleep_h, sleep_q, hyd, act, fat, mood, rad)
         (16, "TRAINING", "EARTH_SURFACE", 63, 113, 72, 36.6, 99, 13, 87, 8.0, 9.0, 2700, 80, 2.0, 8.8, 0.02),
@@ -1735,159 +1650,37 @@ def _populate_synthetic_demo_records(
             row_items.append(("BLOOD_GLUCOSE", glu, None))
 
         for icode, val, sec_val in row_items:
-            defn = defn_map[icode]
-            r_pair = rule_ver_map.get(icode)
-            ver = r_pair[1] if r_pair else None
-            state = "NORMAL"
-            if ver and (val < ver.monitor_min or val > ver.monitor_max):
-                state = "WARNING"
-            elif ver and (val < ver.normal_min or val > ver.normal_max):
-                state = "MONITOR"
-
-            m = HealthMeasurement(
-                astronaut_id=elena.id,
-                mission_id=m1.id,
-                indicator_code=icode,
-                value=float(val),
-                secondary_value=float(sec_val) if sec_val is not None else None,
-                unit=defn.unit,
-                measured_at=ts,
-                received_at=ts + timedelta(minutes=2),
-                phase_code=ph,
-                environment_code=env,
-                source_code="DEMO_SIMULATION",
-                data_quality="SYNTHETIC_DEMO",
-                calculated_state=state,
-                rule_version_id=ver.id if ver else None,
-                is_simulated=True,
-                notes=f"[SIMULADO] Registro histórico de fase {ph}.",
+            # Solo la lectura de hoy deja alerta abierta (el histórico conserva su estado calculado)
+            add_demo_measurement(
+                elena.id, m1.id, icode, val, sec_val, ts, ph, env,
+                f"[SIMULADO] Registro histórico de fase {ph}.", with_alert=(d_ago == 0),
             )
-            db.add(m)
-            db.flush()
 
-            if d_ago == 0 and state in ("MONITOR", "WARNING"):
-                rule_obj = r_pair[0]
-                db.add(
-                    Alert(
-                        astronaut_id=elena.id,
-                        mission_id=m1.id,
-                        indicator_code=icode,
-                        measurement_id=m.id,
-                        rule_version_id=ver.id,
-                        rule_code=rule_obj.rule_code,
-                        rule_version_label=ver.version_number,
-                        value_recorded=f"{val:g}" if sec_val is None else f"{val:g}/{sec_val:g}",
-                        unit=defn.unit,
-                        priority="LOW" if state == "MONITOR" else "MEDIUM",
-                        operational_state=state,
-                        status="NEW",
-                        title=f"[{state}] {defn.name}: {val:g} {defn.unit} (SIMULADO)",
-                        explanation=(
-                            f"El indicador {defn.name} registró {val:g} {defn.unit}, superando el rango habitual "
-                            f"[{ver.normal_min}–{ver.normal_max} {defn.unit}] según protocolo {rule_obj.rule_code} ({ver.version_number}). "
-                            "Señal operativa preventiva (no diagnóstica)."
-                        ),
-                        data_quality="SYNTHETIC_DEMO",
-                        immediate_action=ver.immediate_instructions,
-                        followup_recommendation=ver.followup_instructions,
-                        environment_code=env,
-                        phase_code=ph,
-                        is_simulated=True,
-                        created_at=ts,
-                        updated_at=ts,
-                    )
-                )
-
-    # Measurements for Marcus Vance (includes a WARNING alert on Sleep/Fatigue & Hydration)
+    # Measurements for Marcus Vance (sueño corto, hidratación baja y fatiga alta tras la EVA)
     marcus_samples = [
-        ("HEART_RATE", 78.0, None, "NORMAL"),
-        ("BLOOD_PRESSURE", 126.0, 82.0, "NORMAL"),
-        ("BODY_TEMP", 36.8, None, "NORMAL"),
-        ("SPO2", 97.0, None, "NORMAL"),
-        ("RESP_RATE", 16.0, None, "NORMAL"),
-        ("SLEEP_DURATION", 5.1, 5.0, "WARNING"),
-        ("HYDRATION", 1550.0, None, "WARNING"),
-        ("PHYSICAL_ACTIVITY", 55.0, 390.0, "NORMAL"),
-        ("PERCEIVED_FATIGUE", 7.1, None, "WARNING"),
-        ("MOOD_WELLNESS", 6.2, None, "NORMAL"),
-        ("RADIATION_EXPOSURE", 0.51, None, "NORMAL"),
+        ("HEART_RATE", 78.0, None),
+        ("BLOOD_PRESSURE", 126.0, 82.0),
+        ("BODY_TEMP", 36.8, None),
+        ("SPO2", 97.0, None),
+        ("RESP_RATE", 16.0, None),
+        ("SLEEP_DURATION", 5.1, 5.0),
+        ("HYDRATION", 1550.0, None),
+        ("PHYSICAL_ACTIVITY", 55.0, 390.0),
+        ("PERCEIVED_FATIGUE", 7.1, None),
+        ("MOOD_WELLNESS", 6.2, None),
+        ("RADIATION_EXPOSURE", 0.51, None),
     ]
-    for icode, val, sec_v, st in marcus_samples:
-        defn = defn_map[icode]
-        r_pair = rule_ver_map.get(icode)
-        ver = r_pair[1] if r_pair else None
-        m = HealthMeasurement(
-            astronaut_id=marcus.id,
-            mission_id=m1.id,
-            indicator_code=icode,
-            value=val,
-            secondary_value=sec_v,
-            unit=defn.unit,
-            measured_at=now - timedelta(hours=2),
-            received_at=now - timedelta(hours=2),
-            phase_code="SURFACE",
-            environment_code="PRESSURIZED_HABITAT",
-            source_code="DEMO_SIMULATION",
-            data_quality="SYNTHETIC_DEMO",
-            calculated_state=st,
-            rule_version_id=ver.id if ver else None,
-            is_simulated=True,
-            notes="[SIMULADO] Evaluación de turno en Hábitat Selene-Base.",
+    for icode, val, sec_v in marcus_samples:
+        add_demo_measurement(
+            marcus.id, m1.id, icode, val, sec_v, now - timedelta(hours=2), "SURFACE", "PRESSURIZED_HABITAT",
+            "[SIMULADO] Evaluación de turno en Hábitat Selene-Base.", with_alert=True,
         )
-        db.add(m)
-        db.flush()
-        if st == "WARNING" and r_pair:
-            db.add(
-                Alert(
-                    astronaut_id=marcus.id,
-                    mission_id=m1.id,
-                    indicator_code=icode,
-                    measurement_id=m.id,
-                    rule_version_id=ver.id,
-                    rule_code=r_pair[0].rule_code,
-                    rule_version_label=ver.version_number,
-                    value_recorded=f"{val:g}",
-                    unit=defn.unit,
-                    priority="HIGH",
-                    operational_state="WARNING",
-                    status="NEW",
-                    title=f"[WARNING] {defn.name} ({marcus.full_name}): {val:g} {defn.unit}",
-                    explanation=(
-                        f"Lectura de {defn.name} ({val:g} {defn.unit}) requiere seguimiento preventivo post-EVA "
-                        f"conforme a {r_pair[0].rule_code} v{ver.version_number}."
-                    ),
-                    data_quality="SYNTHETIC_DEMO",
-                    immediate_action=ver.immediate_instructions,
-                    followup_recommendation=ver.followup_instructions,
-                    environment_code="PRESSURIZED_HABITAT",
-                    phase_code="SURFACE",
-                    is_simulated=True,
-                    created_at=now - timedelta(hours=2),
-                )
-            )
 
     # Measurements for Kenji (Ares Pathfinder)
     for icode, val in [("HEART_RATE", 66.0), ("SPO2", 98.0), ("SLEEP_DURATION", 7.4), ("RADIATION_EXPOSURE", 0.78)]:
-        defn = defn_map[icode]
-        ver = rule_ver_map[icode][1]
-        db.add(
-            HealthMeasurement(
-                astronaut_id=kenji.id,
-                mission_id=m2.id,
-                indicator_code=icode,
-                value=val,
-                unit=defn.unit,
-                measured_at=now - timedelta(hours=3),
-                received_at=now - timedelta(hours=3),
-                phase_code="TRANSIT",
-                environment_code="MARS_TRANSIT",
-                source_code="DEMO_SIMULATION",
-                data_quality="SYNTHETIC_DEMO",
-                calculated_state="NORMAL",
-                rule_version_id=ver.id,
-                is_simulated=True,
-                notes="[SIMULADO] Telemetría de tránsito profundo Ares Pathfinder.",
-            )
+        add_demo_measurement(
+            kenji.id, m2.id, icode, val, None, now - timedelta(hours=3), "TRANSIT", "MARS_TRANSIT",
+            "[SIMULADO] Telemetría de tránsito profundo Ares Pathfinder.", with_alert=True,
         )
 
     # Environmental Telemetry for Mission 1
@@ -2608,6 +2401,115 @@ ISOLATION_XP_MISSIONS_DATA = [
 
 # Rol de una versión previa con canal familiar (retirado; ver docs/CONTRATO_AISLAMIENTO.md §4)
 LEGACY_RETIRED_ROLE_CODE = "FAMILY_MEMBER"
+
+
+def sync_clinical_rules(db: Session) -> int:
+    """
+    Deja como versión vigente de cada regla del motor la calibrada con el dataset (`CALIBRATION_VERSION`).
+    Idempotente y sin borrar nada:
+    - BD nueva: crea la regla y su versión calibrada.
+    - BD ya desplegada (reglas 1.0-DEMO u otra versión): añade la versión calibrada como `is_current` y la
+      anterior deja de serlo; las mediciones y alertas antiguas siguen apuntando a su versión de entonces.
+    - Si la versión calibrada ya existe no hace nada, así que una versión creada después por un
+      administrador (POST /admin/rules/{id}/versions) no se pisa en el siguiente arranque.
+    Devuelve cuántas versiones nuevas creó.
+    """
+    now = utcnow()
+    created = 0
+    for item in INDICATORS_DATA:
+        code = item["code"]
+        cal = CALIBRATION.get(code)
+        if cal is None:
+            continue
+        if not db.query(HealthIndicatorDefinition).filter(HealthIndicatorDefinition.code == code).first():
+            continue
+        rule_code = f"RULE_{code}_DEMO"
+        rule = db.query(ClinicalRule).filter(ClinicalRule.rule_code == rule_code).first()
+        if not rule:
+            rule = ClinicalRule(
+                rule_code=rule_code,
+                indicator_code=code,
+                name=f"Protocolo Preventivo {item['name']} (DEMO)",
+                applicable_context="ALL_ENVIRONMENTS",
+                current_version_number=CALIBRATION_VERSION,
+                is_active=True,
+                is_demo_rule=True,
+            )
+            db.add(rule)
+            db.flush()
+        already = (
+            db.query(ClinicalRuleVersion)
+            .filter(ClinicalRuleVersion.rule_id == rule.id, ClinicalRuleVersion.version_number == CALIBRATION_VERSION)
+            .first()
+        )
+        if already:
+            continue
+        db.query(ClinicalRuleVersion).filter(
+            ClinicalRuleVersion.rule_id == rule.id, ClinicalRuleVersion.is_current.is_(True)
+        ).update({ClinicalRuleVersion.is_current: False}, synchronize_session=False)
+        db.add(
+            ClinicalRuleVersion(
+                rule_id=rule.id,
+                version_number=CALIBRATION_VERSION,
+                protocol_source=cal.source,
+                approved_by=CALIBRATION_APPROVED_BY,
+                approval_date=now,
+                review_due_date=now + timedelta(days=180),
+                normal_min=cal.normal[0],
+                normal_max=cal.normal[1],
+                monitor_min=cal.monitor[0],
+                monitor_max=cal.monitor[1],
+                warning_min=cal.warning[0],
+                warning_max=cal.warning[1],
+                # Solo se usa como tolerancia del aviso de conflicto entre fuentes (calidad de datos)
+                baseline_delta_threshold=cal.source_conflict_delta,
+                priority_on_warning="HIGH",
+                priority_on_critical="CRITICAL",
+                immediate_instructions=RULE_IMMEDIATE_INSTRUCTIONS,
+                followup_instructions=RULE_FOLLOWUP_INSTRUCTIONS,
+                escalation_conditions=RULE_ESCALATION_CONDITIONS,
+                change_reason=f"{CALIBRATION_CHANGE_SUMMARY} {cal.provenance}",
+                is_current=True,
+            )
+        )
+        rule.current_version_number = CALIBRATION_VERSION
+        created += 1
+    db.flush()
+    return created
+
+
+def fix_placeholder_baselines(db: Session) -> int:
+    """
+    Corrige las líneas base simuladas con DE de relleno (el 4.0 que el seed ponía a todos los indicadores
+    sin importar la unidad, o el 5.0 por defecto del modelo): les pone la DE derivada del dataset para ese
+    indicador, o 0.0 (no válida: solo capa absoluta) si el dataset no permite derivarla. No toca la media
+    ni las líneas base reales (is_simulated=False). Devuelve cuántas filas corrigió.
+    """
+    rows = (
+        db.query(HealthBaseline)
+        .filter(
+            HealthBaseline.is_simulated.is_(True),
+            HealthBaseline.std_dev.in_([LEGACY_SEED_STD_DEV, MODEL_DEFAULT_STD_DEV]),
+        )
+        .all()
+    )
+    now = utcnow()
+    for row in rows:
+        row.std_dev = demo_std_dev(row.indicator_code)
+        row.updated_at = now
+    db.flush()
+    return len(rows)
+
+
+def apply_alert_calibration(db: Session) -> Dict[str, int]:
+    """Pone al día una BD ya inicializada con la calibración del motor de alertas (idempotente)."""
+    result = {
+        "rule_versions_created": sync_clinical_rules(db),
+        "baselines_fixed": fix_placeholder_baselines(db),
+    }
+    if any(result.values()):
+        db.commit()
+    return result
 
 
 def apply_lightweight_migrations(db: Session) -> None:

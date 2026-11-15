@@ -47,8 +47,8 @@ from backend.app.models.models import (
 )
 from backend.app.rules.engine import (
     ContextResolver,
-    compute_measurement_state,
-    create_alert_if_needed,
+    evaluate_measurement,
+    upsert_alert_for_measurement,
 )
 from backend.app.rules.early_warnings import EARLY_RULE_PREFIX, is_early_rule
 from backend.app.schemas.schemas import (
@@ -1441,7 +1441,7 @@ def create_health_measurement(
     ctx = ContextResolver.resolve_active_context(db, mission.id, target_user.id)
     meas_dt = ensure_aware(payload.measured_at) or utcnow()
 
-    state, rule, version, reasons = compute_measurement_state(
+    evaluation = evaluate_measurement(
         db=db,
         definition=defn,
         astronaut_id=target_user.id,
@@ -1451,6 +1451,7 @@ def create_health_measurement(
         measured_at=meas_dt,
         source_code=payload.source_code,
     )
+    state, rule, version, reasons = evaluation.as_tuple()
 
     quality = payload.data_quality
     if state == "INVALID":
@@ -1480,7 +1481,8 @@ def create_health_measurement(
     db.add(m)
     db.flush()
 
-    alert_created = create_alert_if_needed(db, m, defn, rule, version, reasons)
+    # Una sola alerta abierta por astronauta + indicador + regla: si ya existe, se actualiza
+    alert_created, alert_is_new = upsert_alert_for_measurement(db, m, defn, evaluation)
     db.commit()
     db.refresh(m)
 
@@ -1519,14 +1521,11 @@ def create_health_measurement(
             "is_simulated": m.is_simulated,
         },
         "evaluation_reasons": reasons,
+        # La recomendación concreta sale del catálogo por indicador × dirección × nivel (la de la alerta)
         "recommended_next_step": (
-            version.immediate_instructions
-            if (version and state in ("WARNING", "CRITICAL"))
-            else (
-                version.followup_instructions
-                if (version and state == "MONITOR")
-                else "Medición dentro de los límites configurados. Continúe con su plan preventivo habitual."
-            )
+            alert_created.immediate_action
+            if alert_created
+            else "Medición dentro de los límites configurados. Continúe con su plan preventivo habitual."
         ),
         "alert_generated": (
             {
@@ -1534,6 +1533,9 @@ def create_health_measurement(
                 "priority": alert_created.priority,
                 "title": alert_created.title,
                 "immediate_action": alert_created.immediate_action,
+                "followup_recommendation": alert_created.followup_recommendation,
+                # False: la lectura actualizó la alerta que ya estaba abierta para este indicador
+                "is_new": alert_is_new,
             }
             if alert_created
             else None
@@ -1575,7 +1577,7 @@ def import_health_measurements(
     ctx = ContextResolver.resolve_active_context(db, mission.id, target_user.id)
     imported_count = 0
     invalid_count = 0
-    alerts_count = 0
+    touched_alert_ids = set()  # alertas creadas o actualizadas (una por indicador)
 
     for item in records_to_process[:100]:
         icode = str(item.get("indicator_code", "")).strip().upper()
@@ -1596,9 +1598,10 @@ def import_health_measurements(
             continue
 
         meas_dt = utcnow()
-        state, rule, version, reasons = compute_measurement_state(
+        evaluation = evaluate_measurement(
             db, defn, target_user.id, mission.id, val, sec_val, meas_dt, "CSV_JSON_IMPORT"
         )
+        state, rule, version, reasons = evaluation.as_tuple()
         if state == "INVALID":
             invalid_count += 1
 
@@ -1624,9 +1627,9 @@ def import_health_measurements(
         db.flush()
         imported_count += 1
 
-        al = create_alert_if_needed(db, m, defn, rule, version, reasons)
+        al, _al_is_new = upsert_alert_for_measurement(db, m, defn, evaluation)
         if al:
-            alerts_count += 1
+            touched_alert_ids.add(al.id)
 
     db.commit()
     log_audit_event(
@@ -1635,12 +1638,12 @@ def import_health_measurements(
         resource_type="HEALTH_MEASUREMENT",
         actor=user,
         target_user_id=target_user.id,
-        details=f"Importados {imported_count} registros ({fmt}), inválidos={invalid_count}, alertas={alerts_count}.",
+        details=f"Importados {imported_count} registros ({fmt}), inválidos={invalid_count}, alertas={len(touched_alert_ids)}.",
     )
     return {
         "imported_count": imported_count,
         "invalid_count": invalid_count,
-        "alerts_generated": alerts_count,
+        "alerts_generated": len(touched_alert_ids),
     }
 
 
