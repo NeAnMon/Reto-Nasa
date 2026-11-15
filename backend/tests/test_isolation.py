@@ -387,7 +387,7 @@ LEGACY_CHANNEL_ERA_DDL = [
     "FOREIGN KEY(astronaut_id) REFERENCES users (id) ON DELETE CASCADE, "
     "FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE)",
 ]
-LEGACY_EMAIL = "familiar.legacy@astrovital.demo"
+LEGACY_EMAIL = "familiar.legacy@semsa.demo"
 LEGACY_PASSWORD = "Legacy!2026"
 
 
@@ -592,7 +592,7 @@ def test_recovery_token_never_exposed_unless_explicit_opt_in(client, users):
         r = client.post("/api/v1/auth/password-recovery/request", json={"email": email})
         assert r.status_code == 200
         assert "demo_recovery_token" not in r.json()
-        unknown = client.post("/api/v1/auth/password-recovery/request", json={"email": "nadie@astrovital.demo"})
+        unknown = client.post("/api/v1/auth/password-recovery/request", json={"email": "nadie@semsa.demo"})
         assert unknown.json() == r.json()  # no revela si la cuenta existe
 
         settings.DEMO_EXPOSE_RECOVERY_TOKEN = True
@@ -626,6 +626,33 @@ def test_seed_without_demo_data_keeps_catalogs_only(tmp_path, monkeypatch):
         assert db.query(LeisureActivity).count() >= 10  # los catálogos sí se mantienen
         assert db.query(DailyMission).filter(DailyMission.code == "CREW_INTEGRATION").count() == 1
         assert {r.code for r in db.query(Role).all()} == {"ASTRONAUT"}
+    finally:
+        db.close()
+        eng.dispose()
+
+
+def test_branding_migration_renames_legacy_mission_and_demo_emails(tmp_path, monkeypatch):
+    """Issue #14: una BD sembrada como AstroVital (ARTEMIS-IV-DEMO, @astrovital.demo) pasa a SEMSA."""
+    eng = create_engine(f"sqlite:///{tmp_path / 'branding.db'}", future=True)
+    Base.metadata.create_all(bind=eng)
+    db = sessionmaker(bind=eng, future=True)()
+    monkeypatch.setattr(settings, "SEED_DEMO_DATA", True)
+    try:
+        seed_database(db, force_reseed_sim=True)
+        mission_id = db.execute(text("SELECT id FROM missions WHERE code = 'TELECREATION-UTS'")).scalar()
+        assert mission_id is not None
+        # Simula los valores que dejó la versión anterior
+        db.execute(text("UPDATE missions SET code = 'ARTEMIS-IV-DEMO', name = 'Artemis IV' WHERE id = :m"), {"m": mission_id})
+        db.execute(text("UPDATE users SET email = REPLACE(email, '@semsa.demo', '@astrovital.demo')"))
+        db.commit()
+
+        apply_lightweight_migrations(db)
+        apply_lightweight_migrations(db)  # idempotente
+        db.expire_all()
+        row = db.execute(text("SELECT code, name FROM missions WHERE id = :m"), {"m": mission_id}).one()
+        assert tuple(row) == ("TELECREATION-UTS", "TeleCreation UTS")
+        assert db.query(User).filter(User.email.like("%@astrovital.demo")).count() == 0
+        assert db.query(User).filter(User.email == settings.DEMO_ASTRONAUT1_EMAIL).count() == 1
     finally:
         db.close()
         eng.dispose()

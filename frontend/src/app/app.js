@@ -219,7 +219,7 @@ function syncNavigationState(sectionId) {
 /* Sin pantalla de acceso: la consola abre sola una sesión con la cuenta demo (datos SIMULADOS del seed
  * del backend, backend/app/core/config.py → DEMO_ASTRONAUT1_*). La API sigue exigiendo token Bearer + CSRF,
  * así que se hace un /auth/login silencioso. Sustituir antes de cualquier despliegue real. */
-const DEMO_SESSION = { email: "elena.rostova@astrovital.demo", password: "AstroCrew!2026" };
+const DEMO_SESSION = { email: "elena.rostova@semsa.demo", password: "AstroCrew!2026" };
 const REAUTH_COOLDOWN_MS = 15000; // evita bucles si el backend devuelve 401 de forma persistente
 let autoLoginInFlight = null;
 let lastReauthAt = 0;
@@ -296,7 +296,7 @@ async function initApp() {
   initI18n();
   bindStaticEvents();
   bindLanguageChange();
-  window.addEventListener("astrovital:unauthorized", reauthenticate);
+  window.addEventListener("semsa:unauthorized", reauthenticate);
   await bootSession();
 }
 

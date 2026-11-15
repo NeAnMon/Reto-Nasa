@@ -1,4 +1,4 @@
-/* AstroVital · Consola · vista "Evaluación cognitiva" (sustituye al antiguo Cognitive Performance Center)
+/* SEMSA · Consola · vista "Evaluación cognitiva" (sustituye al antiguo Cognitive Performance Center)
  *
  * - Actividades programadas, catálogo de dominios independientes y ejecución interactiva:
  *   verificación de disposición → ítems cronometrados (autoguardado por ítem) → percepción → resultado.

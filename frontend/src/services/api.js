@@ -1,9 +1,32 @@
 /**
- * AstroVital Frontend API Service & Offline Queue Manager
+ * SEMSA Frontend API Service & Offline Queue Manager
  */
-const STORAGE_TOKEN_KEY = "astrovital_session_token";
-const STORAGE_CSRF_KEY = "astrovital_csrf_token";
-const STORAGE_OFFLINE_QUEUE_KEY = "astrovital_offline_queue";
+const STORAGE_TOKEN_KEY = "semsa_session_token";
+const STORAGE_CSRF_KEY = "semsa_csrf_token";
+const STORAGE_OFFLINE_QUEUE_KEY = "semsa_offline_queue";
+
+/* Cambio de nombre de la app a SEMSA (issue #14): se trasladan una sola vez las claves antiguas
+ * de la marca anterior para no cerrar la sesión ni perder la cola sin enlace de quien ya usaba la app. */
+(function migrateLegacyStorageKeys() {
+  const pairs = [
+    [STORAGE_TOKEN_KEY, "astrovital_session_token"],
+    [STORAGE_CSRF_KEY, "astrovital_csrf_token"],
+    [STORAGE_OFFLINE_QUEUE_KEY, "astrovital_offline_queue"],
+  ];
+  for (const name of ["localStorage", "sessionStorage"]) {
+    for (const [key, legacy] of pairs) {
+      try {
+        const store = globalThis[name];
+        if (!store) break;
+        const old = store.getItem(legacy);
+        if (old !== null && store.getItem(key) === null) store.setItem(key, old);
+        if (old !== null) store.removeItem(legacy);
+      } catch {
+        /* almacenamiento no disponible (modo privado, cuota): se ignora */
+      }
+    }
+  }
+})();
 
 /**
  * Convierte el cuerpo de error de la API en un texto legible.
@@ -166,7 +189,7 @@ export const apiService = {
 
     if (response.status === 401 && path !== "/auth/login") {
       this.clearSession();
-      window.dispatchEvent(new CustomEvent("astrovital:unauthorized"));
+      window.dispatchEvent(new CustomEvent("semsa:unauthorized"));
       throw new Error("Sesión expirada o no autorizada.");
     }
 
@@ -409,7 +432,7 @@ export const apiService = {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `astrovital_report_${astronautId}.${format.toLowerCase()}`;
+    a.download = `semsa_report_${astronautId}.${format.toLowerCase()}`;
     document.body.appendChild(a);
     a.click();
     a.remove();

@@ -1,5 +1,5 @@
 /*
- * AstroVital · Consola de salud de tripulación
+ * SEMSA · Consola de salud de tripulación
  *
  * Secciones "mission-control" (resumen / detalle de indicador) y "radiation", con:
  *  - encabezado global (#av-chrome, visible en todas las secciones): barra HERA,
@@ -1639,8 +1639,11 @@ export function renderChrome(appState) {
   chromeState.lastAcked = hera.ackedLevel;
 }
 
-/* Rótulo fijo de la primera celda de la barra de estado (antes "Misión · DEMO", issue #5) */
+/* Primera celda de la barra de estado: rótulo = misión, valor = nombre de la app
+ * (antes "Misión · DEMO" + código de misión; issues #5 y #14). El código y nombre
+ * de la misión del backend quedan en el tooltip. */
 const BRAND_LABEL = "TeleCreation UTS";
+const APP_NAME = "SEMSA";
 
 function statusBarHTML(appState, d, alerts) {
   const s = d.s;
@@ -1658,7 +1661,7 @@ function statusBarHTML(appState, d, alerts) {
   const T = tt();
   return `
   <div class="av-status" role="group" aria-label="${esc(T.statusAria)}">
-    <div class="av-st av-st-brand"><span class="av-lbl">${esc(BRAND_LABEL)}</span><span class="av-v" title="${esc(bt(mission.name) || "")}">${esc(mission.code || "—")}</span></div>
+    <div class="av-st av-st-brand"><span class="av-lbl">${esc(BRAND_LABEL)}</span><span class="av-v" title="${esc([mission.code, bt(mission.name)].filter(Boolean).join(" — "))}">${esc(APP_NAME)}</span></div>
     <div class="av-st"><span class="av-lbl">${esc(T.crewMember)}</span><span class="av-v" title="${esc(crew)}">${esc(crew)}</span></div>
     <div class="av-st av-st-row av-st-fixed">
       <div><div class="av-lbl">GMT</div><div class="av-mono av-v av-st-clock" id="av-gmt">${gmt(chromeNow())}</div></div>

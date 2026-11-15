@@ -1,4 +1,4 @@
-/* AstroVital · Consola · pestaña principal "Bienestar"
+/* SEMSA · Consola · pestaña principal "Bienestar"
  * Riesgo NASA HRP de aislamiento y confinamiento: fatiga mental, sueño y ritmo circadiano,
  * ánimo y dinámica de equipo. Contrato: docs/CONTRATO_AISLAMIENTO.md (§1–3; §4 solo resumen/enlace).
  *

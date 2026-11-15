@@ -1,4 +1,4 @@
-/* AstroVital · Consola · vista "Bienestar psicológico" (sustituye al antiguo Wellness Center)
+/* SEMSA · Consola · vista "Bienestar psicológico" (sustituye al antiguo Wellness Center)
  *
  * - Autoevaluación de bienestar (instrumento DEMO): dimensiones 1–10, sueño, nivel de apoyo,
  *   reflexión privada y consentimiento para compartir solo la señal operativa con el líder.

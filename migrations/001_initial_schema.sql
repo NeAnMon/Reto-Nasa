@@ -1,4 +1,4 @@
--- AstroVital Initial Relational Schema Migration (v1.0)
+-- SEMSA Initial Relational Schema Migration (v1.0)
 -- Compatible with SQLite 3.x and PostgreSQL 15+
 
 -- Core Identity & RBAC: roles, permissions, role_permissions, users, user_sessions, astronaut_profiles

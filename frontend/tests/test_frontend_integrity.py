@@ -275,7 +275,7 @@ def test_wellbeing_limits_dedup_and_api_errors():
 
 def test_family_channel_not_in_frontend():
     """El canal familiar ("Conexión con Tierra") no se construye: solo queda como recomendación en Bienestar."""
-    forbidden = ["FAMILY_MEMBER", "uploadAttachment", "MediaRecorder", "astrovital_msg_outbox", "av_messages_channel"]
+    forbidden = ["FAMILY_MEMBER", "uploadAttachment", "MediaRecorder", "astrovital_msg_outbox", "semsa_msg_outbox", "av_messages_channel"]
     hits = []
     for path in (FRONTEND_ROOT / "src").rglob("*"):
         if path.suffix not in {".js", ".css", ".html"} or not path.is_file():
@@ -283,3 +283,20 @@ def test_family_channel_not_in_frontend():
         text = path.read_text(encoding="utf-8")
         hits += [f"{path.relative_to(FRONTEND_ROOT)}: {word}" for word in forbidden if word in text]
     assert not hits, f"Family channel leftovers in frontend/src: {hits}"
+
+
+def test_branding_is_semsa_and_status_bar_shows_telecreation_mission():
+    """Issue #14: la app se llama SEMSA y la barra superior muestra SEMSA + misión TeleCreation UTS."""
+    console_js = (FRONTEND_ROOT / "src" / "console" / "console.js").read_text(encoding="utf-8")
+    assert 'const BRAND_LABEL = "TeleCreation UTS";' in console_js
+    assert 'const APP_NAME = "SEMSA";' in console_js
+    assert "${esc(APP_NAME)}</span></div>" in console_js
+    hits = []
+    for path in [FRONTEND_ROOT / "index.html", *(FRONTEND_ROOT / "src").rglob("*")]:
+        if path.suffix not in {".js", ".css", ".html"} or not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8")
+        if path.name == "api.js":  # migra una vez las claves antiguas "astrovital_*" del almacenamiento
+            text = re.sub(r'"astrovital_(session_token|csrf_token|offline_queue)"', "", text)
+        hits += [f"{path.relative_to(FRONTEND_ROOT)}: {word}" for word in ("AstroVital", "astrovital", "ARTEMIS-IV") if word in text]
+    assert not hits, f"Restos de la marca anterior: {hits}"

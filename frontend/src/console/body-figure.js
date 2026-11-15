@@ -1,5 +1,5 @@
 /*
- * Figura corporal frontal femenina para la consola de AstroVital.
+ * Figura corporal frontal femenina para la consola de SEMSA.
  * Los trazos (contorno, cabeza, cabello, músculos y articulaciones) provienen de
  * react-native-body-highlighter (https://github.com/HichamELBSI/react-native-body-highlighter),
  * assets/bodyFemaleFront.ts y components/SvgFemaleWrapper.tsx, agrupados por zona.
@@ -27,7 +27,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  *
- * El esqueleto simplificado (BONES) es dibujo propio de AstroVital, anclado a las
+ * El esqueleto simplificado (BONES) es dibujo propio de SEMSA, anclado a las
  * articulaciones medidas en esta figura. viewBox de la figura: "-10 0 660 1440".
  */
 

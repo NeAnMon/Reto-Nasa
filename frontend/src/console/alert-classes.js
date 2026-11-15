@@ -1,5 +1,5 @@
 /*
- * AstroVital · Clases de alerta de la consola (fuente única)
+ * SEMSA · Clases de alerta de la consola (fuente única)
  *
  * La consola usa la convención Caution & Warning de NASA (ISS SSP 50313 §11,
  * NASA-STD-3001 Vol. 2). Hay tres clases de alerta, de más a menos grave:
