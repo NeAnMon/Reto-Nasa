@@ -9,18 +9,11 @@
  *  - confirmaciones de lectura (leído / no leído / todo leído)
  *  - solicitudes de apoyo con ciclo REQUESTED → RECEIVED → IN_REVIEW → RESPONDED → CLOSED (+ ESCALATED)
  *  - administración: lectura del contenido solo con justificación auditada (por conversación) y en modo lectura
- *  - canal familiar "Conexión con Tierra" (docs/CONTRATO_AISLAMIENTO.md §4): selector Misión / Familia
- *    (ASTRONAUT; FAMILY_MEMBER solo Familia), contactos, texto + fotos (redimensionadas en cliente) +
- *    notas de voz (MediaRecorder), "guardar y enviar" sin streaming, retardo estimado según el entorno.
- *    Sin enlace, el texto va a la cola local existente y los archivos a IndexedDB (por owner_id); se suben
- *    al transmitir la cola, antes de enviar el mensaje. Administración nunca lee conversaciones FAMILY.
  *
  * Seguridad: todo texto de usuario o de la API pasa por escapeHtml (también en atributos) o textContent.
- * Los adjuntos se descargan con fetch autenticado → URL.createObjectURL (nunca la URL cruda).
  * Eventos: atributos propios data-msg-act / data-msg-form (no data-act/data-nav/data-form, que usa
  * el manejador delegado de console.js sobre el mismo contenedor). Los oyentes se enlazan a la raíz
- * de esta vista en cada pintado, así que mueren con ella. No hay sondeo; el único temporizador es el
- * contador de la grabación de voz, que se detiene (y libera el micrófono) si la vista deja de estar en pantalla.
+ * de esta vista en cada pintado, así que mueren con ella. No hay temporizadores ni sondeo.
  *
  * Idiomas: textos en DICT (es / en), resueltos en cada pintado con tr(DICT).
  */
@@ -64,88 +57,7 @@ const DICT = {
       CLOSED: "Cerrada",
     },
     conv: { OPEN: "Abierta", PENDING_FOLLOWUP: "Seguimiento pendiente", CLOSED: "Cerrada", ARCHIVED: "Archivada" },
-    role: { ASTRONAUT: "Tripulante", MISSION_LEADER: "Líder en Tierra", ADMINISTRATOR: "Administración", FAMILY_MEMBER: "Familiar" },
-    /* Canal familiar "Conexión con Tierra" */
-    fam: {
-      chAria: "Canal de mensajes",
-      chMission: "Misión",
-      chFamily: "Familia",
-      title: "Conexión con Tierra",
-      intro: "Mensajes, fotos y notas de voz con tus seres queridos. Se guardan y se envían: no hay llamadas en directo por el retardo de comunicación.",
-      introFamily: "Mensajes, fotos y notas de voz con tu astronauta. Se guardan y se envían: no hay llamadas en directo por el retardo de comunicación.",
-      contactsAria: "Contactos familiares",
-      contactsFail: "No se pudieron cargar los contactos: {msg}",
-      noContacts: "No hay contactos familiares autorizados.",
-      contactNoConv: "Conversación no disponible todavía.",
-      selectContact: "Elige a un familiar para ver la conversación y escribir.",
-      attOnly: "[Adjunto]",
-      privacy: "Solo tú y {name} pueden ver esta conversación.",
-      privacyMore: "El equipo de misión y administración no tienen acceso a su contenido ni a sus adjuntos.",
-      emptyThread: "Aún no hay mensajes. Escribe el primero: se entregará cuando haya enlace.",
-      newMessage: "Nuevo mensaje",
-      delayNow: "Llegará casi al instante.",
-      delayEta: "Llegará en ~{d}.",
-      delayMars: "Llegará en ~4–24 min (según la posición de Marte).",
-      offlineHtml: "<strong>Sin enlace: se guardará y se enviará en el próximo contacto.</strong> Las fotos y notas de voz quedan en este dispositivo y el mensaje no figurará como entregado hasta que el servidor lo confirme.",
-      toolsAria: "Añadir foto o nota de voz",
-      photoPick: "Elegir foto",
-      photoTake: "Sacar foto",
-      voiceRec: "Grabar nota de voz",
-      recAsking: "Solicitando acceso al micrófono…",
-      recording: "Grabando",
-      recAria: "Grabación de nota de voz en curso",
-      recTimeAria: "Tiempo grabado",
-      recStop: "Detener",
-      recCancel: "Cancelar",
-      recRedo: "Regrabar",
-      recStarted: "Grabación iniciada. Máximo 3 minutos.",
-      recStopped: "Nota de voz de {t} añadida. Puedes escucharla antes de enviar.",
-      recMax: "Se alcanzó el máximo de 3 minutos.",
-      recCancelled: "Grabación cancelada.",
-      recEmpty: "La grabación está vacía; inténtalo de nuevo.",
-      stopRecFirst: "Detén o cancela la grabación antes de enviar.",
-      micUnsupported: "Este navegador no permite grabar notas de voz. Puedes seguir enviando texto y fotos.",
-      micDenied: "Sin permiso para usar el micrófono. Actívalo en el navegador para grabar; texto y fotos siguen funcionando.",
-      micMissing: "No se detecta ningún micrófono. Puedes seguir enviando texto y fotos.",
-      micFail: "No se pudo iniciar la grabación: {msg}",
-      attAria: "Adjuntos del mensaje",
-      attCount: "{n} de {max} adjuntos · máx. 5 MB cada uno",
-      photo: "Foto",
-      voice: "Nota de voz",
-      remove: "Quitar",
-      removeAria: "Quitar {name}",
-      redoAria: "Regrabar {name}",
-      removed: "{name} quitado del mensaje.",
-      previewAlt: "Vista previa: {name}",
-      photoAlt: "Foto: {name}",
-      voiceAria: "Nota de voz: {name}",
-      attLoading: "Cargando adjunto…",
-      attFail: "No se pudo cargar el adjunto.",
-      maxAtt: "Máximo {n} adjuntos por mensaje.",
-      tooBig: "{name} supera el límite de 5 MB.",
-      badType: "{name} no es un tipo admitido (fotos JPEG, PNG o WebP; audio WebM, Ogg, MP4 o MP3).",
-      imgFail: "No se pudo procesar la imagen {name}.",
-      processing: "Procesando foto…",
-      photoAdded: "Foto añadida ({size}). {n} de {max} adjuntos.",
-      uploading: "Subiendo adjunto {i} de {n}…",
-      writeOrAttach: "Escribe un mensaje o añade una foto o nota de voz antes de enviar.",
-      queued: "Sin enlace: mensaje en cola local ({n} en cola){att}. Se enviará en el próximo contacto; no figura como entregado.",
-      queuedAtt: " con {a} adjunto(s) guardado(s) en este dispositivo",
-      idbFail: "No se pudieron guardar las fotos o notas de voz en este dispositivo. El texto queda en cola; los adjuntos siguen en el borrador para enviarlos cuando haya enlace.",
-      idbFailNoText: "No se pudieron guardar las fotos o notas de voz en este dispositivo. Siguen en el borrador: envíalas cuando haya enlace.",
-      pending: "{kind} pendiente de subir: {name} ({size})",
-      lost: " {n} adjunto(s) no se pudieron recuperar o el servidor los rechazó.",
-      dropped: " {n} mensaje(s) sin texto se descartaron porque sus adjuntos no se pudieron recuperar.",
-      rejected: " El servidor rechazó un mensaje y se quitó de la cola ({reason}): «{text}». Reescríbelo si aún quieres enviarlo.",
-      noTextPreview: "solo adjuntos, sin texto",
-      photoWait: "Espera a que terminen de procesarse las fotos antes de enviar.",
-      photoAddedOther: "Foto añadida al borrador de otra conversación ({size}).",
-      famConv: "Canal familiar",
-      gateTitle: "Conversación familiar privada",
-      gateNote: "Las conversaciones del canal familiar son privadas entre el astronauta y su familiar. Administración no puede leer su contenido ni sus adjuntos: solo ve metadatos.",
-      protectedPreview: "[Contenido privado del canal familiar]",
-      msgCount: "{n} mensajes",
-    },
+    role: { ASTRONAUT: "Tripulante", MISSION_LEADER: "Líder en Tierra", ADMINISTRATOR: "Administración" },
     /* Aviso local cuando una urgencia queda en cola sin enlace (el del servidor llega al confirmar) */
     localEmergency:
       "Sin enlace de datos: tu solicitud urgente está en cola y todavía NO ha llegado a Tierra. " +
@@ -305,6 +217,7 @@ const DICT = {
     channelCreated: "Canal directo creado.",
     channelOpened: "Canal directo existente abierto.",
     flushed: "Cola transmitida: {s} confirmados por el servidor, {r} pendientes.",
+    flushRejected: " El servidor rechazó un mensaje y se quitó de la cola ({reason}): «{text}». Reescríbelo si aún quieres enviarlo.",
     gotoMissing: "El mensaje original no está visible (puede estar filtrado por la búsqueda).",
     impOff: "Mensaje #{id}: ya no está marcado como importante.",
     impOn: "Mensaje #{id} marcado como importante.",
@@ -361,87 +274,7 @@ const DICT = {
       CLOSED: "Closed",
     },
     conv: { OPEN: "Open", PENDING_FOLLOWUP: "Follow-up pending", CLOSED: "Closed", ARCHIVED: "Archived" },
-    role: { ASTRONAUT: "Crew member", MISSION_LEADER: "Ground lead", ADMINISTRATOR: "Administration", FAMILY_MEMBER: "Family member" },
-    fam: {
-      chAria: "Message channel",
-      chMission: "Mission",
-      chFamily: "Family",
-      title: "Earth Connection",
-      intro: "Messages, photos and voice notes with your loved ones. They are stored and forwarded: there are no live calls because of the communication delay.",
-      introFamily: "Messages, photos and voice notes with your astronaut. They are stored and forwarded: there are no live calls because of the communication delay.",
-      contactsAria: "Family contacts",
-      contactsFail: "Could not load contacts: {msg}",
-      noContacts: "There are no authorized family contacts.",
-      contactNoConv: "Conversation not available yet.",
-      selectContact: "Choose a family member to see the conversation and write.",
-      attOnly: "[Attachment]",
-      privacy: "Only you and {name} can see this conversation.",
-      privacyMore: "The mission team and administration have no access to its content or attachments.",
-      emptyThread: "No messages yet. Write the first one: it will be delivered when there is a link.",
-      newMessage: "New message",
-      delayNow: "It will arrive almost instantly.",
-      delayEta: "It will arrive in ~{d}.",
-      delayMars: "It will arrive in ~4–24 min (depending on where Mars is).",
-      offlineHtml: "<strong>No link: it will be stored and sent at the next contact.</strong> Photos and voice notes stay on this device and the message won't show as delivered until the server confirms it.",
-      toolsAria: "Add a photo or voice note",
-      photoPick: "Choose photo",
-      photoTake: "Take photo",
-      voiceRec: "Record voice note",
-      recAsking: "Requesting microphone access…",
-      recording: "Recording",
-      recAria: "Voice note recording in progress",
-      recTimeAria: "Recorded time",
-      recStop: "Stop",
-      recCancel: "Cancel",
-      recRedo: "Record again",
-      recStarted: "Recording started. Maximum 3 minutes.",
-      recStopped: "{t} voice note added. You can listen to it before sending.",
-      recMax: "The 3-minute maximum was reached.",
-      recCancelled: "Recording cancelled.",
-      recEmpty: "The recording is empty; please try again.",
-      stopRecFirst: "Stop or cancel the recording before sending.",
-      micUnsupported: "This browser can't record voice notes. You can keep sending text and photos.",
-      micDenied: "No permission to use the microphone. Allow it in the browser to record; text and photos still work.",
-      micMissing: "No microphone detected. You can keep sending text and photos.",
-      micFail: "Could not start recording: {msg}",
-      attAria: "Message attachments",
-      attCount: "{n} of {max} attachments · max. 5 MB each",
-      photo: "Photo",
-      voice: "Voice note",
-      remove: "Remove",
-      removeAria: "Remove {name}",
-      redoAria: "Record {name} again",
-      removed: "{name} removed from the message.",
-      previewAlt: "Preview: {name}",
-      photoAlt: "Photo: {name}",
-      voiceAria: "Voice note: {name}",
-      attLoading: "Loading attachment…",
-      attFail: "Could not load the attachment.",
-      maxAtt: "Maximum {n} attachments per message.",
-      tooBig: "{name} exceeds the 5 MB limit.",
-      badType: "{name} is not a supported type (JPEG, PNG or WebP photos; WebM, Ogg, MP4 or MP3 audio).",
-      imgFail: "Could not process the image {name}.",
-      processing: "Processing photo…",
-      photoAdded: "Photo added ({size}). {n} of {max} attachments.",
-      uploading: "Uploading attachment {i} of {n}…",
-      writeOrAttach: "Write a message or add a photo or voice note before sending.",
-      queued: "No link: message in local queue ({n} queued){att}. It will be sent at the next contact; not shown as delivered.",
-      queuedAtt: " with {a} attachment(s) stored on this device",
-      idbFail: "Photos or voice notes could not be stored on this device. The text is queued; the attachments stay in the draft so you can send them when there is a link.",
-      idbFailNoText: "Photos or voice notes could not be stored on this device. They stay in the draft: send them when there is a link.",
-      pending: "{kind} waiting to upload: {name} ({size})",
-      lost: " {n} attachment(s) could not be recovered or were rejected by the server.",
-      dropped: " {n} message(s) without text were discarded because their attachments could not be recovered.",
-      rejected: " The server rejected a message and it was removed from the queue ({reason}): “{text}”. Rewrite it if you still want to send it.",
-      noTextPreview: "attachments only, no text",
-      photoWait: "Wait for the photos to finish processing before sending.",
-      photoAddedOther: "Photo added to another conversation's draft ({size}).",
-      famConv: "Family channel",
-      gateTitle: "Private family conversation",
-      gateNote: "Family channel conversations are private between the astronaut and their family member. Administration cannot read their content or attachments: only metadata is visible.",
-      protectedPreview: "[Private family channel content]",
-      msgCount: "{n} messages",
-    },
+    role: { ASTRONAUT: "Crew member", MISSION_LEADER: "Ground lead", ADMINISTRATOR: "Administration" },
     localEmergency:
       "No data link: your urgent request is queued and has NOT reached Ground yet. " +
       "Apply the onboard emergency protocol and use the priority voice loop with the flight surgeon and the Flight Director as soon as there is contact.",
@@ -600,6 +433,7 @@ const DICT = {
     channelCreated: "Direct channel created.",
     channelOpened: "Existing direct channel opened.",
     flushed: "Queue transmitted: {s} confirmed by the server, {r} pending.",
+    flushRejected: " The server rejected a message and it was removed from the queue ({reason}): “{text}”. Rewrite it if you still want to send it.",
     gotoMissing: "The original message isn't visible (it may be filtered out by the search).",
     impOff: "Message #{id}: no longer marked as important.",
     impOn: "Message #{id} marked as important.",
@@ -635,25 +469,11 @@ const SR_CATEGORY_CODES = ["REQUEST_FOR_ASSISTANCE", "HEALTH_UPDATE", "COGNITIVE
 const SR_STATUSES = ["REQUESTED", "RECEIVED", "IN_REVIEW", "RESPONDED", "ESCALATED", "CLOSED"];
 const SR_FLOW = ["REQUESTED", "RECEIVED", "IN_REVIEW", "RESPONDED", "CLOSED"];
 
-/* Canal familiar: límites del contrato (§4) y del cliente */
-const CHANNEL_KEY = "av_messages_channel"; // la pestaña Bienestar pone "FAMILY" o "MISSION" para abrir aquí en ese canal
-const MAX_ATT = 4; // adjuntos por mensaje
-const MAX_ATT_BYTES = 5 * 1024 * 1024; // por adjunto, ya procesado
-const MAX_RAW_IMG_BYTES = 40 * 1024 * 1024; // foto original antes de redimensionar (evita decodificar archivos enormes)
-const MAX_IMG_SIDE = 1600;
-const JPEG_QUALITY = 0.85;
-const MAX_REC_SEC = 180;
-const AUDIO_TYPES = ["audio/webm", "audio/ogg", "audio/mp4", "audio/mpeg"];
-const REC_MIME_CANDIDATES = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/ogg", "audio/mp4"];
-const AUDIO_EXT = { "audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a", "audio/mpeg": "mp3" };
-
 /* ───────────────────────── estado del módulo ───────────────────────── */
 
 function freshState(userId) {
   return {
     userId,
-    channel: "MISSION", // MISSION | FAMILY
-    selByCh: { MISSION: null, FAMILY: null }, // conversación seleccionada al cambiar de canal
     selectedId: null,
     convQuery: "",
     convStatus: "",
@@ -681,15 +501,11 @@ function newSrDraft() {
   return { category: "REQUEST_FOR_ASSISTANCE", title: "", desc: "", priv: true, emergency: false };
 }
 function newDraft() {
-  // files: adjuntos reales del canal familiar { lid, kind, blob, name, mime, size, url, duration, attId }
-  return { content: "", category: "GENERAL", attachment: "", important: false, replyTo: null, replyPreview: "", linkedAlertId: null, files: [] };
+  return { content: "", category: "GENERAL", attachment: "", important: false, replyTo: null, replyPreview: "", linkedAlertId: null };
 }
 
 let S = freshState(null);
-let D = {
-  conversations: [], hiddenConvs: 0, hiddenSups: 0, convError: null, supports: [], supError: null, thread: null, threadError: null,
-  fam: { contacts: [], convs: [], error: null }, // canal familiar
-};
+let D = { conversations: [], hiddenConvs: 0, hiddenSups: 0, convError: null, supports: [], supError: null, thread: null, threadError: null };
 let ctx = null;
 let seq = 0;
 
@@ -698,9 +514,6 @@ let seq = 0;
 const role = () => ctx?.appState?.currentUser?.role_code || "ASTRONAUT";
 const meId = () => ctx?.appState?.currentUser?.id;
 const isAdmin = () => role() === "ADMINISTRATOR";
-const isFamilyRole = () => role() === "FAMILY_MEMBER";
-const isFam = () => S.channel === "FAMILY";
-const isFamilyConv = (c) => Boolean(c) && String(c.channel || "").toUpperCase() === "FAMILY";
 const isCategory = (c) => CATEGORY_CODES.includes(c);
 const catLabel = (c) => tr(DICT).category[c] || String(c || "—");
 const srLabel = (s) => tr(DICT).sr[s] || String(s || "—");
@@ -784,75 +597,40 @@ function offlineQueue() {
     return [];
   }
 }
-const newDedup = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-/* extra: campos adicionales del elemento (canal familiar: dedup_key propio, pending_blob_keys, pending_meta) */
-function queueLocal(endpoint, payload, prefix, extra = {}) {
-  const dedup_key = extra.dedup_key || newDedup(prefix);
-  apiService.enqueueOfflineItem({ ...extra, endpoint, dedup_key, payload, owner_id: meId() });
+function queueLocal(endpoint, payload, prefix) {
+  const dedup_key = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  apiService.enqueueOfflineItem({ endpoint, dedup_key, payload, owner_id: meId() });
   return { queued_offline: true, queue_size: offlineQueue().length };
 }
 /* Transmite solo los elementos propios de mensajería; el resto de la cola queda intacto.
- * Los mensajes familiares con adjuntos en IndexedDB suben antes cada archivo (POST /attachments) y
- * después envían el mensaje con attachment_ids. El avance se guarda en la cola tras cada subida.
  * Igual que la cola genérica de api.js: un rechazo definitivo (4xx salvo 408/429) saca el elemento de la
- * cola, borra sus blobs de IndexedDB y sus adjuntos ya subidos (huérfanos), y se informa a la persona con el
- * motivo y el inicio del texto para que pueda reescribirlo. Red caída, 408, 429 y 5xx: sigue en cola. */
+ * cola y se informa a la persona con el motivo y el inicio del texto para que pueda reescribirlo.
+ * Red caída, 408, 429 y 5xx: sigue en cola. */
 async function flushMine() {
   const mine = offlineQueue();
-  if (apiService.simulatedOfflineMode) return { synced: 0, remaining: mine.length, lost: 0, dropped: 0, rejected: [] };
+  if (apiService.simulatedOfflineMode) return { synced: 0, remaining: mine.length, rejected: [] };
   const sent = new Set();
   const rejected = [];
-  let lost = 0;
-  let dropped = 0;
   for (const item of mine) {
-    let payload = item.payload || {};
     try {
-      const hadBlobs = Array.isArray(item.pending_blob_keys);
-      if (hadBlobs && item.pending_blob_keys.length) {
-        const up = await uploadPendingBlobs(item);
-        lost += up.lost;
-        payload = up.payload;
-      }
-      if (hadBlobs && !String(payload.content || "").trim() && !(payload.attachment_ids || []).length) {
-        // sin texto y sin ningún adjunto recuperable: no hay nada que enviar
-        sent.add(item.dedup_key);
-        dropped += 1;
-        continue;
-      }
       await apiService.request(item.endpoint, {
         method: "POST",
-        body: JSON.stringify({ ...payload, dedup_key: item.dedup_key }),
+        body: JSON.stringify({ ...item.payload, dedup_key: item.dedup_key }),
       });
       sent.add(item.dedup_key);
     } catch (e) {
       if (isRetryable(e)) continue; // queda en cola
-      // Rechazo definitivo: fuera de la cola, sin dejar blobs ni adjuntos huérfanos
-      sent.add(item.dedup_key);
-      const cur = (apiService.getOfflineQueue() || []).find((q) => q.dedup_key === item.dedup_key) || item;
-      const keys = Array.isArray(cur.pending_blob_keys) ? cur.pending_blob_keys : [];
-      if (keys.length) idbDelete(keys).catch(() => {});
-      const ids = Array.isArray(payload.attachment_ids) ? payload.attachment_ids : (cur.payload?.attachment_ids || []);
-      discardUploaded(ids);
-      rejected.push({ text: String(payload.content || "").trim(), reason: errMsg(e) });
+      sent.add(item.dedup_key); // rechazo definitivo: fuera de la cola
+      // las solicitudes de apoyo no tienen "content": se identifican por su motivo (reason_title)
+      const p = item.payload || {};
+      rejected.push({ text: String(p.content || p.reason_title || "").trim(), reason: errMsg(e) });
     }
   }
   if (sent.size) {
     // relee la cola para no pisar elementos encolados mientras tanto
     apiService.saveOfflineQueue((apiService.getOfflineQueue() || []).filter((q) => !sent.has(q.dedup_key)));
   }
-  return { synced: sent.size - dropped - rejected.length, remaining: offlineQueue().length, lost, dropped, rejected };
-}
-/* Borra en el servidor adjuntos ya subidos que no llegarán a ningún mensaje (best effort: el servidor solo
- * lo permite a quien lo subió y si sigue huérfano; cualquier error se ignora). */
-function discardUploaded(ids) {
-  (Array.isArray(ids) ? ids : [ids]).forEach((id) => {
-    if (id === null || id === undefined || id === "") return;
-    try {
-      Promise.resolve(apiService.request(`/attachments/${encodeURIComponent(id)}`, { method: "DELETE" })).catch(() => {});
-    } catch {
-      /* ignorado */
-    }
-  });
+  return { synced: sent.size - rejected.length, remaining: offlineQueue().length, rejected };
 }
 function isNetworkError(e) {
   return e instanceof TypeError && /fetch|network|load/i.test(String(e.message || ""));
@@ -862,554 +640,6 @@ function isRetryable(e) {
   if (isNetworkError(e)) return true;
   const st = e && e.status;
   return !st || st === 408 || st === 429 || st >= 500;
-}
-
-/* ───────────────────────── canal familiar: utilidades ───────────────────────── */
-
-const baseMime = (t) => String(t || "").split(";")[0].trim().toLowerCase();
-const stamp = () => new Date().toISOString().replace(/[-:]/g, "").slice(0, 15);
-const fmtClock = (sec) => {
-  const s = Math.max(0, Math.floor(Number(sec) || 0));
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-};
-function fmtSize(bytes) {
-  const b = Number(bytes) || 0;
-  if (b < 1024 * 1024) return `${nm(Math.max(1, Math.round(b / 1024)))} KB`;
-  return `${nm(b / (1024 * 1024), 1)} MB`;
-}
-function toUploadFile(f) {
-  try {
-    return new File([f.blob], f.name, { type: f.mime || f.blob.type });
-  } catch {
-    return f.blob; // navegadores sin constructor File: el nombre viaja en FormData
-  }
-}
-const isMediaAtt = (a) => Boolean(a) && a.id !== null && a.id !== undefined && (a.kind === "IMAGE" || a.kind === "AUDIO");
-
-/* Contacto familiar de una conversación (lista de GET /family/contacts) */
-function famContact(convId) {
-  return D.fam.contacts.find((c) => Number(c.conversation_id) === Number(convId)) || null;
-}
-/* Nombre de la otra persona de la conversación familiar */
-function famOtherName(conv, contact) {
-  if (contact && contact.name) return String(contact.name);
-  if (conv?.family_contact?.name) return String(conv.family_contact.name);
-  return String((isFamilyRole() ? conv?.astronaut_name : conv?.leader_name) || "—");
-}
-
-/* Retardo estimado (un sentido) según el entorno de la misión que ya conoce la app
- * (appState.healthSummary.context, igual que la barra de estado). Sin dato, no se muestra nada. */
-function familyDelay() {
-  const F = tr(DICT).fam;
-  const c = ctx?.appState?.healthSummary?.context || {};
-  const code = String(c.environment_code || "").toUpperCase();
-  const mars = /mart|mars|marc/i.test(String(c.location_module || ""));
-  if (code === "LOW_EARTH_ORBIT") return F.delayNow;
-  if (code === "LUNAR_ORBIT" || code === "LUNAR_SURFACE" || (code === "PRESSURIZED_HABITAT" && !mars)) {
-    return fmt(F.delayEta, { d: `${nm(1.3, 1)} s` });
-  }
-  if (code === "MARS_TRANSIT" || code === "MARS_ORBIT" || code === "MARS_SURFACE" || (code === "PRESSURIZED_HABITAT" && mars)) {
-    return F.delayMars;
-  }
-  const d = Number(c.comms_delay_seconds);
-  if (c.comms_delay_seconds !== undefined && c.comms_delay_seconds !== null && Number.isFinite(d)) {
-    return d < 1 ? F.delayNow : fmt(F.delayEta, { d: fmtDelay(d) });
-  }
-  return null;
-}
-
-/* ── IndexedDB: blobs de adjuntos pendientes (no caben en localStorage) ──
- * Registro: { key: "<dedup_key>#<i>", owner_id, dedup_key, blob, name, mime, size, kind, duration } */
-const IDB_NAME = "astrovital_msg_outbox";
-const IDB_STORE = "attachments";
-let idbPromise = null;
-function idbOpen() {
-  if (idbPromise) return idbPromise;
-  idbPromise = new Promise((resolve, reject) => {
-    let req;
-    try {
-      if (typeof indexedDB === "undefined" || !indexedDB) throw new Error("IndexedDB no disponible");
-      req = indexedDB.open(IDB_NAME, 1);
-    } catch (e) {
-      reject(e);
-      return;
-    }
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE, { keyPath: "key" });
-    };
-    req.onsuccess = () => {
-      const db = req.result;
-      db.onversionchange = () => {
-        db.close();
-        idbPromise = null;
-      };
-      resolve(db);
-    };
-    req.onerror = () => reject(req.error || new Error("IndexedDB"));
-    req.onblocked = () => reject(new Error("IndexedDB bloqueado"));
-  });
-  idbPromise.catch(() => {
-    idbPromise = null;
-  });
-  return idbPromise;
-}
-async function idbTx(mode, fn) {
-  const db = await idbOpen();
-  return new Promise((resolve, reject) => {
-    let out;
-    try {
-      const tx = db.transaction(IDB_STORE, mode);
-      tx.oncomplete = () => resolve(out);
-      tx.onerror = () => reject(tx.error || new Error("IndexedDB"));
-      tx.onabort = () => reject(tx.error || new Error("IndexedDB"));
-      fn(tx.objectStore(IDB_STORE), (v) => {
-        out = v;
-      });
-    } catch (e) {
-      reject(e);
-    }
-  });
-}
-const idbPut = (records) => idbTx("readwrite", (st) => records.forEach((r) => st.put(r)));
-const idbGet = (key) => idbTx("readonly", (st, set) => {
-  const r = st.get(key);
-  r.onsuccess = () => set(r.result || null);
-});
-const idbDelete = (keys) => idbTx("readwrite", (st) => keys.forEach((k) => st.delete(k)));
-
-/* Actualiza en la cola el avance de subida de un mensaje familiar */
-function updateQueuedItem(dedupKey, ids, keys, meta) {
-  const q = (apiService.getOfflineQueue() || []).map((x) =>
-    x.dedup_key === dedupKey
-      ? { ...x, payload: { ...(x.payload || {}), attachment_ids: ids }, pending_blob_keys: keys, pending_meta: meta }
-      : x
-  );
-  apiService.saveOfflineQueue(q);
-}
-
-/* Sube los blobs pendientes de un elemento de la cola. Un fallo reintentable (red, 5xx) corta y deja el
- * elemento en cola con lo ya subido guardado como attachment_ids; un rechazo definitivo (4xx) o un blob
- * que ya no está en IndexedDB se cuenta como perdido y no bloquea el resto del mensaje. */
-async function uploadPendingBlobs(item) {
-  const ids = Array.isArray(item.payload?.attachment_ids) ? [...item.payload.attachment_ids] : [];
-  const keys = [...item.pending_blob_keys];
-  const meta = Array.isArray(item.pending_meta) ? [...item.pending_meta] : [];
-  let lost = 0;
-  while (keys.length) {
-    const key = keys[0];
-    const rec = await idbGet(key); // si IndexedDB falla aquí, el elemento se queda en cola intacto
-    if (rec && rec.owner_id === meId() && rec.blob) {
-      try {
-        const att = await apiService.uploadAttachment(toUploadFile(rec), rec.name);
-        if (att && att.id !== null && att.id !== undefined) ids.push(att.id);
-        else lost += 1;
-      } catch (e) {
-        if (isRetryable(e)) throw e;
-        lost += 1;
-      }
-    } else {
-      lost += 1;
-    }
-    keys.shift();
-    meta.shift();
-    updateQueuedItem(item.dedup_key, ids, keys, meta);
-    idbDelete([key]).catch(() => {});
-  }
-  const payload = { ...(item.payload || {}), attachment_ids: ids };
-  if (!ids.length) delete payload.attachment_ids;
-  return { payload, lost };
-}
-
-/* Encola un mensaje familiar sin enlace: texto en la cola local, archivos en IndexedDB.
- * ids: adjuntos ya subidos (p. ej. si el enlace cayó a mitad). */
-async function queueFamilyMessage(endpoint, base, ids, files) {
-  const dedup_key = newDedup("FAM-OFFLINE");
-  const keys = [];
-  const meta = [];
-  let idbOk = true;
-  if (files.length) {
-    const owner = meId();
-    const recs = files.map((f, i) => ({
-      key: `${dedup_key}#${i}`, owner_id: owner, dedup_key, blob: f.blob, name: f.name, mime: f.mime, size: f.size, kind: f.kind, duration: f.duration ?? null,
-    }));
-    try {
-      await idbPut(recs);
-      recs.forEach((r) => {
-        keys.push(r.key);
-        meta.push({ kind: r.kind, name: r.name, size: r.size });
-      });
-    } catch {
-      idbOk = false;
-    }
-  }
-  if (!idbOk && !base.content && !ids.length) return { queued: false, idbFailed: true };
-  const payload = { ...base };
-  if (ids.length) payload.attachment_ids = ids;
-  const r = queueLocal(endpoint, payload, null, idbOk && keys.length ? { dedup_key, pending_blob_keys: keys, pending_meta: meta } : { dedup_key });
-  return { ...r, queued: true, idbFailed: !idbOk, stored: keys.length };
-}
-
-/* ── Adjuntos del hilo: descarga autenticada → object URL (caché por id; se revocan al dejar de mostrarse) ── */
-const attCache = new Map(); // id → Promise<url>
-const attUrls = new Map(); // id → url
-function attUrl(id, kind) {
-  const key = String(id);
-  if (attCache.has(key)) return attCache.get(key);
-  const p = apiService.getAttachmentBlob(id).then((blob) => {
-    const t = baseMime(blob.type);
-    const ok = kind === "IMAGE" ? t.startsWith("image/") && t !== "image/svg+xml" : t.startsWith("audio/");
-    if (!ok) throw new Error("tipo inesperado");
-    const url = URL.createObjectURL(blob);
-    if (attCache.get(key) === p) attUrls.set(key, url);
-    else URL.revokeObjectURL(url); // se descartó mientras se descargaba
-    return url;
-  });
-  p.catch(() => {
-    if (attCache.get(key) === p) attCache.delete(key);
-  });
-  attCache.set(key, p);
-  return p;
-}
-function pruneAttCache(keep) {
-  for (const key of Array.from(attCache.keys())) {
-    if (keep.has(key)) continue;
-    const url = attUrls.get(key);
-    if (url) URL.revokeObjectURL(url);
-    attUrls.delete(key);
-    attCache.delete(key);
-  }
-}
-function hydrateMedia(root) {
-  const F = tr(DICT).fam;
-  const log = root.querySelector("#av-msg-log");
-  root.querySelectorAll("[data-att-id]").forEach((el) => {
-    const id = el.getAttribute("data-att-id");
-    const kind = el.getAttribute("data-att-kind");
-    const name = el.getAttribute("data-att-name") || `#${id}`;
-    attUrl(id, kind)
-      .then((url) => {
-        if (!el.isConnected) return;
-        el.textContent = "";
-        if (kind === "IMAGE") {
-          const img = document.createElement("img");
-          img.alt = fmt(F.photoAlt, { name });
-          img.decoding = "async";
-          img.addEventListener("load", () => {
-            // si el hilo estaba abajo del todo, sigue abajo al crecer la imagen
-            if (log && log.scrollHeight - log.scrollTop - log.clientHeight < 480) log.scrollTop = log.scrollHeight;
-          });
-          img.src = url;
-          el.appendChild(img);
-        } else {
-          const audio = document.createElement("audio");
-          audio.controls = true;
-          audio.preload = "metadata";
-          audio.setAttribute("aria-label", fmt(F.voiceAria, { name }));
-          audio.src = url;
-          el.appendChild(audio);
-        }
-      })
-      .catch(() => {
-        if (el.isConnected) el.textContent = F.attFail;
-      });
-  });
-}
-
-/* Vistas previas locales del borrador */
-function revokeDraftFiles(state) {
-  Object.values(state?.drafts || {}).forEach((d) => (d.files || []).forEach((f) => f.url && URL.revokeObjectURL(f.url)));
-}
-const newLid = () => `f${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
-
-/* ── Fotos: redimensionado en cliente (máx. 1600 px, JPEG 0.85). El canvas descarta EXIF (incluida la ubicación). ── */
-async function decodeImage(file) {
-  if (typeof createImageBitmap === "function") {
-    try {
-      return await createImageBitmap(file, { imageOrientation: "from-image" });
-    } catch {
-      /* respaldo con <img> */
-    }
-  }
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      resolve(img);
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error("decode"));
-    };
-    img.src = url;
-  });
-}
-async function resizeToJpeg(file) {
-  const src = await decodeImage(file);
-  const w0 = src.naturalWidth || src.width;
-  const h0 = src.naturalHeight || src.height;
-  if (!w0 || !h0) throw new Error("decode");
-  const k = Math.min(1, MAX_IMG_SIDE / Math.max(w0, h0));
-  const w = Math.max(1, Math.round(w0 * k));
-  const h = Math.max(1, Math.round(h0 * k));
-  const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-  const g = canvas.getContext("2d");
-  if (!g) throw new Error("canvas");
-  g.fillStyle = "#fff"; // fondo para PNG/WebP con transparencia
-  g.fillRect(0, 0, w, h);
-  g.drawImage(src, 0, 0, w, h);
-  if (typeof src.close === "function") src.close();
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("encode"))), "image/jpeg", JPEG_QUALITY);
-  });
-}
-
-/* Fotos en proceso: mientras haya alguna, el envío familiar queda bloqueado (si no, el borrador se
- * reemplazaría al enviar y la foto acabaría en un objeto descartado). */
-let photoJobs = 0;
-async function addPhotos(fileList) {
-  const F = tr(DICT).fam;
-  if (!ctx || !S.selectedId || !isFam()) return;
-  const token = ctx.token;
-  const convKey = String(S.selectedId);
-  const owner = S.userId;
-  // borrador vigente de la conversación en cada momento (no una referencia capturada al inicio)
-  const target = () => {
-    if (!S.drafts[convKey]) S.drafts[convKey] = newDraft();
-    return S.drafts[convKey];
-  };
-  const notes = [];
-  photoJobs += 1;
-  const sendBtn = ctx.container.querySelector('form[data-msg-form="fam-send"] #av-msg-send');
-  if (sendBtn) sendBtn.disabled = true;
-  try {
-    for (const file of Array.from(fileList || [])) {
-      const name = String(file.name || F.photo).slice(0, 120);
-      if (target().files.length >= MAX_ATT) {
-        notes.push(fmt(F.maxAtt, { n: MAX_ATT }));
-        break;
-      }
-      const type = baseMime(file.type);
-      if (!type.startsWith("image/") || type === "image/svg+xml") {
-        notes.push(fmt(F.badType, { name }));
-        continue;
-      }
-      if (file.size > MAX_RAW_IMG_BYTES) {
-        notes.push(fmt(F.tooBig, { name }));
-        continue;
-      }
-      setLive(F.processing);
-      try {
-        const blob = await resizeToJpeg(file);
-        if (S.userId !== owner) return; // otra sesión: nada que añadir ni anunciar
-        if (blob.size > MAX_ATT_BYTES) {
-          notes.push(fmt(F.tooBig, { name }));
-          continue;
-        }
-        const d = target();
-        if (d.files.length >= MAX_ATT) {
-          notes.push(fmt(F.maxAtt, { n: MAX_ATT }));
-          break;
-        }
-        d.files.push({
-          lid: newLid(), kind: "IMAGE", blob, name: `foto-${stamp()}-${d.files.length + 1}.jpg`, mime: "image/jpeg",
-          size: blob.size, url: URL.createObjectURL(blob), duration: null, attId: null,
-        });
-        notes.push(String(S.selectedId) === convKey
-          ? fmt(F.photoAdded, { size: fmtSize(blob.size), n: d.files.length, max: MAX_ATT })
-          : fmt(F.photoAddedOther, { size: fmtSize(blob.size) }));
-      } catch {
-        notes.push(fmt(F.imgFail, { name }));
-      }
-    }
-  } finally {
-    photoJobs -= 1;
-  }
-  if (S.userId !== owner || !ctx) return;
-  if (!alive(token)) {
-    // la vista se volvió a pintar mientras tanto: solo se libera el envío que quedó bloqueado
-    const btn = ctx.container.querySelector('form[data-msg-form="fam-send"] #av-msg-send');
-    if (btn && !photoJobs && !S.busy) btn.disabled = false;
-    return;
-  }
-  setMsg(notes.join(" "));
-  S.focusId = "av-msg-photo-pick";
-  paint();
-}
-
-/* ── Notas de voz (MediaRecorder) ── */
-const REC = { state: "idle", recorder: null, stream: null, chunks: [], startedAt: 0, timer: null, mime: "", token: null, convId: null };
-let recGen = 0; // invalida peticiones de micrófono antiguas (cancelar mientras se pide permiso)
-const micSupported = () =>
-  typeof navigator !== "undefined" && Boolean(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) && typeof MediaRecorder !== "undefined";
-function pickRecMime() {
-  const can = typeof MediaRecorder.isTypeSupported === "function" ? (t) => MediaRecorder.isTypeSupported(t) : () => false;
-  return REC_MIME_CANDIDATES.find((t) => can(t)) || "";
-}
-function stopTracks(stream) {
-  try {
-    (stream?.getTracks?.() || []).forEach((t) => t.stop());
-  } catch {
-    /* nada que liberar */
-  }
-}
-function resetRec() {
-  if (REC.timer) clearInterval(REC.timer);
-  Object.assign(REC, { state: "idle", recorder: null, stream: null, chunks: [], startedAt: 0, timer: null, mime: "", token: null, convId: null });
-}
-const recSeconds = () => Math.min(MAX_REC_SEC, Math.floor((Date.now() - REC.startedAt) / 1000));
-
-async function startRecording() {
-  const F = tr(DICT).fam;
-  if (REC.state !== "idle" || !S.selectedId) return;
-  if (!micSupported()) {
-    setMsg(F.micUnsupported);
-    paint();
-    return;
-  }
-  if (draft().files.length >= MAX_ATT) {
-    setMsg(fmt(F.maxAtt, { n: MAX_ATT }));
-    paint();
-    return;
-  }
-  const gen = ++recGen;
-  const token = ctx.token;
-  const convId = S.selectedId;
-  REC.state = "starting";
-  REC.token = token;
-  setMsg(F.recAsking);
-  paint();
-  let stream;
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  } catch (e) {
-    if (gen !== recGen) return; // ya cancelada mientras se pedía permiso
-    resetRec();
-    const n = e && e.name;
-    if (n === "NotAllowedError" || n === "SecurityError") setMsg(F.micDenied);
-    else if (n === "NotFoundError" || n === "OverconstrainedError" || n === "NotReadableError") setMsg(F.micMissing);
-    else setMsg(fmt(F.micFail, { msg: errMsg(e) }));
-    if (alive(token)) paint();
-    return;
-  }
-  // la vista, la conversación o el estado cambiaron mientras se pedía permiso: se libera el micrófono
-  if (gen !== recGen || !alive(token) || S.selectedId !== convId || REC.state !== "starting") {
-    stopTracks(stream);
-    if (gen === recGen) resetRec();
-    return;
-  }
-  const mime = pickRecMime();
-  let recorder;
-  try {
-    recorder = new MediaRecorder(stream, mime ? { mimeType: mime, audioBitsPerSecond: 64000 } : { audioBitsPerSecond: 64000 });
-  } catch (e) {
-    stopTracks(stream);
-    resetRec();
-    setMsg(fmt(F.micFail, { msg: errMsg(e) }));
-    paint();
-    return;
-  }
-  Object.assign(REC, { state: "recording", recorder, stream, chunks: [], startedAt: Date.now(), mime: recorder.mimeType || mime, token, convId });
-  recorder.ondataavailable = (ev) => {
-    if (ev.data && ev.data.size) REC.chunks.push(ev.data);
-  };
-  try {
-    recorder.start(1000);
-  } catch (e) {
-    stopTracks(stream);
-    resetRec();
-    setMsg(fmt(F.micFail, { msg: errMsg(e) }));
-    paint();
-    return;
-  }
-  REC.timer = setInterval(recTick, 500);
-  setMsg(F.recStarted);
-  S.focusId = "av-msg-rec-stop";
-  paint();
-}
-
-function recTick() {
-  if (REC.state !== "recording") return;
-  if (!alive(REC.token)) {
-    endRecording(false); // cambio de vista: se descarta y se libera el micrófono
-    return;
-  }
-  const secs = recSeconds();
-  const el = ctx.container.querySelector("#av-msg-rec-time");
-  if (el) el.textContent = `${fmtClock(secs)} / ${fmtClock(MAX_REC_SEC)}`;
-  if (secs >= MAX_REC_SEC) endRecording(true, true);
-}
-
-/* Termina la grabación: keep=true añade la nota al borrador de su conversación; false la descarta.
- * Siempre libera las pistas del micrófono. */
-function endRecording(keep, byMax = false) {
-  const F = tr(DICT).fam;
-  if (REC.state === "starting") {
-    recGen += 1;
-    resetRec(); // startRecording verá el cambio y liberará el micrófono al volver de getUserMedia
-    return;
-  }
-  if (REC.state !== "recording") return;
-  const { recorder, stream, chunks, convId, token } = REC;
-  const mimeGuess = REC.mime;
-  const secs = Math.max(1, recSeconds());
-  const userId = S.userId;
-  if (REC.timer) clearInterval(REC.timer);
-  REC.timer = null;
-  REC.state = "stopping";
-  let done = false;
-  const finish = () => {
-    if (done) return;
-    done = true;
-    stopTracks(stream);
-    resetRec();
-    const live = alive(token);
-    if (!keep || S.userId !== userId) {
-      if (live && keep === false && !byMax) {
-        setMsg(F.recCancelled);
-        paint();
-      }
-      return;
-    }
-    const type = baseMime(recorder.mimeType || mimeGuess) || "audio/webm";
-    const blob = new Blob(chunks, { type });
-    const d = S.drafts[String(convId)] || (S.drafts[String(convId)] = newDraft());
-    let note;
-    if (!blob.size) note = F.recEmpty;
-    else if (!AUDIO_TYPES.includes(type)) note = fmt(F.badType, { name: F.voice });
-    else if (blob.size > MAX_ATT_BYTES) note = fmt(F.tooBig, { name: F.voice });
-    else if (d.files.length >= MAX_ATT) note = fmt(F.maxAtt, { n: MAX_ATT });
-    else {
-      d.files.push({
-        lid: newLid(), kind: "AUDIO", blob, name: `nota-de-voz-${stamp()}.${AUDIO_EXT[type] || "webm"}`, mime: type,
-        size: blob.size, url: URL.createObjectURL(blob), duration: secs, attId: null,
-      });
-      note = `${byMax ? `${F.recMax} ` : ""}${fmt(F.recStopped, { t: fmtClock(secs) })}`;
-    }
-    if (live) {
-      setMsg(note);
-      S.focusId = "av-msg-voice";
-      paint();
-    }
-  };
-  recorder.onstop = finish;
-  recorder.onerror = finish;
-  try {
-    if (recorder.state !== "inactive") recorder.stop();
-    else finish();
-  } catch {
-    finish();
-  }
-}
-
-/* Escribe en la región viva sin repintar (progreso de subida, procesado de fotos) */
-function setLive(text) {
-  S.msg = { text: String(text || ""), fresh: false };
-  const el = ctx?.container?.querySelector("#av-msg-status");
-  if (el) el.textContent = S.msg.text;
 }
 
 function setMsg(text) {
@@ -1448,14 +678,9 @@ async function refreshGlobal() {
 export async function renderMessagesView(container, appState, helpers) {
   ensureCss();
   const me = appState?.currentUser || {};
-  // una grabación de un pintado anterior (otra vista, cambio de idioma…) se descarta y libera el micrófono
-  endRecording(false);
-  pruneAttCache(new Set());
   if (S.userId !== me.id) {
     // otra sesión: no se arrastran borradores, selección ni justificaciones
-    revokeDraftFiles(S);
     S = freshState(me.id);
-    D.fam = { contacts: [], convs: [], error: null };
   }
   S.msg = { text: "", fresh: false };
   S.srMsg = { text: "", fresh: false };
@@ -1463,23 +688,6 @@ export async function renderMessagesView(container, appState, helpers) {
   const token = `m${++seq}`;
   ctx = { container, appState, helpers: helpers || {}, token };
   takeAlertPrefill(appState);
-
-  // Canal: FAMILY_MEMBER solo Familia; líder y administración solo Misión; el tripulante elige.
-  // La señal de Bienestar ("FAMILY" o "MISSION") se consume siempre, sea cual sea su valor.
-  let wantChannel = null;
-  try {
-    const v = sessionStorage.getItem(CHANNEL_KEY);
-    if (v !== null) {
-      sessionStorage.removeItem(CHANNEL_KEY);
-      if (v === "FAMILY" || v === "MISSION") wantChannel = v;
-    }
-  } catch {
-    /* sessionStorage no disponible */
-  }
-  const r = me.role_code || "ASTRONAUT";
-  if (r === "FAMILY_MEMBER") setChannel("FAMILY");
-  else if (r !== "ASTRONAUT" || S.pendingAlert) setChannel("MISSION"); // la precarga desde Alertas va al canal de misión
-  else if (wantChannel) setChannel(wantChannel);
 
   container.innerHTML = `<div class="av-console av-msg" data-av-msg-root="${token}"><div class="av-grid"><div class="av-panel av-msg-full av-msg-pad" role="status">${esc(tr(DICT).loading)}</div></div></div>`;
   try {
@@ -1513,41 +721,7 @@ function takeAlertPrefill(appState) {
 
 /* ───────────────────────── datos ───────────────────────── */
 
-/* Cambia de canal guardando la conversación seleccionada de cada uno */
-function setChannel(ch) {
-  const next = ch === "FAMILY" ? "FAMILY" : "MISSION";
-  if (S.channel === next) return;
-  S.selByCh[S.channel] = S.selectedId;
-  S.channel = next;
-  setSelected(S.selByCh[next] ?? null);
-}
-
-/* Canal familiar: contactos (GET /family/contacts) + conversaciones FAMILY (no leídos y vista previa) */
-async function loadFamily() {
-  const [c, v] = await Promise.allSettled([
-    apiService.getFamilyContacts(),
-    apiService.getConversationsByChannel("FAMILY"),
-  ]);
-  if (c.status === "fulfilled") {
-    D.fam.contacts = (c.value?.items || []).filter((x) => x && typeof x === "object");
-    D.fam.error = null;
-  } else {
-    D.fam.contacts = [];
-    D.fam.error = errMsg(c.reason);
-  }
-  D.fam.convs = v.status === "fulfilled" ? (v.value?.conversations || []).filter((x) => x && (!x.channel || isFamilyConv(x))) : [];
-  const ids = D.fam.contacts.map((x) => Number(x.conversation_id)).filter((x) => Number.isInteger(x) && x > 0);
-  let sel = S.selectedId;
-  if (!ids.includes(sel)) sel = ids.length ? ids[0] : null;
-  setSelected(sel);
-  await loadThread();
-}
-
 async function loadAll() {
-  if (isFam()) {
-    await loadFamily();
-    return;
-  }
   const { appState } = ctx;
   const mission = appState.selectedMissionId;
   const [c, s] = await Promise.allSettled([
@@ -1558,8 +732,6 @@ async function loadAll() {
   if (c.status === "fulfilled") {
     let list = c.value?.conversations || [];
     D.hiddenConvs = 0;
-    // canal de misión: las conversaciones FAMILY nunca se listan aquí (salvo metadatos para administración)
-    if (!isAdmin()) list = list.filter((x) => !isFamilyConv(x));
     if (role() === "MISSION_LEADER") {
       // el líder solo ve las conversaciones en las que participa
       const all = list.length;
@@ -1619,7 +791,7 @@ function setSelected(id) {
     D.threadError = null;
   }
   S.selectedId = next;
-  if (ctx && S.channel === "MISSION") ctx.appState.selectedConversationId = next;
+  if (ctx) ctx.appState.selectedConversationId = next;
 }
 
 async function loadThread() {
@@ -1628,20 +800,15 @@ async function loadThread() {
   const id = S.selectedId;
   if (!id) return;
   const admin = isAdmin();
-  // administración: nunca se pide el contenido de una conversación FAMILY (el backend responde 403)
-  if (admin && isFamilyConv(D.conversations.find((x) => x.id === id))) return;
   if (admin && !S.adminJust[id]) return; // la puerta de auditoría se pinta en threadHTML
   S.loadingThread = true;
   try {
     const res = await apiService.getConversationMessages(id, admin ? { audit_justification: S.adminJust[id] } : {});
-    const fam = isFam();
-    const list = fam ? D.fam.convs : D.conversations;
-    const conv = res?.conversation || list.find((x) => x.id === id) || {};
+    const conv = res?.conversation || D.conversations.find((x) => x.id === id) || {};
     D.thread = { conversation: conv, messages: res?.messages || [] };
     // refresca contadores de la lista (no en administración: la lista sigue con vista previa protegida)
     if (!admin && res?.conversation) {
-      if (fam) D.fam.convs = D.fam.convs.map((x) => (x.id === id ? res.conversation : x));
-      else D.conversations = D.conversations.map((x) => (x.id === id ? res.conversation : x));
+      D.conversations = D.conversations.map((x) => (x.id === id ? res.conversation : x));
     }
     const ids = D.thread.messages.map((m) => m.id);
     if (S.lastMsgIds && S.lastConvId === id) {
@@ -1672,29 +839,21 @@ function paint() {
   const prevLog = container.querySelector("#av-msg-log");
   const prevScroll = prevLog ? prevLog.scrollTop : null;
 
-  const fam = isFam();
-  // el familiar no tiene contexto de enlace de la misión: el panel solo aparece si tiene cola que transmitir
-  const showLink = !isFamilyRole() || offlineQueue().length > 0;
   container.innerHTML = `<div class="av-console av-msg" data-av-msg-root="${ctx.token}"><div class="av-grid">
     ${emergencyHTML()}
-    ${fam ? famColHTML() : convColHTML()}
+    ${convColHTML()}
     <section class="av-col-b" aria-label="${esc(tr(DICT).selConvAria)}">
-      ${showLink ? linkHTML() : ""}
+      ${linkHTML()}
       <p id="av-msg-status" class="av-msg-status" role="status" aria-live="polite">${S.msg.fresh ? "" : esc(S.msg.text)}</p>
-      ${fam ? famThreadHTML() : threadHTML()}
+      ${threadHTML()}
     </section>
-    ${fam ? "" : srColHTML()}
+    ${srColHTML()}
   </div></div>`;
 
   const root = container.querySelector("[data-av-msg-root]");
   bind(root);
   applyConvFilter(root);
   applyThreadFilter(root);
-  // adjuntos del hilo: descarga autenticada; se revocan las URL de lo que ya no se muestra
-  const keep = new Set();
-  (D.thread?.messages || []).forEach((m) => (m.attachments || []).forEach((a) => isMediaAtt(a) && keep.add(String(a.id))));
-  pruneAttCache(keep);
-  hydrateMedia(root);
 
   const log = root.querySelector("#av-msg-log");
   if (log) {
@@ -1753,7 +912,6 @@ function convColHTML() {
     <p class="av-msg-note" id="av-msg-conv-none" hidden>${esc(T.convNone)}</p>`;
 
   return `<aside class="av-panel av-col-a" aria-labelledby="av-msg-conv-h">
-    ${channelSwitchHTML()}
     <div class="av-card-head">
       <h2 class="av-h2" id="av-msg-conv-h">${esc(T.convs)}</h2>
       <span class="av-sub">${totalUnread ? fmt(esc(T.unreadTotal), { n: `<strong>${esc(totalUnread)}</strong>` }) : esc(T.noPending)}</span>
@@ -1786,14 +944,6 @@ function convItemHTML(c) {
   if (urgent && unread) tag = `<span class="av-badge av-b-W">${esc(T.urgentUnread)}</span>`;
   else if (urgent) tag = `<span class="av-msg-tag">${esc(T.lastUrgent)}</span>`;
   else if (c.is_highlighted && c.status === "PENDING_FOLLOWUP") tag = `<span class="av-msg-tag">${esc(T.followup)}</span>`;
-  if (isFamilyConv(c)) {
-    // canal familiar (solo podría llegar aquí a administración): solo metadatos, nunca contenido
-    return `<li><button type="button" id="av-msg-c-${esc(c.id)}" class="av-msg-conv" data-msg-act="select-conv" data-id="${esc(c.id)}" data-status="${esc(c.status || "")}" aria-current="${sel ? "true" : "false"}">
-      <span class="av-msg-conv-top"><span class="av-msg-conv-name">${esc(title)}</span><span class="av-msg-tag">${esc(T.fam.famConv)}</span></span>
-      <span class="av-msg-preview">${esc(T.fam.protectedPreview)}</span>
-      <span class="av-msg-conv-line">${fmt(esc(T.lastActivity), { t: timeTag(c.last_message_at) })}</span>
-    </button></li>`;
-  }
   return `<li><button type="button" id="av-msg-c-${esc(c.id)}" class="av-msg-conv${urgent && unread ? " av-msg-conv-urgent" : ""}"
       data-msg-act="select-conv" data-id="${esc(c.id)}" data-status="${esc(c.status || "")}" aria-current="${sel ? "true" : "false"}">
     <span class="av-msg-conv-top"><span class="av-msg-conv-name">${esc(title)}</span>${unread ? `<span class="av-badge av-b-A">${esc(fmt(T.nUnread, { n: unread }))}</span>` : ""}</span>
@@ -1847,7 +997,6 @@ function threadHTML() {
     return `<section class="av-panel av-msg-thread av-msg-pad"><p class="av-msg-note">${esc(D.conversations.length ? T.selectConv : T.noConvsYet)}</p></section>`;
   }
   const conv = D.thread?.conversation || D.conversations.find((x) => x.id === id) || {};
-  if (isAdmin() && isFamilyConv(conv)) return familyGateHTML(conv);
   if (isAdmin() && !S.adminJust[id]) return auditGateHTML(conv);
   if (D.threadError) {
     return `<section class="av-panel av-msg-thread av-msg-pad">
@@ -1889,18 +1038,6 @@ function threadHTML() {
       <p class="av-msg-note" id="av-msg-th-none" hidden>${esc(T.noMsgMatch)}</p>
     </div>
     ${canAct ? composerHTML() : ""}
-  </section>`;
-}
-
-/* Administración ante una conversación FAMILY: sin acción de lectura auditada, solo metadatos */
-function familyGateHTML(conv) {
-  const T = tr(DICT);
-  const F = T.fam;
-  const count = conv.message_count ?? conv.messages_count;
-  return `<section class="av-panel av-msg-thread av-msg-pad av-msg-form" aria-labelledby="av-msg-gate-h">
-    <h2 class="av-h2" id="av-msg-gate-h">${esc(F.gateTitle)}</h2>
-    <p class="av-sub">${fmt(esc(T.lastActivity), { t: timeTag(conv.last_message_at) })}${count !== undefined && count !== null ? ` · ${esc(fmt(F.msgCount, { n: count }))}` : ""}</p>
-    <p class="av-msg-note">${esc(F.gateNote)}</p>
   </section>`;
 }
 
@@ -1953,11 +1090,8 @@ function msgHTML(m) {
   const urgent = m.category === "URGENT_COMMUNICATION";
   const unreadForMe = toMe && !readByRecipient(m);
   const canAct = !isAdmin();
-  const fam = isFam();
   const id = esc(m.id);
-  // adjuntos reales (foto / nota de voz, con `kind`) se muestran como medios; el resto, por nombre como siempre
-  const media = (m.attachments || []).filter(isMediaAtt);
-  const atts = (m.attachments || []).filter((a) => !isMediaAtt(a)).map((a) => esc(a.file_name)).join(", ");
+  const atts = (m.attachments || []).map((a) => esc(a.file_name)).join(", ");
 
   let reply = "";
   if (m.reply_to_preview) {
@@ -1970,7 +1104,7 @@ function msgHTML(m) {
   if (canAct) {
     actions = `<div class="av-msg-actions">
       <button type="button" class="av-btn av-msg-act" id="av-msg-a-reply-${id}" data-msg-act="reply" data-id="${id}" aria-label="${esc(fmt(T.replyAria, { id: m.id }))}">${esc(T.reply)}</button>
-      ${fam ? "" : `<button type="button" class="av-btn av-msg-act" id="av-msg-a-imp-${id}" data-msg-act="important" data-id="${id}" data-on="${m.is_important ? "1" : "0"}" aria-pressed="${m.is_important ? "true" : "false"}">${esc(T.important)}</button>`}
+      <button type="button" class="av-btn av-msg-act" id="av-msg-a-imp-${id}" data-msg-act="important" data-id="${id}" data-on="${m.is_important ? "1" : "0"}" aria-pressed="${m.is_important ? "true" : "false"}">${esc(T.important)}</button>
       ${toMe ? (unreadForMe
         ? `<button type="button" class="av-btn av-msg-act" id="av-msg-a-read-${id}" data-msg-act="read" data-id="${id}">${esc(T.markRead)}</button>`
         : `<button type="button" class="av-btn av-msg-act" id="av-msg-a-unread-${id}" data-msg-act="unread" data-id="${id}">${esc(T.markUnread)}</button>`) : ""}
@@ -1982,14 +1116,13 @@ function msgHTML(m) {
       <strong>${esc(m.sender_name || "—")}</strong>
       <span class="av-sub">${esc(roleLabel(m.sender_role))}${mine ? ` · ${esc(T.you)}` : ""}</span>
       ${urgent ? `<span class="av-badge av-b-W">${esc(T.urgent)}</span>` : ""}
-      ${fam ? "" : `<span class="av-msg-tag">${esc(catLabel(m.category))}</span>`}
-      ${m.is_important && !fam ? `<span class="av-msg-tag">${esc(T.important)}</span>` : ""}
+      <span class="av-msg-tag">${esc(catLabel(m.category))}</span>
+      ${m.is_important ? `<span class="av-msg-tag">${esc(T.important)}</span>` : ""}
       ${unreadForMe ? `<span class="av-badge av-b-A">${esc(T.unread)}</span>` : ""}
       <span class="av-msg-time">#${id} · ${timeTag(m.created_at)} GMT</span>
     </div>
     ${reply}
-    ${m.content || !media.length ? `<div class="av-msg-body">${esc(msgText(m.content))}</div>` : ""}
-    ${media.length ? `<div class="av-msg-media">${media.map(mediaHTML).join("")}</div>` : ""}
+    <div class="av-msg-body">${esc(msgText(m.content))}</div>
     ${atts ? `<span class="av-sub">${fmt(esc(T.attachment), { a: atts })}</span>` : ""}
     ${m.linked_alert_id ? `<span class="av-sub">${esc(fmt(T.linkedAlert, { id: m.linked_alert_id }))}</span>` : ""}
     <div class="av-msg-foot"><span>${deliveryHTML(m, mine)}</span>${actions}</div>
@@ -2001,199 +1134,18 @@ function queuedMsgHTML(q) {
   const p = q.payload || {};
   const me = ctx.appState.currentUser || {};
   const urgent = p.category === "URGENT_COMMUNICATION";
-  const fam = isFam();
-  const F = T.fam;
-  const pend = Array.isArray(q.pending_meta) ? q.pending_meta : [];
   return `<li class="av-msg-item av-msg-mine av-msg-queued${urgent ? " av-msg-urgent" : ""}">
     <div class="av-msg-meta">
       <strong>${esc(me.full_name || "—")}</strong><span class="av-sub">${esc(T.you)}</span>
       ${urgent ? `<span class="av-badge av-b-W">${esc(T.urgent)}</span>` : ""}
-      ${fam ? "" : `<span class="av-msg-tag">${esc(catLabel(p.category))}</span>`}
-      ${p.is_important && !fam ? `<span class="av-msg-tag">${esc(T.important)}</span>` : ""}
+      <span class="av-msg-tag">${esc(catLabel(p.category))}</span>
+      ${p.is_important ? `<span class="av-msg-tag">${esc(T.important)}</span>` : ""}
       <span class="av-msg-time">${fmt(esc(T.queuedSince), { t: timeTag(q.queued_at) })}</span>
     </div>
     ${p.reply_to_message_id ? `<span class="av-sub">${esc(fmt(T.replyTo, { id: p.reply_to_message_id }))}</span>` : ""}
-    ${p.content || !pend.length ? `<div class="av-msg-body">${esc(p.content)}</div>` : ""}
+    <div class="av-msg-body">${esc(p.content)}</div>
     ${p.attachment_file_name ? `<span class="av-sub">${esc(fmt(T.attachment, { a: p.attachment_file_name }))}</span>` : ""}
-    ${pend.map((a) => `<span class="av-sub">${esc(fmt(F.pending, { kind: a && a.kind === "AUDIO" ? F.voice : F.photo, name: a?.name || "—", size: fmtSize(a?.size) }))}</span>`).join("")}
     <div class="av-msg-foot"><span>${esc(T.statusLbl)} <span class="av-mono">QUEUED</span> ${esc(T.queuedMsgFoot)}</span></div>
-  </li>`;
-}
-
-/* ───────────────────────── canal familiar: pintado ───────────────────────── */
-
-function mediaHTML(a) {
-  const kind = a.kind === "AUDIO" ? "AUDIO" : "IMAGE";
-  return `<div class="av-msg-att av-msg-att-${kind === "AUDIO" ? "audio" : "image"}" data-att-id="${esc(a.id)}" data-att-kind="${kind}" data-att-name="${esc(a.file_name || "")}">
-    <span class="av-sub">${esc(tr(DICT).fam.attLoading)}</span></div>`;
-}
-
-/* Selector Misión / Familia (solo tripulante) */
-function channelSwitchHTML() {
-  if (role() !== "ASTRONAUT") return "";
-  const F = tr(DICT).fam;
-  const btn = (ch, label) =>
-    `<button type="button" class="av-btn av-msg-ch" id="av-msg-ch-${ch}" data-msg-act="channel" data-ch="${ch}" aria-pressed="${S.channel === ch ? "true" : "false"}">${esc(label)}</button>`;
-  return `<div class="av-msg-channel" role="group" aria-label="${esc(F.chAria)}">${btn("MISSION", F.chMission)}${btn("FAMILY", F.chFamily)}</div>`;
-}
-
-function famColHTML() {
-  const T = tr(DICT);
-  const F = T.fam;
-  const contacts = D.fam.contacts;
-  const totalUnread = D.fam.convs.reduce((n, c) => n + (Number(c.unread_count) || 0), 0);
-  let body;
-  if (D.fam.error) body = `<p class="av-msg-err" role="alert">${esc(fmt(F.contactsFail, { msg: D.fam.error }))}</p>`;
-  else if (!contacts.length) body = `<p class="av-msg-note">${esc(F.noContacts)}</p>`;
-  else body = `<ul class="av-msg-conv-list" aria-label="${esc(F.contactsAria)}">${contacts.map(famItemHTML).join("")}</ul>`;
-  return `<aside class="av-panel av-col-a" aria-labelledby="av-msg-conv-h">
-    ${channelSwitchHTML()}
-    <div class="av-card-head">
-      <h2 class="av-h2" id="av-msg-conv-h">${esc(F.title)}</h2>
-      <span class="av-sub">${totalUnread ? fmt(esc(T.unreadTotal), { n: `<strong>${esc(totalUnread)}</strong>` }) : esc(T.noPending)}</span>
-    </div>
-    <p class="av-msg-note">${esc(isFamilyRole() ? F.introFamily : F.intro)}</p>
-    ${body}
-  </aside>`;
-}
-
-function famItemHTML(c) {
-  const T = tr(DICT);
-  const F = T.fam;
-  const convId = Number(c.conversation_id);
-  const ok = Number.isInteger(convId) && convId > 0;
-  const conv = ok ? D.fam.convs.find((x) => x.id === convId) : null;
-  const unread = Number(conv?.unread_count) || 0;
-  const sel = ok && convId === S.selectedId;
-  const p = conv?.last_message_preview;
-  const preview = p ? (p.content ? btPreview(p.content) : F.attOnly) : ok ? T.noMsgsYet : F.contactNoConv;
-  return `<li><button type="button" id="av-msg-c-${ok ? esc(convId) : `k${esc(c.id)}`}" class="av-msg-conv" data-msg-act="select-conv" data-id="${ok ? esc(convId) : ""}" aria-current="${sel ? "true" : "false"}" ${ok ? "" : "disabled"}>
-    <span class="av-msg-conv-top"><span class="av-msg-conv-name">${esc(c.name || "—")}</span>${unread ? `<span class="av-badge av-b-A">${esc(fmt(T.nUnread, { n: unread }))}</span>` : ""}</span>
-    ${c.relationship ? `<span class="av-msg-conv-line">${esc(bt(String(c.relationship)))}</span>` : ""}
-    <span class="av-msg-preview">${esc(preview)}</span>
-    ${conv?.last_message_at ? `<span class="av-msg-conv-line">${fmt(esc(T.lastActivity), { t: timeTag(conv.last_message_at) })}</span>` : ""}
-  </button></li>`;
-}
-
-function famThreadHTML() {
-  const T = tr(DICT);
-  const F = T.fam;
-  const id = S.selectedId;
-  if (!id) {
-    return `<section class="av-panel av-msg-thread av-msg-pad"><p class="av-msg-note">${esc(D.fam.contacts.length ? F.selectContact : F.noContacts)}</p></section>`;
-  }
-  if (D.threadError) {
-    return `<section class="av-panel av-msg-thread av-msg-pad">
-      <p class="av-msg-err" role="alert">${esc(fmt(T.threadFail, { msg: D.threadError }))}</p>
-      <button type="button" class="av-btn" id="av-msg-refresh" data-msg-act="refresh">${esc(T.retry)}</button>
-    </section>`;
-  }
-  if (!D.thread) {
-    return `<section class="av-panel av-msg-thread av-msg-pad"><p class="av-msg-note">${esc(T.loadingConv)}</p></section>`;
-  }
-  const conv = D.thread.conversation || {};
-  const contact = famContact(id);
-  const other = famOtherName(conv, contact);
-  const rel = contact?.relationship || conv.family_contact?.relationship || "";
-  const msgs = D.thread.messages;
-  const me = meId();
-  const unread = msgs.filter((m) => m.recipient_id === me && !readByRecipient(m)).length;
-  const queued = offlineQueue().filter((q) => q.endpoint === `/conversations/${id}/messages`);
-  const items = msgs.map((m) => msgHTML(m)).join("") + queued.map(queuedMsgHTML).join("");
-  return `<section class="av-panel av-msg-thread" aria-labelledby="av-msg-th-h">
-    <div class="av-panel-head">
-      <div class="av-msg-th-title">
-        <h2 class="av-h2" id="av-msg-th-h" tabindex="-1">${esc(other)}</h2>
-        ${rel ? `<span class="av-sub">${esc(bt(String(rel)))}</span>` : ""}
-      </div>
-      <div class="av-msg-tools">
-        ${unread ? `<button type="button" class="av-btn" id="av-msg-readall" data-msg-act="read-all">${esc(fmt(T.readAll, { n: unread }))}</button>` : ""}
-        <button type="button" class="av-btn" id="av-msg-refresh" data-msg-act="refresh">${esc(T.refresh)}</button>
-      </div>
-    </div>
-    <p class="av-msg-privacy" role="note">${esc(fmt(F.privacy, { name: other }))} ${esc(F.privacyMore)}</p>
-    <div id="av-msg-log" class="av-msg-log" role="log" aria-label="${esc(T.logAria)}" tabindex="0">
-      ${items ? `<ol class="av-msg-list">${items}</ol>` : `<p class="av-msg-note">${esc(F.emptyThread)}</p>`}
-      <p class="av-msg-note" id="av-msg-th-none" hidden>${esc(T.noMsgMatch)}</p>
-    </div>
-    ${famComposerHTML()}
-  </section>`;
-}
-
-function famComposerHTML() {
-  const T = tr(DICT);
-  const F = T.fam;
-  const d = draft();
-  const L = linkInfo();
-  const delay = familyDelay();
-  let linkNote = "";
-  if (L.offline) linkNote = `<p class="av-msg-offline" role="note">${F.offlineHtml}</p>`;
-  else if (delay) linkNote = `<p class="av-msg-note av-msg-eta" role="note">${esc(delay)}</p>`;
-  const full = d.files.length >= MAX_ATT;
-  const recActive = REC.state !== "idle" && REC.token === ctx.token && REC.convId === S.selectedId;
-  const starting = REC.state === "starting" && REC.token === ctx.token;
-  let coarse = false;
-  try {
-    coarse = window.matchMedia("(pointer: coarse)").matches;
-  } catch {
-    coarse = false;
-  }
-
-  let rec;
-  if (starting) {
-    rec = `<div class="av-msg-rec" role="group" aria-label="${esc(F.recAria)}">
-      <span>${esc(F.recAsking)}</span>
-      <button type="button" class="av-btn" id="av-msg-rec-cancel" data-msg-act="rec-cancel">${esc(F.recCancel)}</button></div>`;
-  } else if (recActive) {
-    rec = `<div class="av-msg-rec" role="group" aria-label="${esc(F.recAria)}">
-      <span class="av-msg-rec-dot" aria-hidden="true"></span><strong>${esc(F.recording)}</strong>
-      <span id="av-msg-rec-time" class="av-mono" role="timer" aria-live="off" aria-label="${esc(F.recTimeAria)}">${esc(`${fmtClock(recSeconds())} / ${fmtClock(MAX_REC_SEC)}`)}</span>
-      <button type="button" class="av-btn av-btn-primary" id="av-msg-rec-stop" data-msg-act="rec-stop">${esc(F.recStop)}</button>
-      <button type="button" class="av-btn" id="av-msg-rec-cancel" data-msg-act="rec-cancel">${esc(F.recCancel)}</button></div>`;
-  } else {
-    rec = `<div class="av-msg-famtools" role="group" aria-label="${esc(F.toolsAria)}">
-      <button type="button" class="av-btn" id="av-msg-photo-pick" data-msg-act="photo-pick" ${full ? "disabled" : ""}>${esc(F.photoPick)}</button>
-      ${coarse ? `<button type="button" class="av-btn" id="av-msg-photo-take" data-msg-act="photo-take" ${full ? "disabled" : ""}>${esc(F.photoTake)}</button>` : ""}
-      <button type="button" class="av-btn" id="av-msg-voice" data-msg-act="rec-start" ${full ? "disabled" : ""}>${esc(F.voiceRec)}</button>
-      <input type="file" id="av-msg-photo-input" class="av-msg-vh" accept="image/*" multiple tabindex="-1" aria-hidden="true">
-      <input type="file" id="av-msg-camera-input" class="av-msg-vh" accept="image/*" capture="environment" tabindex="-1" aria-hidden="true">
-    </div>`;
-  }
-
-  const files = d.files.length
-    ? `<ul class="av-msg-attlist" aria-label="${esc(F.attAria)}">${d.files.map(attPreviewHTML).join("")}</ul>`
-    : "";
-
-  return `<form class="av-msg-composer" data-msg-form="fam-send" aria-labelledby="av-msg-comp-h">
-    <h3 class="av-h3" id="av-msg-comp-h">${esc(F.newMessage)}</h3>
-    ${d.replyTo ? `<div class="av-msg-replybar"><span class="av-msg-grow">${esc(fmt(T.replying, { id: d.replyTo, p: d.replyPreview }))}</span>
-      <button type="button" class="av-btn" id="av-msg-cancel-reply" data-msg-act="cancel-reply">${esc(T.cancelReply)}</button></div>` : ""}
-    ${linkNote}
-    <div class="av-field"><label for="av-msg-text">${esc(T.messageLbl)}</label>
-      <textarea id="av-msg-text" name="content" class="av-input av-msg-textarea" rows="3" maxlength="${MAX_LEN}" aria-describedby="av-msg-count av-msg-att-count">${esc(d.content)}</textarea></div>
-    ${rec}
-    ${files}
-    <div class="av-msg-send-row">
-      <span class="av-sub av-mono"><span id="av-msg-count">${esc(counterText(d.content.length))}</span> · <span id="av-msg-att-count">${esc(fmt(F.attCount, { n: d.files.length, max: MAX_ATT }))}</span></span>
-      <button type="submit" class="av-btn av-btn-primary" id="av-msg-send" ${photoJobs ? `disabled aria-busy="true" title="${esc(F.photoWait)}"` : ""}>${esc(L.offline ? T.queueBtn : T.send)}</button>
-    </div>
-  </form>`;
-}
-
-function attPreviewHTML(f) {
-  const F = tr(DICT).fam;
-  const lid = esc(f.lid);
-  const label = f.kind === "AUDIO" ? F.voice : F.photo;
-  const media = f.kind === "AUDIO"
-    ? `<audio controls preload="metadata" src="${esc(f.url)}" aria-label="${esc(fmt(F.voiceAria, { name: f.name }))}"></audio>`
-    : `<img src="${esc(f.url)}" alt="${esc(fmt(F.previewAlt, { name: f.name }))}">`;
-  return `<li class="av-msg-attprev av-msg-attprev-${f.kind === "AUDIO" ? "audio" : "image"}">
-    ${media}
-    <span class="av-sub">${esc(label)} · ${esc(fmtSize(f.size))}${f.duration ? ` · ${esc(fmtClock(f.duration))}` : ""}</span>
-    <span class="av-msg-attprev-act">
-      ${f.kind === "AUDIO" ? `<button type="button" class="av-btn av-msg-act" id="av-msg-redo-${lid}" data-msg-act="rec-redo" data-lid="${lid}" aria-label="${esc(fmt(F.redoAria, { name: f.name }))}">${esc(F.recRedo)}</button>` : ""}
-      <button type="button" class="av-btn av-msg-act" id="av-msg-rm-${lid}" data-msg-act="att-remove" data-lid="${lid}" aria-label="${esc(fmt(F.removeAria, { name: f.name }))}">${esc(F.remove)}</button>
-    </span>
   </li>`;
 }
 
@@ -2377,7 +1329,6 @@ function queuedSrHTML(q) {
 /* ───────────────────────── filtros sin repintar ───────────────────────── */
 
 function applyConvFilter(root) {
-  if (isFam()) return; // la lista de contactos familiares no tiene filtros
   const q = S.convQuery.trim().toLowerCase();
   const st = S.convStatus;
   const items = root.querySelectorAll(".av-msg-conv");
@@ -2442,7 +1393,6 @@ function onClick(ev) {
   switch (act) {
     case "select-conv":
       if (!Number.isFinite(id) || id <= 0) return;
-      if (REC.state !== "idle" && id !== S.selectedId) endRecording(false);
       run(el, async () => {
         setSelected(id);
         S.focusId = `av-msg-c-${id}`;
@@ -2488,12 +1438,9 @@ function onClick(ev) {
     case "flush":
       run(el, async () => {
         const res = await flushMine();
-        const F = tr(DICT).fam;
         setMsg(
           fmt(tr(DICT).flushed, { s: res?.synced ?? 0, r: res?.remaining ?? 0 }) +
-            (res?.lost ? fmt(F.lost, { n: res.lost }) : "") +
-            (res?.dropped ? fmt(F.dropped, { n: res.dropped }) : "") +
-            (res?.rejected || []).map((x) => fmt(F.rejected, { reason: x.reason, text: x.text ? trunc(x.text, 60) : F.noTextPreview })).join("")
+            (res?.rejected || []).map((x) => fmt(tr(DICT).flushRejected, { reason: x.reason, text: trunc(x.text || "—", 60) })).join("")
         );
         S.scrollBottom = true;
         await loadAll();
@@ -2629,73 +1576,6 @@ function onClick(ev) {
       break;
     }
 
-    /* ── canal familiar ── */
-    case "channel": {
-      const ch = el.getAttribute("data-ch");
-      if (role() !== "ASTRONAUT" || (ch !== "MISSION" && ch !== "FAMILY") || ch === S.channel) return;
-      endRecording(false);
-      run(el, async () => {
-        setChannel(ch);
-        S.msg = { text: "", fresh: false };
-        S.scrollBottom = true;
-        S.focusId = `av-msg-ch-${ch}`;
-        await loadAll();
-      });
-      break;
-    }
-
-    case "photo-pick":
-    case "photo-take": {
-      const input = ev.currentTarget.querySelector(act === "photo-take" ? "#av-msg-camera-input" : "#av-msg-photo-input");
-      if (!input) return;
-      if (draft().files.length >= MAX_ATT) {
-        setMsg(fmt(T.fam.maxAtt, { n: MAX_ATT }));
-        paint();
-        return;
-      }
-      input.click();
-      break;
-    }
-
-    case "rec-start":
-      startRecording();
-      break;
-
-    case "rec-stop":
-      endRecording(true);
-      break;
-
-    case "rec-cancel":
-      endRecording(false);
-      if (REC.state === "idle") {
-        // cancelado mientras se pedía permiso: no habrá evento de parada
-        setMsg(T.fam.recCancelled);
-        S.focusId = "av-msg-voice";
-        paint();
-      }
-      break;
-
-    case "rec-redo":
-    case "att-remove": {
-      const lid = el.getAttribute("data-lid");
-      const d = draft();
-      const i = d.files.findIndex((f) => f.lid === lid);
-      if (i < 0) return;
-      const [f] = d.files.splice(i, 1);
-      if (f.url) URL.revokeObjectURL(f.url);
-      // ya subido en un intento anterior y ahora fuera del borrador: se borra del servidor (best effort).
-      // Con un envío en curso no se toca: ese envío puede estar usándolo.
-      if (f.attId !== null && f.attId !== undefined && !S.busy) discardUploaded(f.attId);
-      if (act === "rec-redo") {
-        startRecording();
-      } else {
-        setMsg(fmt(T.fam.removed, { name: f.name }));
-        S.focusId = "av-msg-photo-pick";
-        paint();
-      }
-      break;
-    }
-
     case "alert-clear": {
       const d = draft();
       if (S.alert && d.content === S.alert.text.slice(0, MAX_LEN)) d.content = "";
@@ -2718,7 +1598,6 @@ function onSubmit(ev) {
   const kind = form.getAttribute("data-msg-form");
   const btn = form.querySelector('button[type="submit"]');
   if (kind === "send") submitMessage(form, btn);
-  else if (kind === "fam-send") submitFamily(form, btn);
   else if (kind === "audit") submitAudit(form, btn);
   else if (kind === "sr-create") submitSupport(form, btn);
   else if (kind === "sr-update") submitSupportUpdate(form, btn);
@@ -2785,110 +1664,6 @@ function submitMessage(form, btn) {
   });
 }
 
-/* Canal familiar: sube los adjuntos y envía el mensaje (categoría GENERAL). Sin enlace (o si el enlace cae
- * a mitad), el texto va a la cola local y los archivos aún no subidos a IndexedDB. Nunca se da por
- * entregado hasta que el servidor lo confirme. */
-function submitFamily(form, btn) {
-  const T = tr(DICT);
-  const F = T.fam;
-  if (REC.state !== "idle") {
-    setMsg(F.stopRecFirst);
-    S.focusId = REC.state === "recording" ? "av-msg-rec-stop" : "av-msg-rec-cancel";
-    paint();
-    return;
-  }
-  if (photoJobs > 0) {
-    // fotos aún procesándose: enviar ahora reemplazaría el borrador y las perdería
-    setLive(F.photoWait);
-    return;
-  }
-  const d = draft();
-  d.content = form.querySelector("#av-msg-text")?.value ?? d.content;
-  const content = d.content.trim();
-  if (!content && !d.files.length) {
-    setMsg(F.writeOrAttach);
-    S.focusId = "av-msg-text";
-    paint();
-    return;
-  }
-  const convId = S.selectedId;
-  if (!convId) return;
-  const files = d.files.slice(0, MAX_ATT);
-  const base = {
-    content: content.slice(0, MAX_LEN),
-    category: "GENERAL",
-    reply_to_message_id: d.replyTo || null,
-    is_simulated: true,
-  };
-  run(btn, async () => {
-    const L = linkInfo();
-    const endpoint = `/conversations/${convId}/messages`;
-    let res = null;
-    let queued = null;
-    if (L.offline) {
-      const has = (f) => f.attId !== null && f.attId !== undefined; // ya subidos en un intento anterior
-      queued = await queueFamilyMessage(endpoint, base, files.filter(has).map((f) => f.attId), files.filter((f) => !has(f)));
-    } else {
-      const ids = [];
-      try {
-        for (let i = 0; i < files.length; i += 1) {
-          const f = files[i];
-          if (f.attId === null || f.attId === undefined) {
-            setLive(fmt(F.uploading, { i: i + 1, n: files.length }));
-            const att = await apiService.uploadAttachment(toUploadFile(f), f.name);
-            if (!att || att.id === null || att.id === undefined) throw new Error(T.unexpected);
-            f.attId = att.id; // si después falla el envío, no se vuelve a subir
-          }
-          ids.push(f.attId);
-        }
-        res = await apiService.sendMessage(convId, ids.length ? { ...base, attachment_ids: ids } : base);
-      } catch (e) {
-        if (!isNetworkError(e)) {
-          setMsg(fmt(T.sendFail, { msg: errMsg(e) }));
-          S.focusId = "av-msg-text";
-          return true;
-        }
-        // el enlace cayó a mitad: lo ya subido viaja por id; el resto, a IndexedDB
-        queued = await queueFamilyMessage(endpoint, base, ids, files.slice(ids.length));
-      }
-    }
-
-    let keepFiles = [];
-    if (queued) {
-      if (!queued.queued) {
-        // IndexedDB no disponible y no hay texto: el borrador (con sus adjuntos) se conserva
-        setMsg(F.idbFailNoText);
-        S.focusId = "av-msg-send";
-        return true;
-      }
-      if (queued.idbFailed) {
-        keepFiles = files.filter((f) => f.attId === null || f.attId === undefined);
-        setMsg(F.idbFail);
-      } else {
-        setMsg(fmt(F.queued, { n: queued.queue_size ?? "?", att: queued.stored ? fmt(F.queuedAtt, { a: queued.stored }) : "" }));
-      }
-    } else if (res?.server_confirmed_delivery || res?.message) {
-      const t = res.message?.sent_at || res.message?.created_at;
-      setMsg(res.duplicate_prevented ? T.dupMsg : fmt(T.confirmedMsg, { at: t ? fmt(T.atGmt, { t: when(t) }) : "" }));
-    } else {
-      setMsg(T.unexpected);
-    }
-    // borrador nuevo; se conservan los adjuntos que no se pudieron guardar y los añadidos durante el envío
-    const cur = S.drafts[String(convId)] || d;
-    const late = cur.files.filter((f) => !files.includes(f));
-    cur.files.forEach((f) => {
-      if (!keepFiles.includes(f) && !late.includes(f) && f.url) URL.revokeObjectURL(f.url);
-    });
-    const next = newDraft();
-    next.files = [...keepFiles, ...late].slice(0, MAX_ATT);
-    S.drafts[String(convId)] = next;
-    S.scrollBottom = true;
-    S.focusId = "av-msg-text";
-    await loadAll();
-    return true;
-  });
-}
-
 function submitAudit(form, btn) {
   const val = String(form.querySelector("#av-msg-just")?.value || "").trim();
   if (val.length < 5) {
@@ -2898,7 +1673,6 @@ function submitAudit(form, btn) {
     return;
   }
   const id = S.selectedId;
-  if (isFamilyConv(D.conversations.find((x) => x.id === id))) return; // nunca se audita contenido FAMILY
   run(btn, async () => {
     S.adminJust[id] = val.slice(0, 500);
     S.scrollBottom = true;
@@ -3056,13 +1830,6 @@ function onChange(ev) {
     case "av-msg-sr-emerg":
       S.srDraft.emergency = t.checked;
       break;
-    case "av-msg-photo-input":
-    case "av-msg-camera-input": {
-      const files = Array.from(t.files || []);
-      t.value = ""; // permite volver a elegir el mismo archivo
-      if (files.length) addPhotos(files);
-      break;
-    }
     default:
       break;
   }

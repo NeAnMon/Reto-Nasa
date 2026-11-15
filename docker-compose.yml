@@ -8,17 +8,14 @@ services:
     container_name: astrovital-app
     ports:
       - "8000:8000"
-    # Valores de DEMOSTRACIÓN. En producción apunte a su propio .env con SECRET_KEY aleatoria,
-    # SEED_DEMO_DATA=false y DEMO_EXPOSE_RECOVERY_TOKEN=false (el arranque avisa en el log si no es así).
     env_file:
       - .env.example
     environment:
       - DATABASE_URL=sqlite:///./data/astrovital.db
-      # Adjuntos dentro del volumen persistente (si no, se pierden al recrear el contenedor)
-      - UPLOAD_DIR=/app/data/uploads
     volumes:
       - astrovital_data:/app/data
     restart: unless-stopped
 
 volumes:
   astrovital_data:
+

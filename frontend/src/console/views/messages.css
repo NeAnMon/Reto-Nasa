@@ -113,51 +113,8 @@
 .av-msg details > summary:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .av-msg details[open] > summary { margin-bottom: 6px; }
 
-/* ───────── Canal familiar "Conexión con Tierra" ───────── */
-.av-msg-channel { display: flex; gap: 0; }
-.av-msg .av-msg-ch { flex: 1 1 0; min-height: 44px; border-radius: 0; }
-.av-msg .av-msg-ch + .av-msg-ch { margin-left: -1px; }
-.av-msg .av-msg-ch[aria-pressed="true"] { background: var(--av-text); color: var(--av-bg); border-color: var(--av-text); font-weight: 600; }
-.av-msg .av-msg-ch:focus-visible { outline: 2px solid #fff; outline-offset: 2px; position: relative; z-index: 1; }
-.av-msg-privacy {
-  padding: 8px 12px; border-bottom: 1px solid var(--av-border); background: var(--av-raised);
-  font-size: 13px; color: var(--av-text2); overflow-wrap: anywhere;
-}
-.av-msg-eta { font-weight: 600; color: var(--av-text); }
-
-/* Adjuntos en el hilo */
-.av-msg-media { display: flex; flex-wrap: wrap; gap: 6px; }
-.av-msg-att { min-width: 0; max-width: 100%; }
-.av-msg-att-image { min-height: 60px; }
-.av-msg-att img { display: block; max-width: min(100%, 360px); max-height: 320px; height: auto; border: 1px solid var(--av-border); }
-.av-msg-att audio, .av-msg-attprev audio { display: block; width: 100%; max-width: 320px; min-height: 44px; }
-
-/* Herramientas de redacción y grabación */
-.av-msg-famtools { display: flex; flex-wrap: wrap; gap: 8px; }
-.av-msg-famtools .av-btn { min-height: 44px; }
-.av-msg-rec {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 10px;
-  border: 1px solid var(--av-strong); border-left: 4px solid var(--av-r); background: var(--av-raised); font-size: 13px;
-}
-.av-msg-rec .av-btn { min-height: 44px; }
-.av-msg-rec-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--av-r); flex: 0 0 auto; animation: av-msg-blink 1.2s steps(2, start) infinite; }
-@keyframes av-msg-blink { to { visibility: hidden; } }
-@media (prefers-reduced-motion: reduce) { .av-msg-rec-dot { animation: none; } }
-
-/* Vista previa de adjuntos del borrador */
-.av-msg-attlist { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
-.av-msg-attprev {
-  display: flex; flex-direction: column; gap: 6px; padding: 6px; min-width: 0;
-  border: 1px solid var(--av-border); background: var(--av-bg); flex: 0 1 180px;
-}
-.av-msg-attprev-audio { flex-basis: 280px; }
-.av-msg-attprev img { display: block; width: 100%; max-height: 140px; object-fit: cover; }
-.av-msg-attprev-act { display: flex; flex-wrap: wrap; gap: 6px; }
-
 @media (max-width: 640px) {
   .av-msg-item { max-width: 100%; }
   .av-msg-time { margin-left: 0; }
   .av-msg-log { max-height: none; }
-  .av-msg-attprev, .av-msg-attprev-audio { flex: 1 1 100%; }
-  .av-msg-famtools .av-btn { flex: 1 1 140px; }
 }

@@ -98,12 +98,6 @@ const appState = {
   breathingInterval: null,
 };
 
-/* Rol FAMILY_MEMBER (canal familiar "Conexión con Tierra"): solo puede usar la sección Mensajes */
-const FAMILY_SECTION = "communication-center";
-function isFamilyRole() {
-  return appState.currentUser?.role_code === "FAMILY_MEMBER";
-}
-
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -311,24 +305,6 @@ async function onAuthenticated(user) {
   apiService.setQueueOwner(user?.id); // la cola sin enlace es por persona usuaria
   document.body.setAttribute("data-theme", user.preferred_theme || "space-dark");
 
-  // Familiar (canal "Conexión con Tierra"): sin acceso a salud, misiones ni otros módulos (403 en el backend).
-  // No se cargan catálogos ni la barra HERA; aterriza directamente en Mensajes → Familia.
-  if (isFamilyRole()) {
-    appState.indicatorsCatalog = [];
-    appState.envProfiles = [];
-    appState.simulatorScenarios = [];
-    appState.usersList = [];
-    appState.missionsList = [];
-    appState.selectedAstronautId = null;
-    appState.selectedMissionId = null;
-    appState.healthSummary = null;
-    appState.currentSection = FAMILY_SECTION;
-    updateRoleNavigation();
-    syncThemeButton();
-    await navigateToSection(FAMILY_SECTION);
-    return;
-  }
-
   const [indRes, envRes, simRes, usersRes, missionsRes] = await Promise.all([
     apiService.getHealthIndicators(),
     apiService.getEnvironmentProfiles(),
@@ -365,21 +341,6 @@ async function onAuthenticated(user) {
 
 function updateRoleNavigation() {
   const role = appState.currentUser?.role_code || "ASTRONAUT";
-  const family = role === "FAMILY_MEMBER";
-  // Familiar: solo la pestaña Mensajes; sin menú "Más", selector de tripulante ni barras de salud/HERA
-  document.getElementById("av-more")?.classList.toggle("hidden", family);
-  ["av-chrome-status", "av-chrome-alarm", "av-hera-bar"].forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) el.hidden = family;
-  });
-  if (family) {
-    setMoreMenu(false);
-    document.querySelectorAll("[data-nav-section]").forEach((btn) => {
-      btn.classList.toggle("hidden", btn.getAttribute("data-nav-section") !== FAMILY_SECTION);
-    });
-    document.getElementById("topbar-crew-selector-wrap")?.classList.add("hidden");
-    return;
-  }
   document.querySelectorAll("[data-nav-section]").forEach((btn) => {
     const sec = btn.getAttribute("data-nav-section");
     if (sec === "administration" && role !== "ADMINISTRATOR") {
@@ -408,7 +369,6 @@ function updateRoleNavigation() {
 }
 
 async function refreshGlobalHeaderAndSummary() {
-  if (isFamilyRole()) return; // sin datos de salud ni barras de estado para el rol familiar
   if (!appState.selectedAstronautId) {
     renderChrome(appState);
     return;
@@ -479,7 +439,6 @@ async function refreshGlobalHeaderAndSummary() {
 
 async function navigateToSection(sectionId) {
   sectionId = SECTION_REDIRECTS[sectionId] || sectionId;
-  if (isFamilyRole()) sectionId = FAMILY_SECTION; // guardia: el rol familiar solo usa Mensajes
   appState.currentSection = sectionId;
   document.body.classList.toggle(
     "av-console-on",

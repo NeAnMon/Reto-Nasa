@@ -5,8 +5,8 @@
  * Subsecciones (pestañas internas WAI-ARIA, la elegida se recuerda en la sesión):
  *   - Hoy: check-in rápido (sueño, ánimo, energía, aislamiento, nota privada) + tarjeta de sueño
  *     y accesos al cuestionario completo, check-in emocional, evaluación cognitiva y respiración.
- *   - Conexión con Tierra: explica el canal familiar y abre Mensajes en modo familiar
- *     (señal sessionStorage "av_messages_channel" = "FAMILY"; la UI de mensajes vive en messages.js).
+ *   - Contacto con Tierra: tarjeta informativa (recomendación, no funcionalidad) sobre el contacto
+ *     asíncrono con seres queridos frente al aislamiento; enlaza a Mensajes (canal de misión).
  *   - Tiempo libre: hobbies breves con filtros, pasos, fuente NASA y registro "Lo hice".
  *   - Tripulación: actividades de integración (proponer, unirse, asistencia, quórum, meta semanal).
  *
@@ -51,7 +51,7 @@ const DICT = {
     intro: "Un espacio para cuidar el descanso, el ánimo y la conexión con los demás durante la misión. Todo lo que escribas aquí es privado por defecto.",
     introLeader: "Resumen de bienestar de {name}. Por privacidad, ánimo, energía, sensación de aislamiento y notas solo los ve la propia persona.",
     tabsAria: "Secciones de bienestar",
-    tabs: { today: "Hoy", earth: "Conexión con Tierra", leisure: "Tiempo libre", crew: "Tripulación" },
+    tabs: { today: "Hoy", earth: "Contacto con Tierra", leisure: "Tiempo libre", crew: "Tripulación" },
     loading: "Cargando…",
     retry: "Reintentar",
     noData: "—",
@@ -119,19 +119,20 @@ const DICT = {
     toolCognitiveSub: "Atención, memoria y tiempo de reacción",
     toolBreath: "Respiración guiada 4-4-4-4",
     toolBreathSub: "Dentro del cuestionario completo · 2 minutos para bajar el ritmo",
-    // Conexión con Tierra
-    earthTitle: "Conexión con Tierra",
-    earthIntro: "Un canal privado con tu familia para compartir fotos, notas de voz y mensajes. Funciona como «guardar y enviar»: por el retardo de la comunicación no hay videollamadas ni llamadas en directo.",
-    earthFeatures: ["Fotos del día a día", "Notas de voz grabadas", "Mensajes de chat"],
+    // Contacto con Tierra (recomendación; no es una funcionalidad de la app)
+    earthTitle: "Contacto con Tierra",
+    earthTag: "Recomendación",
+    earthWhy: "Sentirse cerca de las personas que quieres ayuda mucho cuando vives aislado y en un espacio reducido. El programa de investigación humana de la NASA (HRP) señala el aislamiento y el confinamiento como un riesgo para el ánimo, el sueño y la convivencia, y el apoyo de los seres queridos es uno de los recursos que más lo amortiguan.",
+    earthRecTitle: "Lo que recomendamos",
+    earthRec: "Un canal asíncrono con la familia: se escribe o se graba con calma y se entrega cuando hay enlace.",
+    earthFeatures: ["Mensajes de voz", "Chat", "Fotos del día a día"],
+    earthNoVideo: "Sin videollamadas: con el retardo de la comunicación una conversación en directo resulta frustrante.",
     earthDelay: "Retardo estimado ahora mismo: {d} por trayecto.",
     earthDelayNone: "menos de 1 s",
-    earthPrivacy: "Solo tú y tu familiar veis esta conversación y sus adjuntos. El equipo de misión no tiene acceso al contenido.",
-    earthPrivacyLeader: "Este canal es privado entre cada tripulante y su familia. El equipo de misión no ve su contenido ni aparece en tus listados.",
-    earthOpen: "Abrir mensajes con mi familia",
-    earthWrite: "Escribir",
-    contactsTitle: "Tus contactos autorizados",
-    contactsEmpty: "Aún no hay familiares autorizados. El equipo de misión puede darlos de alta.",
-    contactsError: "No se pudieron cargar tus contactos ({msg}). Puedes abrir Mensajes igualmente.",
+    earthMeanwhile: "Mientras tanto, puedes escribir a tu equipo en Tierra desde Mensajes: también están ahí para acompañarte.",
+    earthMeanwhileLeader: "Mientras tanto, Mensajes sigue siendo el canal para acompañar a la tripulación.",
+    earthOpen: "Abrir Mensajes",
+    earthSourceTitle: "Programa de Investigación Humana de la NASA (HRP)",
     // Tiempo libre
     leisureTitle: "Tiempo libre",
     leisureSub: "Pausas breves que ayudan a desconectar",
@@ -212,7 +213,7 @@ const DICT = {
     intro: "A space to look after your rest, your mood and your connection with others during the mission. Everything you write here is private by default.",
     introLeader: "Well-being summary for {name}. For privacy, mood, energy, feeling isolated and notes are only visible to that person.",
     tabsAria: "Well-being sections",
-    tabs: { today: "Today", earth: "Connection with Earth", leisure: "Free time", crew: "Crew" },
+    tabs: { today: "Today", earth: "Contact with Earth", leisure: "Free time", crew: "Crew" },
     loading: "Loading…",
     retry: "Retry",
     noData: "—",
@@ -277,18 +278,19 @@ const DICT = {
     toolCognitiveSub: "Attention, memory and reaction time",
     toolBreath: "4-4-4-4 guided breathing",
     toolBreathSub: "Inside the full questionnaire · 2 minutes to slow down",
-    earthTitle: "Connection with Earth",
-    earthIntro: "A private channel with your family to share photos, voice notes and messages. It works as \"store and forward\": because of the communication delay there are no video or live calls.",
-    earthFeatures: ["Everyday photos", "Recorded voice notes", "Chat messages"],
+    earthTitle: "Contact with Earth",
+    earthTag: "Recommendation",
+    earthWhy: "Feeling close to the people you love helps a lot when you live isolated in a small space. NASA's Human Research Program (HRP) identifies isolation and confinement as a risk to mood, sleep and getting along with others, and support from loved ones is one of the things that cushions it most.",
+    earthRecTitle: "What we recommend",
+    earthRec: "An asynchronous channel with family: you write or record calmly and it is delivered when there is a link.",
+    earthFeatures: ["Voice messages", "Chat", "Everyday photos"],
+    earthNoVideo: "No video calls: with the communication delay, a live conversation becomes frustrating.",
     earthDelay: "Estimated delay right now: {d} each way.",
     earthDelayNone: "under 1 s",
-    earthPrivacy: "Only you and your family member can see this conversation and its attachments. The mission team has no access to the content.",
-    earthPrivacyLeader: "This channel is private between each crew member and their family. The mission team can't see its content and it doesn't appear in your lists.",
-    earthOpen: "Open messages with my family",
-    earthWrite: "Write",
-    contactsTitle: "Your authorized contacts",
-    contactsEmpty: "No authorized family members yet. The mission team can add them.",
-    contactsError: "Couldn't load your contacts ({msg}). You can still open Messages.",
+    earthMeanwhile: "In the meantime, you can write to your team on Earth from Messages: they are there to support you too.",
+    earthMeanwhileLeader: "In the meantime, Messages remains the channel to support the crew.",
+    earthOpen: "Open Messages",
+    earthSourceTitle: "NASA Human Research Program (HRP)",
     leisureTitle: "Free time",
     leisureSub: "Short breaks that help you switch off",
     leisureIntro: "On long missions, small personal routines —tending plants, reading, listening to music— help cope with isolation. Pick whatever you feel like: it's not one more task.",
@@ -586,19 +588,7 @@ async function renderPanel() {
   if (isStale()) return;
   panel.querySelector("[data-wb-retry]")?.addEventListener("click", () => renderPanel());
   panel.querySelectorAll("[data-wb-go]").forEach((b) =>
-    b.addEventListener("click", () => {
-      // señal para messages.js: canal con el que abrir Mensajes ("MISSION" = equipo de apoyo,
-      // "FAMILY" = Conexión con Tierra); sin ella podría abrirse el último canal usado
-      const channel = b.getAttribute("data-wb-channel");
-      if (channel) {
-        try {
-          sessionStorage.setItem("av_messages_channel", channel);
-        } catch {
-          /* almacenamiento no disponible */
-        }
-      }
-      ctx.helpers.navigateToSection?.(b.getAttribute("data-wb-go"));
-    })
+    b.addEventListener("click", () => ctx.helpers.navigateToSection?.(b.getAttribute("data-wb-go")))
   );
   if (ui.focusSel) {
     panel.querySelector(ui.focusSel)?.focus();
@@ -651,7 +641,7 @@ function careHTML(T) {
       <span>${esc(T.careText)}</span>
       <span class="av-mx-btns">
         <button type="button" class="av-btn av-btn-sm" data-wb-go="emotional-center">${esc(T.careEmotional)}</button>
-        <button type="button" class="av-btn av-btn-sm" data-wb-go="communication-center" data-wb-channel="MISSION">${esc(T.careMessages)}</button>
+        <button type="button" class="av-btn av-btn-sm" data-wb-go="communication-center">${esc(T.careMessages)}</button>
       </span>
     </div>`;
 }
@@ -834,74 +824,37 @@ function bindCheckin(panel) {
   });
 }
 
-/* ───────────────────────── Conexión con Tierra ───────────────────────── */
+/* ───────────────────────── Contacto con Tierra (recomendación) ───────────────────────── */
 
-async function renderEarth(panel, isStale) {
+/* Tarjeta informativa: el canal con la familia NO existe en la app; solo se recomienda.
+ * El botón abre Mensajes (canal de misión) con el manejador genérico data-wb-go de renderPanel. */
+const EARTH_SOURCE_URL = "https://www.nasa.gov/hrp/";
+
+async function renderEarth(panel) {
   const { appState } = ctx;
-  const role = roleOf(appState);
-  const isAstronaut = role === "ASTRONAUT";
-
-  let contacts = null;
-  let contactsErr = null;
-  if (isAstronaut) {
-    try {
-      const res = await apiService.getFamilyContacts();
-      contacts = Array.isArray(res?.items) ? res.items : [];
-    } catch (err) {
-      contactsErr = err;
-    }
-  }
-  if (isStale()) return;
+  const isAstronaut = roleOf(appState) === "ASTRONAUT";
   const T = tr(DICT);
   const delay = delayText(appState.healthSummary?.context?.comms_delay_seconds);
-
-  const contactsHTML = !isAstronaut
-    ? ""
-    : `<section class="av-panel" aria-labelledby="av-wb-contacts-h">
-        <div class="av-panel-head"><h3 class="av-h3" id="av-wb-contacts-h">${esc(T.contactsTitle)}</h3></div>
-        ${
-          contactsErr
-            ? `<p class="av-mx-empty" role="alert">${esc(fmtT(T.contactsError, { msg: errMsg(contactsErr) }))}</p>`
-            : contacts.length
-              ? `<ul class="av-mx-list">${contacts
-                  .map(
-                    (c) => `<li><div class="av-mx-row">
-                        <span><strong>${esc(c.name)}</strong>${c.relationship ? ` <span class="av-sub">· ${esc(bt(c.relationship))}</span>` : ""}</span>
-                        <button type="button" class="av-btn av-btn-sm" data-wb-family aria-label="${esc(`${T.earthWrite}: ${c.name || ""}`)}">${esc(T.earthWrite)}</button>
-                      </div></li>`
-                  )
-                  .join("")}</ul>`
-              : `<p class="av-mx-empty">${esc(T.contactsEmpty)}</p>`
-        }
-      </section>`;
 
   panel.innerHTML = `<div class="av-wb-cols" data-wb-sub="earth">
       <div class="av-wb-col">
         <section class="av-panel" aria-labelledby="av-wb-earth-h">
-          <div class="av-panel-head"><h3 class="av-h3" id="av-wb-earth-h">${esc(T.earthTitle)}</h3></div>
+          <div class="av-panel-head">
+            <h3 class="av-h3" id="av-wb-earth-h">${esc(T.earthTitle)}</h3>
+            <span class="av-mx-tag">${esc(T.earthTag)}</span>
+          </div>
           <div class="av-mx-pad">
-            <p class="av-mx-p">${esc(T.earthIntro)}</p>
+            <p class="av-mx-p">${esc(T.earthWhy)}</p>
+            <p class="av-mx-p"><strong>${esc(T.earthRecTitle)}:</strong> ${esc(T.earthRec)}</p>
             <ul class="av-wb-feat">${T.earthFeatures.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>
-            ${delay ? `<p class="av-mx-p av-sub">${esc(fmtT(T.earthDelay, { d: delay }))}</p>` : ""}
-            <p class="av-mx-note">${esc(isAstronaut ? T.earthPrivacy : T.earthPrivacyLeader)}</p>
-            ${isAstronaut ? `<div><button type="button" class="av-btn av-btn-primary" data-wb-family>${esc(T.earthOpen)}</button></div>` : ""}
+            <p class="av-mx-p">${esc(T.earthNoVideo)}${delay ? ` <span class="av-sub">${esc(fmtT(T.earthDelay, { d: delay }))}</span>` : ""}</p>
+            <p class="av-mx-note">${esc(isAstronaut ? T.earthMeanwhile : T.earthMeanwhileLeader)}</p>
+            <div><button type="button" class="av-btn av-btn-primary" data-wb-go="communication-center">${esc(T.earthOpen)}</button></div>
+            <a class="av-wb-src" href="${esc(EARTH_SOURCE_URL)}" target="_blank" rel="noopener noreferrer">${esc(fmtT(T.source, { t: T.earthSourceTitle }))}<span class="av-mx-sr"> ${esc(T.newTab)}</span></a>
           </div>
         </section>
       </div>
-      ${contactsHTML ? `<div class="av-wb-col">${contactsHTML}</div>` : ""}
     </div>`;
-
-  panel.querySelectorAll("[data-wb-family]").forEach((b) =>
-    b.addEventListener("click", () => {
-      // señal para messages.js: abrir Mensajes en el canal familiar
-      try {
-        sessionStorage.setItem("av_messages_channel", "FAMILY");
-      } catch {
-        /* almacenamiento no disponible */
-      }
-      ctx.helpers.navigateToSection?.("communication-center");
-    })
-  );
 }
 
 /* ───────────────────────── Tiempo libre ───────────────────────── */
