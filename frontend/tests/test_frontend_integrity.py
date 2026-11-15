@@ -907,3 +907,60 @@ def test_crew_name_can_be_edited_from_the_status_bar_context_menu():
         assert f"    {key}: " in console_js[en_start:], key
     for cls in (".av-crew-pop", ".av-crew-menu-item", ".av-crew-rename", ".av-crew-edit"):
         assert cls in console_css, cls
+
+
+def test_crew_mode_lets_supervision_answer_wellbeing_as_the_crew_member():
+    """Issue #44: la consola entra como líder y Bienestar queda en solo lectura (chequeo del turno,
+    check-in emocional, evaluación cognitiva). "Responder como <tripulante>" abre la sesión demo de ese
+    astronauta y "Volver a supervisión" regresa al líder, desde Bienestar o desde la barra de estado."""
+    app_js = (FRONTEND_ROOT / "src" / "app" / "app.js").read_text(encoding="utf-8")
+    console_js = (FRONTEND_ROOT / "src" / "console" / "console.js").read_text(encoding="utf-8")
+    wellbeing_js = (FRONTEND_ROOT / "src" / "console" / "views" / "wellbeing.js").read_text(encoding="utf-8")
+    config_py = (FRONTEND_ROOT.parent / "backend" / "app" / "core" / "config.py").read_text(encoding="utf-8")
+
+    # 1. La contraseña demo de tripulación coincide con los valores por defecto del backend
+    m = re.search(r'^const DEMO_CREW_PASSWORD = "([^"]+)";$', app_js, re.M)
+    assert m, "app.js needs DEMO_CREW_PASSWORD"
+    for var in ("DEMO_ASTRONAUT1_PASSWORD", "DEMO_ANALOG_PASSWORD"):
+        default = re.search(r'os\.getenv\(\s*"' + var + r'",\s*"([^"]+)"', config_py)
+        assert default and default.group(1) == m.group(1), f"{var} default must match DEMO_CREW_PASSWORD"
+
+    # 2. Solo cuentas demo de astronauta, desde una sesión de supervisión, y el modo es por pestaña
+    can = _function_body(app_js, "function canEnterCrewMode(astronautId)")
+    assert 'u.role_code === "ASTRONAUT"' in can and "endsWith(DEMO_EMAIL_DOMAIN)" in can
+    assert 'appState.currentUser.role_code === "ASTRONAUT") return false;' in can
+    assert "sessionStorage.setItem(key, value)" in _function_body(app_js, "function ssSet(key, value)")
+
+    # 3. La sesión silenciosa (arranque y renovación tras 401) usa la cuenta del modo tripulante y,
+    #    si ya no entra, vuelve al líder
+    assert "const acc = sessionAccount();" in _function_body(app_js, "function autoLogin()")
+    assert "ssSet(CREW_MODE_KEY, null);" in _function_body(app_js, "function autoLogin()")
+    assert "=== sessionAccount().email" in _function_body(app_js, "async function startSession()")
+    on_auth = _function_body(app_js, "async function onAuthenticated(user)")
+    assert "appState.crewMode =" in on_auth and "takeAfterSwitch()" in on_auth
+
+    # 4. Entrar no toca la sesión del líder hasta que el login del tripulante funciona; salir cierra sesión
+    enter = _function_body(app_js, "async function enterCrewMode(astronautId)")
+    assert enter.index("await apiService.login(") < enter.index("apiService.setSession(")
+    exit_ = _function_body(app_js, "async function exitCrewMode()")
+    assert "apiService.logout()" in exit_ and "apiService.clearSession();" in exit_
+    for name in ("canEnterCrewMode", "enterCrewMode", "exitCrewMode"):
+        assert f"  {name},\n" in app_js, f"appHelpers needs {name}"
+
+    # 5. Bienestar ofrece el cambio (supervisión) o la vuelta (modo tripulante); la barra de estado, la vuelta
+    html = _function_body(wellbeing_js, "function crewModeHTML(appState, helpers, T)")
+    assert 'data-wb-crewmode="enter"' in html and 'data-wb-crewmode="exit"' in html
+    assert "${crewModeHTML(appState, helpers, T)}" in wellbeing_js and "bindCrewMode(container);" in wellbeing_js
+    assert 'data-act="crew-mode-exit"' in _function_body(console_js, "function crewCellHTML(appState, sessionName)")
+    assert 'act === "crew-mode-exit" && hp.exitCrewMode' in console_js
+
+    # 6. Textos en español e inglés
+    wb_es, wb_en = _dict_blocks(wellbeing_js)
+    for key in ("crewModeOffTitle", "crewModeOffText", "crewModeEnter", "crewModeOnTitle", "crewModeOnText",
+                "crewModeExit", "crewModeBusy", "crewModeFailed"):
+        assert key in _keys(wb_es, 4) and key in _keys(wb_en, 4), f"wellbeing.js DICT needs {key}"
+    con_es, con_en = _dict_blocks(console_js)
+    for key in ("crewModeLabel", "crewModeExit", "crewModeExitHelp"):
+        assert key in _keys(con_es, 4) and key in _keys(con_en, 4), f"console.js DICT needs {key}"
+    app_es, app_en = _dict_blocks(app_js)
+    assert "crewModeUnavailable" in _keys(app_es, 4) and "crewModeUnavailable" in _keys(app_en, 4)

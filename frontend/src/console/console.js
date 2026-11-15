@@ -80,6 +80,9 @@ const DICT = {
     crewSelectHelp: "Elige el astronauta cuyas métricas muestra la consola. {session}.",
     crewSrHelp: "Cambia el astronauta que muestra toda la consola. {session}.",
     crewRename: "Editar nombre",
+    crewModeLabel: "Modo tripulante",
+    crewModeExit: "Volver a supervisión",
+    crewModeExitHelp: "Respondes como este tripulante. Vuelve a la cuenta de supervisión.",
     crewRenameHint: "Clic derecho para editar el nombre.",
     crewRenameTitle: "Editar nombre · {code}",
     crewRenameLabel: "Nombre del tripulante",
@@ -395,6 +398,9 @@ const DICT = {
     crewSelectHelp: "Choose the astronaut whose metrics the console shows. {session}.",
     crewSrHelp: "Changes the astronaut shown across the whole console. {session}.",
     crewRename: "Edit name",
+    crewModeLabel: "Crew mode",
+    crewModeExit: "Back to supervision",
+    crewModeExitHelp: "You are answering as this crew member. Return to the supervision account.",
     crewRenameHint: "Right-click to edit the name.",
     crewRenameTitle: "Edit name · {code}",
     crewRenameLabel: "Crew member name",
@@ -1902,6 +1908,9 @@ export function initChrome(appState, helpers = {}) {
       } else if (act === "crew-rename") {
         const r = el.getBoundingClientRect();
         openCrewRename(r.left, r.bottom + 4);
+      } else if (act === "crew-mode-exit" && hp.exitCrewMode) {
+        el.disabled = true;
+        await hp.exitCrewMode(); // recarga la consola con la cuenta de supervisión
       }
     } catch (e) {
       if (hp.showToast) hp.showToast(fmt(tt().actionFailed, { msg: bt(e.message) }), "error");
@@ -2035,7 +2044,12 @@ function crewCellHTML(appState, sessionName) {
   const editBtn = `<button type="button" class="av-crew-edit" data-act="crew-rename" title="${esc(T.crewRename)}" aria-label="${esc(T.crewRename)}">✎</button>`;
   if (!list.length) {
     const canEdit = !!appState.currentUser?.id;
-    return `<div class="av-st av-st-crew" ${canEdit ? "data-crew-cell" : ""}><span class="av-lbl">${esc(T.crewMember)}</span><span class="av-v" title="${esc(canEdit ? `${sessionName} — ${T.crewRenameHint}` : sessionName)}">${esc(sessionName)}</span>${canEdit ? editBtn : ""}</div>`;
+    // modo tripulante (issue #44): la sesión es la del astronauta; se ofrece volver a supervisión
+    const exitBtn = appState.crewMode
+      ? `<button type="button" class="av-btn av-btn-sm av-crew-exit" data-act="crew-mode-exit" title="${esc(T.crewModeExitHelp)}">${esc(T.crewModeExit)}</button>`
+      : "";
+    const label = appState.crewMode ? `${T.crewMember} · ${T.crewModeLabel}` : T.crewMember;
+    return `<div class="av-st av-st-crew" ${canEdit ? "data-crew-cell" : ""}><span class="av-lbl">${esc(label)}</span><span class="av-v" title="${esc(canEdit ? `${sessionName} — ${T.crewRenameHint}` : sessionName)}">${esc(sessionName)}</span>${canEdit ? editBtn : ""}${exitBtn}</div>`;
   }
   const role = appState.currentUser?.role_code;
   const session = fmt(T.crewSession, { name: `${sessionName}${role ? ` [${role}]` : ""}` });

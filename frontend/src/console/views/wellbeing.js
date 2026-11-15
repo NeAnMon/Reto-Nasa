@@ -60,6 +60,14 @@ const DICT = {
     title: "Bienestar",
     intro: "Un espacio para cuidar el descanso, el ánimo y la conexión con los demás durante la misión. Todo lo que escribas aquí es privado por defecto.",
     introLeader: "Resumen de bienestar de {name}. Por privacidad, ánimo, energía, sensación de aislamiento y notas solo los ve la propia persona.",
+    crewModeOffTitle: "Vista de supervisión",
+    crewModeOffText: "El check-in de hoy, los cuestionarios, el chequeo del turno, el check-in emocional y la evaluación cognitiva los responde cada tripulante con su cuenta.",
+    crewModeEnter: "Responder como {name}",
+    crewModeOnTitle: "Modo tripulante",
+    crewModeOnText: "Respondes como {name}. Lo que registres queda en su cuenta.",
+    crewModeExit: "Volver a supervisión",
+    crewModeBusy: "Cambiando de cuenta…",
+    crewModeFailed: "No se pudo cambiar de cuenta: {msg}",
     tabsAria: "Secciones de bienestar",
     tabs: { today: "Hoy", checks: "Cuestionarios", emotional: "Check-in emocional", cognitive: "Evaluación cognitiva", breath: "Respiración", leisure: "Tiempo libre", crew: "Tripulación" },
     loading: "Cargando…",
@@ -198,6 +206,14 @@ const DICT = {
     title: "Well-being",
     intro: "A space to look after your rest, your mood and your connection with others during the mission. Everything you write here is private by default.",
     introLeader: "Well-being summary for {name}. For privacy, mood, energy, feeling isolated and notes are only visible to that person.",
+    crewModeOffTitle: "Supervision view",
+    crewModeOffText: "Today's check-in, the questionnaires, the shift check, the emotional check-in and the cognitive assessment are answered by each crew member with their own account.",
+    crewModeEnter: "Answer as {name}",
+    crewModeOnTitle: "Crew mode",
+    crewModeOnText: "You are answering as {name}. Everything you log is saved to their account.",
+    crewModeExit: "Back to supervision",
+    crewModeBusy: "Switching account…",
+    crewModeFailed: "Could not switch account: {msg}",
     tabsAria: "Well-being sections",
     tabs: { today: "Today", checks: "Questionnaires", emotional: "Emotional check-in", cognitive: "Cognitive assessment", breath: "Breathing", leisure: "Free time", crew: "Crew" },
     loading: "Loading…",
@@ -471,6 +487,7 @@ export async function renderWellbeingView(container, appState, helpers) {
             <h2 class="av-h2" id="av-wb-h">${esc(T.title)}</h2>
           </div>
           <p class="av-mx-p av-wb-intro">${esc(intro)}</p>
+          ${crewModeHTML(appState, helpers, T)}
           <div class="av-wb-tabs" role="tablist" aria-label="${esc(T.tabsAria)}">
             ${SUBS.map((s) => tabHTML(s, T, own ? pendingEmotional(appState) : 0)).join("")}
           </div>
@@ -482,8 +499,52 @@ export async function renderWellbeingView(container, appState, helpers) {
     </div></div>`;
 
   bindTabs(container);
+  bindCrewMode(container);
   await renderPanel();
   if (snap) restoreFields(container.querySelector(".av-wb-root"), snap);
+}
+
+/* Modo tripulante (issue #44): el líder o la administración pasan a la cuenta demo del tripulante
+ * seleccionado para responder lo que solo puede responder esa persona; en modo tripulante se ofrece
+ * volver a supervisión. Las acciones las hace app.js (helpers.enterCrewMode / exitCrewMode). */
+function crewModeHTML(appState, helpers, T) {
+  if (appState.crewMode && helpers?.exitCrewMode) {
+    const me = appState.currentUser || {};
+    const who = `${me.full_name || "—"}${me.crew_code ? ` (${me.crew_code})` : ""}`;
+    return `<div class="av-mx-note av-wb-crewmode" role="status">
+        <strong>${esc(T.crewModeOnTitle)}</strong>
+        <span>${esc(fmtT(T.crewModeOnText, { name: who }))}</span>
+        <span class="av-mx-btns"><button type="button" class="av-btn av-btn-sm" data-wb-crewmode="exit">${esc(T.crewModeExit)}</button></span>
+      </div>`;
+  }
+  if (!helpers?.canEnterCrewMode?.(appState.selectedAstronautId)) return "";
+  const a = (appState.usersList || []).find((u) => Number(u.id) === Number(appState.selectedAstronautId));
+  return `<div class="av-mx-note av-wb-crewmode">
+      <strong>${esc(T.crewModeOffTitle)}</strong>
+      <span>${esc(T.crewModeOffText)}</span>
+      <span class="av-mx-btns"><button type="button" class="av-btn av-btn-sm av-btn-primary" data-wb-crewmode="enter">${esc(fmtT(T.crewModeEnter, { name: a?.full_name || "—" }))}</button></span>
+    </div>`;
+}
+
+function bindCrewMode(container) {
+  const btn = container.querySelector("[data-wb-crewmode]");
+  if (!btn) return;
+  btn.addEventListener("click", async () => {
+    const T = tr(DICT);
+    const { appState, helpers } = ctx;
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = T.crewModeBusy;
+    try {
+      if (btn.getAttribute("data-wb-crewmode") === "exit") await helpers.exitCrewMode();
+      else await helpers.enterCrewMode(appState.selectedAstronautId);
+      // la consola se recarga con la otra cuenta
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = label;
+      helpers.showToast?.(fmtT(T.crewModeFailed, { msg: errMsg(err) }), "error");
+    }
+  });
 }
 
 function tabHTML(s, T, pending) {
