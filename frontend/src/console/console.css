@@ -148,12 +148,18 @@ body[data-theme="daylight-clean"] .av-console {
    Fila 1 = gráfica HERA/GOES (50 %) | Riesgos y Dosímetro personal en 2 columnas internas (50 %)
    Fila 2 = Límites de referencia a todo el ancho.
    El Refugio (solo en alerta) ocupa las 2 columnas internas arriba de Riesgos/Dosímetro. */
-.av-rad { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 12px; align-items: start; box-sizing: border-box; width: 100%; max-width: 100%; }
+.av-rad { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 12px; align-items: stretch; box-sizing: border-box; width: 100%; max-width: 100%; }
 .av-rad > * { min-width: 0; }
-.av-rad > #av-rad-live { margin: 0; }
+.av-rad > #av-rad-live { margin: 0; display: flex; flex-direction: column; }
+.av-rad > #av-rad-live > .av-panel { flex: 1 1 auto; }
 .av-rad > #av-rad-live svg { display: block; width: 100%; height: auto; max-height: 300px; }
-.av-rad-folds { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; min-width: 0; }
+.av-rad-folds { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: stretch; align-content: stretch; min-width: 0; }
+/* fila 1 del mismo alto: la gráfica y el Dosímetro se estiran al alto de Riesgos (una sección plegada no se estira) */
+.av-rad-folds .av-fold:not([open]) { align-self: start; }
 .av-rad-folds .av-fold[data-fold="shelter"] { grid-column: 1 / -1; }
+/* el alto sobrante va a la fila de Riesgos/Dosímetro, no a la del Refugio */
+.av-rad-folds { grid-template-rows: 1fr; }
+.av-rad-folds:has(> #av-rad-live-folds > [data-fold="shelter"]) { grid-template-rows: auto 1fr; }
 /* columnas internas angostas: el título largo ("Riesgos — dosis frente a límites…") salta de línea */
 .av-rad-folds .av-fold > .av-fold-head { height: auto; min-height: 48px; flex-wrap: wrap; padding-top: 8px; padding-bottom: 8px; }
 .av-rad-folds .av-fold > .av-fold-head > * { white-space: normal; overflow: visible; }
